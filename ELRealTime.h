@@ -1,9 +1,8 @@
-#pragma once
-
 #ifndef _ELREALTIME_H_
 #define _ELREALTIME_H_
 
-#include "ELModule.h"
+#include <ELModule.h>
+#include <ELSerial.h>
 
 enum
 {
@@ -31,7 +30,7 @@ struct STimeZoneRule
 	STimeZoneOffsetSpecifier	stdStart;
 };
 
-typedef uint32_t	TELEpochTime;	// Secs since Jan 1 00:00 1970 - compatible with standard time definitions but redefined here to eliminate dependencies and conflicts
+typedef uint32_t	TEpochTime;	// Secs since Jan 1 00:00 1970 - compatible with standard time definitions but redefined here to eliminate dependencies and conflicts
 
 class IRealTimeDataProvider
 {
@@ -62,11 +61,15 @@ typedef void
 	char const*	inName,
 	void*		inReference);
 
-class CRealTime : public CModule
+class CRealTime : public CModule, public ISerialCmdHandler
 {
 public:
 
 	CRealTime(
+		void);
+
+	virtual void
+	Setup(
 		void);
 
 	virtual void
@@ -94,8 +97,8 @@ public:
 	
 	void
 	SetEpochTime(
-		TELEpochTime	inEpochTime,
-		bool			inUTC = false);
+		TEpochTime	inEpochTime,
+		bool		inUTC = false);
 
 	void
 	GetDateAndTime(
@@ -108,7 +111,7 @@ public:
 		int&	outSecond,		// 00 to 59
 		bool	inUTC = false);
 
-	TELEpochTime
+	TEpochTime
 	GetEpochTime(
 		bool	inUTC = false);
 	
@@ -142,33 +145,33 @@ public:
 
 	int
 	GetYearFromEpoch(
-		TELEpochTime	inEpochTime);
+		TEpochTime	inEpochTime);
 
 	int
 	GetMonthFromEpoch(
-		TELEpochTime	inEpochTime);
+		TEpochTime	inEpochTime);
 
 	int
 	GetDayOfMonthFromEpoch(
-		TELEpochTime	inEpochTime);
+		TEpochTime	inEpochTime);
 
 	int
 	GetDayOfWeekFromEpoch(
-		TELEpochTime	inEpochTime);
+		TEpochTime	inEpochTime);
 
 	int
 	GetHourFromEpoch(
-		TELEpochTime	inEpochTime);
+		TEpochTime	inEpochTime);
 
 	int
 	GetMinuteFromEpoch(
-		TELEpochTime	inEpochTime);
+		TEpochTime	inEpochTime);
 
 	int
 	GetSecondFromEpoch(
-		TELEpochTime	inEpochTime);
+		TEpochTime	inEpochTime);
 
-	TELEpochTime
+	TEpochTime
 	GetEpochTimeFromComponents(
 		int			inYear,			// xxxx 4 digit year
 		int			inMonth,		// 1 to 12
@@ -179,7 +182,7 @@ public:
 
 	void
 	GetComponentsFromEpochTime(
-		TELEpochTime	inEpochTime,
+		TEpochTime	inEpochTime,
 		int&			outYear,		// xxxx 4 digit year
 		int&			outMonth,		// 1 to 12
 		int&			outDayOfMonth,	// 1 to 31
@@ -188,17 +191,17 @@ public:
 		int&			outMinute,		// 00 to 59
 		int&			outSecond);		// 00 to 59
 
-	TELEpochTime
+	TEpochTime
 	LocalToUTC(
-		TELEpochTime	inLocalEpochTime);
+		TEpochTime	inLocalEpochTime);
 
-	TELEpochTime
+	TEpochTime
 	UTCToLocal(
-		TELEpochTime	inUTCEpochTime);
+		TEpochTime	inUTCEpochTime);
 
 	bool
 	InDST(
-		TELEpochTime	inEpochTime,
+		TEpochTime	inEpochTime,
 		bool			inUTC = false);
 
 	void
@@ -272,19 +275,19 @@ private:
 	IRealTimeDataProvider*	provider;
 	uint32_t				provierSyncPeriodMS;
 
-	TELEpochTime	epocUTCTimeAtLastSet;
+	TEpochTime	epocUTCTimeAtLastSet;
 	uint32_t		localMSAtLastSet;
 
-	TELEpochTime	lastUTCEpochTimeAlarmCheck;
+	TEpochTime	lastUTCEpochTimeAlarmCheck;
 
 	STimeZoneRule	timeZoneInfo;
-	TELEpochTime	dstStartUTCEpocTime;
-	TELEpochTime	dstEndUTCEpocTime;
+	TEpochTime	dstStartUTCEpocTime;
+	TEpochTime	dstEndUTCEpocTime;
 
-	TELEpochTime	dstStartUTC;
-	TELEpochTime	stdStartUTC;
-	TELEpochTime	dstStartLocal;
-	TELEpochTime	stdStartLocal;
+	TEpochTime	dstStartUTC;
+	TEpochTime	stdStartUTC;
+	TEpochTime	dstStartLocal;
+	TEpochTime	stdStartLocal;
 
 	SAlarm*
 	FindAlarmByName(
@@ -306,10 +309,30 @@ private:
 	ComputeDSTStartAndEnd(
 		int	inYear);
 
-	TELEpochTime
+	TEpochTime
 	ComputeEpochTimeForOffsetSpecifier(
 		STimeZoneOffsetSpecifier const&	inSpecifier,
 		int								inYear);
+
+	bool
+	SerialSetTime(
+		int		inArgC,
+		char*	inArgv[]);
+
+	bool
+	SerialGetTime(
+		int		inArgC,
+		char*	inArgv[]);
+
+	bool
+	SerialSetTimeZone(
+		int		inArgC,
+		char*	inArgv[]);
+
+	bool
+	SerialGetTimeZone(
+		int		inArgC,
+		char*	inArgv[]);
 };
 
 extern int			gDaysInMonth[12];	// This is 0 based not 1 based

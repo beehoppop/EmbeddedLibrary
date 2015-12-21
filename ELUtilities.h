@@ -1,9 +1,9 @@
+#ifndef _ELUTILITIES_H_
+#define _ELUTILITIES_H_
+
 /*
 	ELUtilities.h
 */
-
-#ifndef _ELUTILITIES_H_
-#define _ELUTILITIES_H_
 
 #include "EL.h"
 bool

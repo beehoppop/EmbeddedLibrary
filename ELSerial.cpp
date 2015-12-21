@@ -12,7 +12,7 @@
 CModule_SerialCmd::CModule_SerialCmd(
 	)
 	:
-	CModule("sril", 0, 1000, 0, 4, false)
+	CModule("sril", 0, 0, 1000)
 {
 	handlerCount = 0;
 }
@@ -60,9 +60,11 @@ CModule_SerialCmd::RegisterCommand(
 {
 	MReturnOnError(handlerCount >= eSerial_MaxCommands || strlen(inCmdName) + 1 >= eSerial_MaxNameLen);
 
-	commandList[handlerCount].handler = inCmdHandler;
-	commandList[handlerCount].method = inMethod;
-	strncpy(commandList[handlerCount].name, inCmdName, sizeof(commandList[handlerCount].name));
+	SCommand*	newCommand = commandList + handlerCount++;
+
+	newCommand->handler = inCmdHandler;
+	newCommand->method = inMethod;
+	strncpy(newCommand->name, inCmdName, sizeof(newCommand->name));
 }
 
 bool
@@ -96,6 +98,7 @@ CModule_SerialCmd::ProcessSerialMsg(
 
 	if(curCompIndex == 0)
 	{
+		DebugMsg(eDbgLevel_Basic, "no command\n");
 		return false;
 	}
 
@@ -108,6 +111,8 @@ CModule_SerialCmd::ProcessSerialMsg(
 			return (commandList[itr].handler->*commandList[itr].method)(curCompIndex, components);
 		}
 	}
+
+	DebugMsg(eDbgLevel_Basic, "Could not find cmd %s\n", components[0]);
 
 	return false;
 }

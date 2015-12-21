@@ -1,7 +1,7 @@
-// TCSerial.h
-
 #ifndef _ELSERIAL_H_
 #define _ELSERIAL_H_
+
+// TCSerial.h
 
 #include "ELModule.h"
 

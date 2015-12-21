@@ -1,9 +1,10 @@
-/*
-	ELAssert.h
-*/
-
 #ifndef _ELASSERT_H_
 #define _ELASSERT_H_
+/*
+	ELAssert.h
+
+	Commonly needed functionality for debugging and verifing program correctness
+*/
 
 #include "EL.h"
 
@@ -22,11 +23,6 @@ enum
 	eDbgLevel_Verbose,
 };
 
-// Set the debugging level - the higher the level the more detailed and verbose the messages will be
-void
-SetDebugLevel(
-	int	inLevel);
-
 // Output a debug msg when inLevel <= the current debug level
 void
 DebugMsg(
@@ -34,10 +30,14 @@ DebugMsg(
 	char const*	inMsg,
 	...);
 
-// Inheret from this class to define your our own debug message outputter - you must register your class using RegisterDebugMsgHandler
+// Inherit from this class to define your our own debug message output mechanism - you must register your class using RegisterDebugMsgHandler
 class IDebugMsgHandler
 {
 public:
+	
+	virtual char const*
+	GetDebugID(
+		void) = 0;
 
 	virtual void
 	OutputDebugMsg(

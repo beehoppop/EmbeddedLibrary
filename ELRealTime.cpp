@@ -45,6 +45,20 @@ public:
 		int			inMin,			// 00 to 59
 		int			inSec)
 	{
+		if(inYear >= 1970 && inYear <= 1999)
+		{
+			inYear -= 1900;
+		}
+		else if(inYear >= 2000 and inYear <= 2099)
+		{
+			inYear -= 2000;
+		}
+		else if(inYear > 100)
+		{
+			// This is an invalid year so bail
+			return;
+		}
+
 		int TimeDate [7] = {inSec, inMin, inHour, 0, inDayOfMonth, inMonth, inYear};
 
 		for(int i = 0; i < 7; ++i)
@@ -86,6 +100,15 @@ public:
 			TimeDate[i] = a + b * 10;	
 		}
 
+		if(TimeDate[6] >= 70 && TimeDate[6] <= 99)
+		{
+			TimeDate[6] += 1900;
+		}
+		else
+		{
+			TimeDate[6] += 2000;
+		}
+
 		gRealTime.SetDateAndTime(TimeDate[6], TimeDate[5], TimeDate[4], TimeDate[2], TimeDate[1], TimeDate[0], true);
 	}
 
@@ -93,14 +116,32 @@ public:
 };
 
 CRealTime::CRealTime(
-	)	// If provider is NULL the user is responsible for calling SetDateAndTime and setting an alarm to periodically sync as needed
+	)
 	:
 	CModule(
-		"rtc ",		// The module ID
-		0,			// No eeprom size
-		0,			// No eeprom version number
-		1000000)	// Call the update method once a second
+		"rtc ",					// The module ID
+		sizeof(STimeZoneRule),	// eeprom size
+		1,						// eeprom version number
+		1000000)				// Call the update method once a second
 {
+}
+
+void
+CRealTime::Setup(
+	void)
+{
+	LoadDataFromEEPROM(&timeZoneInfo, eepromOffset, sizeof(timeZoneInfo));
+
+	if((uint8_t)timeZoneInfo.abbrev[0] == 0xFF)
+	{
+		// no time zone is set so just zero it out
+		memset(&timeZoneInfo, 0, sizeof(timeZoneInfo));
+	}
+
+	gSerialCmd.RegisterCommand("set_time", this, static_cast<TSerialCmdMethod>(&CRealTime::SerialSetTime));
+	gSerialCmd.RegisterCommand("get_time", this, static_cast<TSerialCmdMethod>(&CRealTime::SerialGetTime));
+	gSerialCmd.RegisterCommand("set_timezone", this, static_cast<TSerialCmdMethod>(&CRealTime::SerialSetTimeZone));
+	gSerialCmd.RegisterCommand("get_timezone", this, static_cast<TSerialCmdMethod>(&CRealTime::SerialGetTimeZone));
 }
 
 void
@@ -119,8 +160,8 @@ CRealTime::Update(
 		return;
 	}
 
-	TELEpochTime	startLocalEpochTime = UTCToLocal(lastUTCEpochTimeAlarmCheck);
-	TELEpochTime	endLocalEpochTime = GetEpochTime();
+	TEpochTime	startLocalEpochTime = UTCToLocal(lastUTCEpochTimeAlarmCheck);
+	TEpochTime	endLocalEpochTime = GetEpochTime();
 
 	bool	alarmTrigger[eAlarm_MaxActive];
 	memset(alarmTrigger, 0, sizeof(alarmTrigger));
@@ -146,7 +187,7 @@ CRealTime::Update(
 		curSec);
 
 	// We have to run through all of the seconds since the last update to make sure no alarms are missed
-	for(TELEpochTime epocTimeItr = startLocalEpochTime; epocTimeItr <= endLocalEpochTime; ++epocTimeItr)
+	for(TEpochTime epocTimeItr = startLocalEpochTime; epocTimeItr <= endLocalEpochTime; ++epocTimeItr)
 	{
 		SAlarm* curAlarm = alarmArray;
 		for(int alarmItr = 0; alarmItr < eAlarm_MaxActive; ++alarmItr, ++curAlarm)
@@ -217,8 +258,8 @@ CRealTime::Update(
 	}
 
 	// Now run through all the UTC timers
-	TELEpochTime	startUTCEpochTime = lastUTCEpochTimeAlarmCheck;
-	TELEpochTime	endUTCEpochTime = GetEpochTime(true);
+	TEpochTime	startUTCEpochTime = lastUTCEpochTimeAlarmCheck;
+	TEpochTime	endUTCEpochTime = GetEpochTime(true);
 
 	GetComponentsFromEpochTime(
 		startUTCEpochTime,
@@ -230,7 +271,7 @@ CRealTime::Update(
 		curMin,
 		curSec);
 
-	for(TELEpochTime epocTimeItr = startUTCEpochTime; epocTimeItr <= endUTCEpochTime; ++epocTimeItr)
+	for(TEpochTime epocTimeItr = startUTCEpochTime; epocTimeItr <= endUTCEpochTime; ++epocTimeItr)
 	{
 		SAlarm* curAlarm = alarmArray;
 		for(int alarmItr = 0; alarmItr < eAlarm_MaxActive; ++alarmItr, ++curAlarm)
@@ -338,6 +379,7 @@ CRealTime::SetTimeZone(
 	STimeZoneRule&	inTimeZone)
 {
 	timeZoneInfo = inTimeZone;
+	WriteDataToEEPROM(&timeZoneInfo, eepromOffset, sizeof(timeZoneInfo));
 }
 
 void
@@ -364,26 +406,36 @@ CRealTime::SetDateAndTime(
 	int		inSec,			// 00 to 59
 	bool	inUTC)
 {
-	SetEpochTime(GetEpochTimeFromComponents(inYear, inMonth, inDayOfMonth, inHour, inMin, inSec), inUTC);
+	TEpochTime	epochTime = GetEpochTimeFromComponents(inYear, inMonth, inDayOfMonth, inHour, inMin, inSec);
+
+	SetEpochTime(epochTime, inUTC);
 }
 
 void 
 CRealTime::SetEpochTime(
-	TELEpochTime	inEpochTime,
-	bool			inUTC)
+	TEpochTime	inEpochTime,
+	bool		inUTC)
 {
 	localMSAtLastSet = millis();
+	
+	TEpochTime newEpochTime;
 
 	if(inUTC)
 	{
-		epocUTCTimeAtLastSet = inEpochTime;
+		newEpochTime = inEpochTime;
 	}
 	else
 	{
-		epocUTCTimeAtLastSet = LocalToUTC(inEpochTime);
+		newEpochTime = LocalToUTC(inEpochTime);
 	}
 
-	lastUTCEpochTimeAlarmCheck = epocUTCTimeAtLastSet;
+	if(newEpochTime < epocUTCTimeAtLastSet || newEpochTime - epocUTCTimeAtLastSet > 120)
+	{
+		// If we are setting time back in the past or if we are leaping forward more then a small amount reset the alarm check
+		lastUTCEpochTimeAlarmCheck = epocUTCTimeAtLastSet;
+	}
+
+	epocUTCTimeAtLastSet = newEpochTime;
 }
 
 void
@@ -400,11 +452,11 @@ CRealTime::GetDateAndTime(
 	GetComponentsFromEpochTime(GetEpochTime(inUTC), outYear, outMonth, outDayOfMonth, outDayOfWeek, outHour, outMinute, outSecond);
 }
 
-TELEpochTime 
+TEpochTime 
 CRealTime::GetEpochTime(
 	bool	inUTC)
 {
-	TELEpochTime	result = epocUTCTimeAtLastSet + (millis() - localMSAtLastSet) / 1000;
+	TEpochTime	result = epocUTCTimeAtLastSet + (millis() - localMSAtLastSet) / 1000;
 
 	if(!inUTC)
 	{
@@ -465,11 +517,11 @@ CRealTime::GetSecondsNow(
 
 int
 CRealTime::GetYearFromEpoch(
-	TELEpochTime	inEpochTime)
+	TEpochTime	inEpochTime)
 {
-	TELEpochTime	daysEpochTime = inEpochTime / (60 * 60 * 24);
+	TEpochTime	daysEpochTime = inEpochTime / (60 * 60 * 24);
 	int				year = 1970;
-	TELEpochTime	days = 0;
+	TEpochTime	days = 0;
 
 	for(;;)
 	{
@@ -487,13 +539,13 @@ CRealTime::GetYearFromEpoch(
 
 int
 CRealTime::GetMonthFromEpoch(
-	TELEpochTime	inEpochTime)
+	TEpochTime	inEpochTime)
 {
-	TELEpochTime	daysEpochTime = inEpochTime / (60 * 60 * 24);
+	TEpochTime	daysEpochTime = inEpochTime / (60 * 60 * 24);
 	int				year = 1970;
-	TELEpochTime	days = 0;
+	TEpochTime	days = 0;
 	int				month;
-	TELEpochTime	monthLength;
+	TEpochTime	monthLength;
 
 	for(;;)
 	{
@@ -533,13 +585,13 @@ CRealTime::GetMonthFromEpoch(
 
 int
 CRealTime::GetDayOfMonthFromEpoch(
-	TELEpochTime	inEpochTime)
+	TEpochTime	inEpochTime)
 {
-	TELEpochTime	daysEpochTime = inEpochTime / (60 * 60 * 24);
+	TEpochTime	daysEpochTime = inEpochTime / (60 * 60 * 24);
 	int				year = 1970;
-	TELEpochTime	days = 0;
+	TEpochTime	days = 0;
 	int				month;
-	TELEpochTime	monthLength;
+	TEpochTime	monthLength;
 
 	for(;;)
 	{
@@ -579,35 +631,35 @@ CRealTime::GetDayOfMonthFromEpoch(
 
 int
 CRealTime::GetDayOfWeekFromEpoch(
-	TELEpochTime	inEpochTime)
+	TEpochTime	inEpochTime)
 {
-	TELEpochTime	daysEpochTime = inEpochTime / (60 * 60 * 24);
+	TEpochTime	daysEpochTime = inEpochTime / (60 * 60 * 24);
 
 	return ((daysEpochTime + 4) % 7) + 1;  // Jan 1, 1970 was a Thursday (ie day 4 starting from 0 of the week);
 }
 
 int
 CRealTime::GetHourFromEpoch(
-	TELEpochTime	inEpochTime)
+	TEpochTime	inEpochTime)
 {
 	return (inEpochTime / (60 * 60)) % 24;
 }
 
 int
 CRealTime::GetMinuteFromEpoch(
-	TELEpochTime	inEpochTime)
+	TEpochTime	inEpochTime)
 {
 	return (inEpochTime / 60) % 60;
 }
 
 int
 CRealTime::GetSecondFromEpoch(
-	TELEpochTime	inEpochTime)
+	TEpochTime	inEpochTime)
 {
 	return inEpochTime % 60;
 }
 
-TELEpochTime
+TEpochTime
 CRealTime::GetEpochTimeFromComponents(
 	int inYear,
 	int inMonth, 
@@ -616,7 +668,7 @@ CRealTime::GetEpochTimeFromComponents(
 	int inMinute, 
 	int inSecond)
 {
-	TELEpochTime result;
+	TEpochTime result;
 
 	// Add in years
 	result = (inYear - 1970) * 60 * 60 * 24 * 365;
@@ -651,7 +703,7 @@ CRealTime::GetEpochTimeFromComponents(
 
 void
 CRealTime::GetComponentsFromEpochTime(
-	TELEpochTime	inEpocTime,
+	TEpochTime	inEpocTime,
 	int&			outYear,		// 20xx
 	int&			outMonth,		// 1 to 12
 	int&			outDayOfMonth,	// 1 to 31
@@ -662,9 +714,9 @@ CRealTime::GetComponentsFromEpochTime(
 {
 	int				year;
 	int				month;
-	TELEpochTime	monthLength;
-	TELEpochTime	remainingTime;
-	TELEpochTime	days;
+	TEpochTime	monthLength;
+	TEpochTime	remainingTime;
+	TEpochTime	days;
 
 	remainingTime = inEpocTime;
 
@@ -721,9 +773,9 @@ CRealTime::GetComponentsFromEpochTime(
 	outDayOfMonth = remainingTime + 1;
 }
 
-TELEpochTime
+TEpochTime
 CRealTime::LocalToUTC(
-	TELEpochTime	inLocalEpochTime)
+	TEpochTime	inLocalEpochTime)
 {
 	if(GetYearFromEpoch(inLocalEpochTime) != GetYearFromEpoch(dstStartLocal))
 	{
@@ -738,9 +790,9 @@ CRealTime::LocalToUTC(
 	return inLocalEpochTime - timeZoneInfo.stdStart.offsetMins * 60;
 }
 
-TELEpochTime
+TEpochTime
 CRealTime::UTCToLocal(
-	TELEpochTime	inUTCEpochTime)
+	TEpochTime	inUTCEpochTime)
 {
 	if(GetYearFromEpoch(inUTCEpochTime) != GetYearFromEpoch(dstStartUTC))
 	{
@@ -757,7 +809,7 @@ CRealTime::UTCToLocal(
 
 bool
 CRealTime::InDST(
-	TELEpochTime	inEpochTime,
+	TEpochTime	inEpochTime,
 	bool			inUTC)
 {
 	if(inUTC)
@@ -965,12 +1017,12 @@ CRealTime::ComputeDSTStartAndEnd(
 	stdStartUTC = stdStartLocal - timeZoneInfo.dstStart.offsetMins * 60;
 }
 
-TELEpochTime
+TEpochTime
 CRealTime::ComputeEpochTimeForOffsetSpecifier(
 	STimeZoneOffsetSpecifier const&	inSpecifier,
 	int								inYear)
 {
-	TELEpochTime	result;
+	TEpochTime	result;
 
     uint8_t modifiedMonth = inSpecifier.month;
 	uint8_t	modifiedWeek = inSpecifier.week;
@@ -997,6 +1049,207 @@ CRealTime::ComputeEpochTimeForOffsetSpecifier(
 	}
 
     return result;
+}
+
+bool
+CRealTime::SerialSetTime(
+	int		inArgC,
+	char*	inArgv[])
+{
+	// year month day hour min sec in UTC
+
+	if(inArgC != 7)
+	{
+		Serial.printf("Wrong number of arguments got %d expected 6\n", inArgC - 1);
+		return false;
+	}
+
+	int	year = atoi(inArgv[1]);
+	if(year < 1970 || year > 2099)
+	{
+		Serial.printf("year out of range");
+		return false;
+	}
+
+	int	month = atoi(inArgv[2]);
+	if(month < 1 || month > 12)
+	{
+		Serial.printf("month out of range");
+		return false;
+	}
+
+	int	day = atoi(inArgv[3]);
+	if(day < 1 || day > 31)
+	{
+		Serial.printf("day of month out of range");
+		return false;
+	}
+
+	int	hour = atoi(inArgv[4]);
+	if(hour < 0 || hour > 23)
+	{
+		Serial.printf("hour out of range");
+		return false;
+	}
+
+	int	min = atoi(inArgv[5]);
+	if(min < 0 || min > 59)
+	{
+		Serial.printf("minutes out of range");
+		return false;
+	}
+
+	int	sec = atoi(inArgv[6]);
+	if(min < 0 || min > 59)
+	{
+		Serial.printf("seconds out of range");
+		return false;
+	}
+	
+	if(provider != NULL)
+	{
+		provider->SetUTCDateAndTime(year, month, day, hour, min, sec);
+	}
+
+	SetDateAndTime(year, month, day, hour, min, sec, true);
+
+	return true;
+}
+
+bool
+CRealTime::SerialGetTime(
+	int		inArgC,
+	char*	inArgv[])
+{
+	int	year;
+	int	month;
+	int	day;
+	int	hour;
+	int	min;
+	int	sec;
+	int	dow;
+
+	if(provider != NULL)
+	{
+		provider->RequestSync();
+	}
+
+	GetDateAndTime(year, month, day, dow, hour, min, sec, false);
+
+	Serial.printf("%02d/%02d/%04d %02d:%02d:%02d\n", month, day, year, hour, min, sec);
+
+	return true;
+}
+
+bool
+CRealTime::SerialSetTimeZone(
+	int		inArgC,
+	char*	inArgv[])
+{
+	STimeZoneRule	newTimeZone;
+	
+	// name dstStartYear dstStartDayOfWeek dstStartMonth dstStartHour dstOffsetMin stdStartYear stdStartDayOfWeek stdStartMonth stdStartHour stdOffsetMin
+
+	if(inArgC != 12)
+	{
+		Serial.printf("Wrong number of arguments got %d expected 11\n", inArgC - 1);
+		return false;
+	}
+
+	if(strlen(inArgv[1]) > eRealTime_MaxNameLength)
+	{
+		Serial.printf("max name length is 15, got %d\n", strlen(inArgv[1]));
+		return false;
+	}
+	strncpy(newTimeZone.abbrev, inArgv[1], sizeof(newTimeZone.abbrev));
+		
+	newTimeZone.dstStart.week = atoi(inArgv[2]);
+	if(newTimeZone.dstStart.week < 0 || newTimeZone.dstStart.week > 4)
+	{
+		Serial.printf("dst start week out of range");
+		return false;
+	}
+
+	newTimeZone.dstStart.dayOfWeek = atoi(inArgv[3]);
+	if(newTimeZone.dstStart.dayOfWeek < 1 || newTimeZone.dstStart.dayOfWeek > 7)
+	{
+		Serial.printf("dst start day of week out of range");
+		return false;
+	}
+
+	newTimeZone.dstStart.month = atoi(inArgv[4]);
+	if(newTimeZone.dstStart.month < 1 || newTimeZone.dstStart.month > 12)
+	{
+		Serial.printf("dst start month out of range");
+		return false;
+	}
+
+	newTimeZone.dstStart.hour = atoi(inArgv[5]);
+	if(newTimeZone.dstStart.hour < 0 || newTimeZone.dstStart.hour > 23)
+	{
+		Serial.printf("dst start hour out of range");
+		return false;
+	}
+
+	newTimeZone.dstStart.offsetMins = atoi(inArgv[6]);
+	if(newTimeZone.dstStart.offsetMins < -12 * 60 || newTimeZone.dstStart.offsetMins > 14 * 60)
+	{
+		Serial.printf("dst start offset out of range");
+		return false;
+	}
+		
+	newTimeZone.stdStart.week = atoi(inArgv[7]);
+	if(newTimeZone.stdStart.week < 0 || newTimeZone.stdStart.week > 4)
+	{
+		Serial.printf("std start week out of range");
+		return false;
+	}
+
+	newTimeZone.stdStart.dayOfWeek = atoi(inArgv[8]);
+	if(newTimeZone.stdStart.dayOfWeek < 1 || newTimeZone.stdStart.dayOfWeek > 7)
+	{
+		Serial.printf("std start day of week out of range");
+		return false;
+	}
+
+	newTimeZone.stdStart.month = atoi(inArgv[9]);
+	if(newTimeZone.stdStart.month < 1 || newTimeZone.stdStart.month > 12)
+	{
+		Serial.printf("std start month out of range");
+		return false;
+	}
+
+	newTimeZone.stdStart.hour = atoi(inArgv[10]);
+	if(newTimeZone.stdStart.hour < 0 || newTimeZone.stdStart.hour > 23)
+	{
+		Serial.printf("std start hour out of range");
+		return false;
+	}
+
+	newTimeZone.stdStart.offsetMins = atoi(inArgv[11]);
+	if(newTimeZone.stdStart.offsetMins < -12 * 60 || newTimeZone.stdStart.offsetMins > 14 * 60)
+	{
+		Serial.printf("std start offset out of range");
+		return false;
+	}
+
+	SetTimeZone(newTimeZone);
+
+	return true;
+}
+
+bool
+CRealTime::SerialGetTimeZone(
+	int		inArgC,
+	char*	inArgv[])
+{
+	Serial.printf("%s %d %d %d %d %d %d %d %d %d %d\n", 
+		timeZoneInfo.abbrev, 
+		timeZoneInfo.dstStart.week, timeZoneInfo.dstStart.dayOfWeek, timeZoneInfo.dstStart.month, timeZoneInfo.dstStart.hour, timeZoneInfo.dstStart.offsetMins, 
+		timeZoneInfo.stdStart.week, timeZoneInfo.stdStart.dayOfWeek, timeZoneInfo.stdStart.month, timeZoneInfo.stdStart.hour, timeZoneInfo.stdStart.offsetMins
+		);
+
+	return true;
 }
 
 CRealTime	gRealTime;

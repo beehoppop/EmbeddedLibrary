@@ -4,8 +4,8 @@
 
 #include "ELAssert.h"
 #include "ELModule.h"
+#include "ELConfig.h"
 
-static uint8_t				gLevel = eDbgLevel_Off;
 static IDebugMsgHandler*	gHandlers[eMaxDebugMsgHandlers];
 static int					gHandlerCount;
 
@@ -27,7 +27,7 @@ DebugMsg(
 	char const*	inMsg,
 	...)
 {
-	if(inLevel > gLevel)
+	if(inLevel > gConfig.GetVal(eConfigVar_DebugLevel))
 		return;
 
 	va_list	varArgs;
@@ -56,13 +56,6 @@ DebugMsg(
 	{
 		gHandlers[itr]->OutputDebugMsg(finalBuffer);
 	}
-}
-
-void
-SetDebugLevel(
-	int	inLevel)
-{
-	gLevel = inLevel;
 }
 
 void

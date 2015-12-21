@@ -1,11 +1,11 @@
+#ifndef _ELMODULE_H_
+#define _ELMODULE_H_
+
 /*
 	ELModule.h
 */
 
-#ifndef _ELMODULE_H_
-#define _ELMODULE_H_
-
-#include "EL.h"
+#include <EL.h>
 
 enum
 {
@@ -80,7 +80,7 @@ protected:
 	uint16_t		eepromOffset;
 	uint16_t		eepromVersion;
 	uint32_t		updateTimeUS;
-	uint32_t		lastUpdateUS;
+	uint64_t		lastUpdateUS;
 	uint8_t			priority;
 	bool			enabled;
 };

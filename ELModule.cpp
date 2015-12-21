@@ -302,8 +302,6 @@ CModule::SetupAll(
 	gCurLocalMS = millis();
 	gCurLocalUS = micros();
 
-	uint32_t	timeOffsetUS = 0;
-
 	for(int priorityItr = 256; priorityItr-- > 0;)
 	{
 		for(int i = 0; i < gModuleCount; ++i)
@@ -407,7 +405,7 @@ CModule::LoopAll(
 		gLastMillis = curMillis;
 		gLastMicros = curMicros;
 
-		uint32_t	updateDeltaUS = gCurLocalUS - gModuleList[i]->lastUpdateUS;
+		uint64_t	updateDeltaUS = gCurLocalUS - gModuleList[i]->lastUpdateUS;
 		if(updateDeltaUS >= gModuleList[i]->updateTimeUS)
 		{
 			//Serial.printf("Updating %s\n", StringizeUInt32(gModuleList[i]->uid));
