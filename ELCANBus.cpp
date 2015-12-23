@@ -29,7 +29,7 @@ CANIDFromComponents(
 CModule_CANBus::CModule_CANBus(
 	)
 	:
-	CModule("canb", 0, 100, 254),
+	CModule("canb", 0, 0, 100, 254),
 	canBus(500000)
 {
 	canBus.begin();
@@ -68,11 +68,11 @@ CModule_CANBus::SendMsg(
 {
 	CAN_message_t	msg;
 
-	//DebugMsg(eDbgLevel_Basic, "CAN: %02x TXM src=0x%x dst=0x%x typ=0x%x flg=0x%x\n", gConfig.GetVal(eConfigVar_NodeID), gConfig.GetVal(eConfigVar_NodeID), inDstNode, inMsgType, inMsgFlags);
+	//DebugMsg(eDbgLevel_Basic, "CAN: %02x TXM src=0x%x dst=0x%x typ=0x%x flg=0x%x\n", gConfig->GetVal(eConfigVar_NodeID), gConfig->GetVal(eConfigVar_NodeID), inDstNode, inMsgType, inMsgFlags);
 
 	MAssert(inMsgSize <= eCANBus_MaxMsgLength);
 
-	msg.id = CANIDFromComponents(gConfig.GetVal(eConfigVar_NodeID), inDstNode, inMsgType, inMsgFlags);
+	msg.id = CANIDFromComponents(gConfig->GetVal(eConfigVar_NodeID), inDstNode, inMsgType, inMsgFlags);
 	msg.ext = 1;
 	msg.timeout = 100;
 	msg.len = inMsgSize;
@@ -93,7 +93,7 @@ CModule_CANBus::SendFormatMsg(
 {
 	CAN_message_t	msg;
 
-	msg.id = CANIDFromComponents(gConfig.GetVal(eConfigVar_NodeID), inDstNode, inMsgType, 0);
+	msg.id = CANIDFromComponents(gConfig->GetVal(eConfigVar_NodeID), inDstNode, inMsgType, 0);
 	msg.ext = 1;
 	msg.timeout = 100;
 
@@ -141,10 +141,10 @@ CModule_CANBus::ProcessCANMsg(
 
 	CANIDToComponents(inMsg.id, srcNode, dstNode, msgType, flags);
 
-	//DebugMsg(eDbgLevel_Basic, "CAN: %02x RCV src=0x%x dst=0x%x typ=0x%x flg=0x%x\n", gConfig.GetVal(eConfigVar_NodeID), srcNode, dstNode, msgType, flags);
+	//DebugMsg(eDbgLevel_Basic, "CAN: %02x RCV src=0x%x dst=0x%x typ=0x%x flg=0x%x\n", gConfig->GetVal(eConfigVar_NodeID), srcNode, dstNode, msgType, flags);
 	//DumpMsg(inMsg);
 
-	if((dstNode != 0xFF && dstNode != gConfig.GetVal(eConfigVar_NodeID)) || msgType >= eCANBus_MaxMsgType || handlerList[msgType].handlerObject == NULL ||  handlerList[msgType].method == NULL)
+	if((dstNode != 0xFF && dstNode != gConfig->GetVal(eConfigVar_NodeID)) || msgType >= eCANBus_MaxMsgType || handlerList[msgType].handlerObject == NULL ||  handlerList[msgType].method == NULL)
 	{
 		return;
 	}

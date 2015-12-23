@@ -293,7 +293,8 @@ CModule::SetupAll(
 	}
 
 	#if MDebugDelayStart
-		if(MDebugTargetNode == 0xFF || MDebugTargetNode == gConfig.GetVal(eConfigVar_NodeID))
+		Need to fix this code to not reference gConfig since it has not been initialized yet
+		if(MDebugTargetNode == 0xFF || MDebugTargetNode == gConfig->GetVal(eConfigVar_NodeID))
 		{
 			delay(6000);
 		}
@@ -312,7 +313,8 @@ CModule::SetupAll(
 					DebugMsg(eDbgLevel_Medium, "Module: Setup %s\n", StringizeUInt32(gModuleList[i]->uid));
 				#endif
 				#if MDebugDelayEachModule
-					if(MDebugTargetNode == 0xFF || MDebugTargetNode == gConfig.GetVal(eConfigVar_NodeID))
+					Need to fix this code to not reference gConfig since it has not been initialized yet
+					if(MDebugTargetNode == 0xFF || MDebugTargetNode == gConfig->GetVal(eConfigVar_NodeID))
 					{
 						delay(3000);
 					}
@@ -382,7 +384,7 @@ void
 CModule::LoopAll(
 	void)
 {
-	if(gFlashLED && gConfig.GetVal(eConfigVar_BlinkLED) == 1)
+	if(gFlashLED && gConfig->GetVal(eConfigVar_BlinkLED) == 1)
 	{
 		static bool	on = false;
 
@@ -411,7 +413,7 @@ CModule::LoopAll(
 			//Serial.printf("Updating %s\n", StringizeUInt32(gModuleList[i]->uid));
 			if(gModuleList[i]->enabled)
 			{
-				gModuleList[i]->Update(updateDeltaUS);
+				gModuleList[i]->Update((uint32_t)updateDeltaUS);
 			}
 			gModuleList[i]->lastUpdateUS = gCurLocalUS;
 		}

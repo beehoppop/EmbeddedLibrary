@@ -1,8 +1,28 @@
+/*
+	Author: Brent Pease
 
-#include "ELSunRiseAndSet.h"
+	The MIT License (MIT)
 
-/* +++Date last modified: 05-Jul-1997 */
-/* Updated comments, 05-Aug-2013 */
+	Copyright (c) 2015-FOREVER Brent Pease
+
+	Permission is hereby granted, free of charge, to any person obtaining a copy
+	of this software and associated documentation files (the "Software"), to deal
+	in the Software without restriction, including without limitation the rights
+	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	copies of the Software, and to permit persons to whom the Software is
+	furnished to do so, subject to the following conditions:
+
+	The above copyright notice and this permission notice shall be included in all
+	copies or substantial portions of the Software.
+
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+	SOFTWARE.
+*/
 
 /*
 
@@ -23,6 +43,10 @@
 
 #include <stdio.h>
 #include <math.h>
+
+#include "ELUtilities.h"
+#include "ELSunRiseAndSet.h"
+#include "ELAssert.h"
 
 
 /* A macro to compute the number of days elapsed since 2000 Jan 0.0 */
@@ -51,6 +75,329 @@
 #define atan2d(y,x) (RADEG*atan2(y,x))
 
 #define INV360    ( 1.0 / 360.0 )
+
+CSunRiseAndSetModule	CSunRiseAndSetModule::module;
+CSunRiseAndSetModule*	gSunRiseAndSet;
+
+CSunRiseAndSetModule::CSunRiseAndSetModule(
+	)
+	:
+	CModule("SRAS", sizeof(double) * 2, 1)
+{
+	gSunRiseAndSet = this;
+}
+	
+void
+CSunRiseAndSetModule::Setup(
+	void)
+{
+	LoadDataFromEEPROM(&lon, eepromOffset, sizeof(double));
+	LoadDataFromEEPROM(&lat, eepromOffset + sizeof(double), sizeof(double));
+
+	gSerialCmd->RegisterCommand("set_lonlat", this, static_cast<TSerialCmdMethod>(&CSunRiseAndSetModule::SerialSetLonLat));
+	gSerialCmd->RegisterCommand("get_lonlat", this, static_cast<TSerialCmdMethod>(&CSunRiseAndSetModule::SerialGetLonLat));
+}
+
+void
+CSunRiseAndSetModule::SetLongitudeAndLatitude(
+	double	inLongitude,
+	double	inLatitude,
+	bool	inSaveInEEPROM)
+{
+	lon = inLongitude;
+	lat = inLatitude;
+	if(inSaveInEEPROM)
+	{
+		WriteDataToEEPROM(&lon, eepromOffset, sizeof(double));
+		WriteDataToEEPROM(&lat, eepromOffset + sizeof(double), sizeof(double));
+	}
+}
+
+void
+CSunRiseAndSetModule::GetLongitudeAndLatitude(
+	double&	outLongitude,
+	double&	outLatitude)
+{
+	outLongitude = lon;
+	outLatitude = lat;
+}
+
+void
+CSunRiseAndSetModule::RegisterSunriseEvent(
+	char const*					inEventName,
+	int							inYear,			// The specific year for the event or eAlarm_Any
+	int							inMonth,		// The specific month for the event or eAlarm_Any
+	int							inDay,			// The specific day for the event or eAlarm_Any
+	ISunRiseAndSetEventHandler*	inCmdHandler,
+	TSunRiseAndSetEventMethod	inMethod,
+	double						inSunOffset,
+	int							inSunRelativePosition,
+	bool						inUTC)
+{
+	MReturnOnError(strlen(inEventName) == 0 || strlen(inEventName) > eRealTime_MaxNameLength);
+
+	SEvent*	newEvent = FindEvent(inEventName);
+	if(newEvent == NULL)
+	{
+		newEvent = FindFirstFreeEvent();
+		MReturnOnError(newEvent == NULL);
+	}
+
+	strcpy(newEvent->name, inEventName);
+	newEvent->year = inYear;
+	newEvent->month = inMonth;
+	newEvent->day = inDay;
+	newEvent->cmdHandler = inCmdHandler;
+	newEvent->method = inMethod;
+	newEvent->sunOffset = inSunOffset;
+	newEvent->sunRelativePosition = inSunRelativePosition;
+	newEvent->utc = inUTC;
+	newEvent->sunRise = true;
+
+	ScheduleNextEvent(newEvent);
+}
+
+void
+CSunRiseAndSetModule::RegisterSunsetEvent(
+	char const*					inEventName,
+	int							inYear,			// The specific year for the event or eAlarm_Any
+	int							inMonth,		// The specific month for the event or eAlarm_Any
+	int							inDay,			// The specific day for the event or eAlarm_Any
+	ISunRiseAndSetEventHandler*	inCmdHandler,
+	TSunRiseAndSetEventMethod	inMethod,
+	double						inSunOffset,
+	int							inSunRelativePosition,
+	bool						inUTC)
+{
+	MReturnOnError(strlen(inEventName) == 0 || strlen(inEventName) > eRealTime_MaxNameLength);
+
+	SEvent*	newEvent = FindEvent(inEventName);
+	if(newEvent == NULL)
+	{
+		newEvent = FindFirstFreeEvent();
+		MReturnOnError(newEvent == NULL);
+	}
+
+	strcpy(newEvent->name, inEventName);
+	newEvent->year = inYear;
+	newEvent->month = inMonth;
+	newEvent->day = inDay;
+	newEvent->cmdHandler = inCmdHandler;
+	newEvent->method = inMethod;
+	newEvent->sunOffset = inSunOffset;
+	newEvent->sunRelativePosition = inSunRelativePosition;
+	newEvent->utc = inUTC;
+	newEvent->sunRise = false;
+
+	ScheduleNextEvent(newEvent);
+}
+
+void
+CSunRiseAndSetModule::CancelEvent(
+	char const*	inEventName)
+{
+	SEvent*	targetEvent = FindEvent(inEventName);
+	if(targetEvent == NULL)
+	{
+		return;
+	}
+
+	gRealTime->CancelAlarm(inEventName);
+	targetEvent->name[0] = 0;
+}
+
+bool
+CSunRiseAndSetModule::SerialSetLonLat(
+	int		inArgC,
+	char*	inArgv[])
+{
+	if(inArgC != 3)
+	{
+		return false;
+	}
+
+	double lon = atof(inArgv[1]);
+	double lat = atof(inArgv[2]);
+
+	SetLongitudeAndLatitude(lon, lat, true);
+
+	return true;
+}
+
+bool
+CSunRiseAndSetModule::SerialGetLonLat(
+	int		inArgC,
+	char*	inArgv[])
+{
+	Serial.printf("%03.03f %03.03f\n", lon, lat);
+	return true;
+}
+
+CSunRiseAndSetModule::SEvent*
+CSunRiseAndSetModule::FindEvent(
+	char const*	inName)
+{
+	for(int itr = 0; itr < eMaxSunRiseSetEvents; ++itr)
+	{
+		if(strcmp(eventList[itr].name, inName) == 0)
+		{
+			return eventList + itr;
+		}
+	}
+
+	return NULL;
+}
+
+CSunRiseAndSetModule::SEvent*
+CSunRiseAndSetModule::FindFirstFreeEvent(
+	void)
+{
+	for(int itr = 0; itr < eMaxSunRiseSetEvents; ++itr)
+	{
+		if(eventList[itr].name[0] == 0)
+		{
+			return eventList + itr;
+		}
+	}
+
+	return NULL;
+}
+
+void
+CSunRiseAndSetModule::ScheduleNextEvent(
+	SEvent*	inEvent)
+{
+	int	year = inEvent->year;
+	int	month = inEvent->month;
+	int	day = inEvent->day;
+	int	hour = eAlarm_Any;
+	int	min = eAlarm_Any;
+	int	sec = eAlarm_Any;
+	int dow = eAlarm_Any;
+
+	// Get the next date
+	if(gRealTime->GetNextDateTime(year, month, day, dow, hour, min, sec, inEvent->utc) == false)
+	{
+		// there is no next occurrence
+		gRealTime->CancelAlarm(inEvent->name);
+		return;
+	}
+
+	// Convert to epoch utc time since the sun rise and set calcs are done in UTC
+	if(!inEvent->utc)
+	{
+		TEpochTime	epochTime = gRealTime->GetEpochTimeFromComponents(year, month, day, hour, min, sec);
+		epochTime = gRealTime->LocalToUTC(epochTime);
+		gRealTime->GetComponentsFromEpochTime(epochTime, year, month, day, dow, hour, min, sec);
+	}
+		
+	// now compute the time of the event
+	double eventHour;
+	if(inEvent->sunRise)
+	{
+		eventHour = GetSunriseHour(year, month, day, lon, lat, inEvent->sunOffset, inEvent->sunRelativePosition);
+	}
+	else
+	{
+		eventHour = GetSunsetHour(year, month, day, lon, lat, inEvent->sunOffset, inEvent->sunRelativePosition);
+	}
+
+	hour = int(eventHour);
+	eventHour -= (float)hour;
+
+	min = int(eventHour * 60.0);
+	eventHour -= (float)min * 60.0;
+
+	sec = int(eventHour * 60.0);
+	
+	// Check if this event has already happened and if so recompute for next allowed date
+	if(gRealTime->CompareDateTimeWithNow(year, month, day, hour, min, sec, true) < 0)
+	{
+		if(inEvent->day == eAlarm_Any)
+		{
+			++day;
+			
+			int	daysInMonth = gDaysInMonth[month - 1];
+			if(month == 2 && MIsLeapYear(year))
+			{
+				++daysInMonth;
+			}
+
+			if(day >= daysInMonth)
+			{
+				day = 1;
+				++month;
+				if(month > 12)
+				{
+					month = 1;
+					++year;
+				}
+			}
+		}
+		else if(inEvent->month == eAlarm_Any)
+		{
+			++month;
+			if(month > 12)
+			{
+				month = 1;
+				++year;
+			}
+		}
+		else if(inEvent->year == eAlarm_Any)
+		{
+			++year;
+		}
+		else
+		{
+			// don't bother scheduling the alarm
+			return;
+		}
+
+		if(inEvent->sunRise)
+		{
+			eventHour = GetSunriseHour(year, month, day, lon, lat, inEvent->sunOffset, inEvent->sunRelativePosition);
+		}
+		else
+		{
+			eventHour = GetSunsetHour(year, month, day, lon, lat, inEvent->sunOffset, inEvent->sunRelativePosition);
+		}
+
+		hour = int(eventHour);
+		eventHour -= (float)hour;
+
+		min = int(eventHour * 60.0);
+		eventHour -= (float)min * 60.0;
+
+		sec = int(eventHour * 60.0);
+	}
+
+	// Set the alarm to fire
+	gRealTime->RegisterAlarm(
+		inEvent->name,
+		year,
+		month,
+		day,
+		eAlarm_Any,
+		hour,
+		min,
+		sec,
+		this,
+		static_cast<TRealTimeMethod>(&CSunRiseAndSetModule::RealTimeAlarmHandler),
+		inEvent,
+		true);
+}
+
+void
+CSunRiseAndSetModule::RealTimeAlarmHandler(
+	char const*	inName,
+	void*		inReference)
+{
+	SEvent*	targetEvent = (SEvent*)inReference;
+
+	((targetEvent->cmdHandler)->*(targetEvent->method))(targetEvent->name);
+
+	 ScheduleNextEvent(targetEvent);
+}
 
 /******************************************************************/
 /* This function reduces any angle to within the first revolution */
@@ -194,7 +541,7 @@ SunRADec(
 }
 
 double 
-GetDayLength(
+CSunRiseAndSetModule::GetDayLength(
 	int		inYear, 
 	int		inMonth, 
 	int		inDay, 
@@ -249,7 +596,7 @@ GetDayLength(
 }
 
 int 
-GetSunRiseAndSetHour(
+CSunRiseAndSetModule::GetSunRiseAndSetHour(
 	double&	outSunriseTime,
 	double&	outSunsetTime,
 	int		inYear, 
@@ -312,7 +659,7 @@ GetSunRiseAndSetHour(
 }
 
 double
-GetSunriseHour(
+CSunRiseAndSetModule::GetSunriseHour(
 	int		inYear,
 	int		inMonth,
 	int		inDay,
@@ -368,7 +715,7 @@ GetSunriseHour(
 }
 
 double
-GetSunsetHour(
+CSunRiseAndSetModule::GetSunsetHour(
 	int		inYear,
 	int		inMonth,
 	int		inDay,

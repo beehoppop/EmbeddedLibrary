@@ -1,5 +1,28 @@
+/*
+	Author: Brent Pease
 
-#include <Time.h>
+	The MIT License (MIT)
+
+	Copyright (c) 2015-FOREVER Brent Pease
+
+	Permission is hereby granted, free of charge, to any person obtaining a copy
+	of this software and associated documentation files (the "Software"), to deal
+	in the Software without restriction, including without limitation the rights
+	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	copies of the Software, and to permit persons to whom the Software is
+	furnished to do so, subject to the following conditions:
+
+	The above copyright notice and this permission notice shall be included in all
+	copies or substantial portions of the Software.
+
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+	SOFTWARE.
+*/
 
 #include <ELModule.h>
 #include <ELUtilities.h>
@@ -9,8 +32,8 @@
 #include "ELRealTime.h"
 
 int			gDaysInMonth[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
-
-#define MIsLeapYear(inYear) (((inYear) & 3) == 0 && (((inYear) % 25) != 0 || ((inYear) & 15) == 0))
+CRealTime	CRealTime::module;
+CRealTime*	gRealTime;
 
 class CRealTimeDataProvider_DS3234 : public IRealTimeDataProvider
 {
@@ -38,22 +61,34 @@ public:
 
 	virtual void
 	SetUTCDateAndTime(
-		int			inYear,			// 20xx
+		int			inYear,			// xxxx or xx
 		int			inMonth,		// 1 to 12
 		int			inDayOfMonth,	// 1 to 31
 		int			inHour,			// 00 to 23
 		int			inMin,			// 00 to 59
 		int			inSec)
 	{
+		int	centuryBit;
+
 		if(inYear >= 1970 && inYear <= 1999)
 		{
+			centuryBit = 0;
 			inYear -= 1900;
 		}
-		else if(inYear >= 2000 and inYear <= 2099)
+		else if(inYear >= 2000 && inYear <= 2069)
 		{
+			centuryBit = 1;
 			inYear -= 2000;
 		}
-		else if(inYear > 100)
+		else if(inYear >= 70 && inYear <= 99)
+		{
+			centuryBit = 0;
+		}
+		else if(inYear >= 0 && inYear <= 69)
+		{
+			centuryBit = 1;
+		}
+		else
 		{
 			// This is an invalid year so bail
 			return;
@@ -70,6 +105,11 @@ public:
 			int a = TimeDate[i] % 10;
 
 			TimeDate[i] = a + (b << 4);
+
+			if(i == 5 && centuryBit == 1)
+			{
+				TimeDate[i] |= 0x80;
+			}
 		  
 			digitalWrite(chipselect, LOW);
 			SPI.transfer(i + 0x80); 
@@ -98,6 +138,12 @@ public:
 			int b = (n & B01110000) >> 4;
 
 			TimeDate[i] = a + b * 10;	
+
+			if(i == 5 && (TimeDate[i] & 0x80))
+			{
+				// No actual need to do anything with the century bit since the year number dictates 1900 or 2000
+				TimeDate[i] &= 0x1F;
+			}
 		}
 
 		if(TimeDate[6] >= 70 && TimeDate[6] <= 99)
@@ -109,7 +155,7 @@ public:
 			TimeDate[6] += 2000;
 		}
 
-		gRealTime.SetDateAndTime(TimeDate[6], TimeDate[5], TimeDate[4], TimeDate[2], TimeDate[1], TimeDate[0], true);
+		gRealTime->SetDateAndTime(TimeDate[6], TimeDate[5], TimeDate[4], TimeDate[2], TimeDate[1], TimeDate[0], true);
 	}
 
 	int chipselect;
@@ -124,6 +170,7 @@ CRealTime::CRealTime(
 		1,						// eeprom version number
 		1000000)				// Call the update method once a second
 {
+	gRealTime = this;
 }
 
 void
@@ -138,220 +185,38 @@ CRealTime::Setup(
 		memset(&timeZoneInfo, 0, sizeof(timeZoneInfo));
 	}
 
-	gSerialCmd.RegisterCommand("set_time", this, static_cast<TSerialCmdMethod>(&CRealTime::SerialSetTime));
-	gSerialCmd.RegisterCommand("get_time", this, static_cast<TSerialCmdMethod>(&CRealTime::SerialGetTime));
-	gSerialCmd.RegisterCommand("set_timezone", this, static_cast<TSerialCmdMethod>(&CRealTime::SerialSetTimeZone));
-	gSerialCmd.RegisterCommand("get_timezone", this, static_cast<TSerialCmdMethod>(&CRealTime::SerialGetTimeZone));
+	gSerialCmd->RegisterCommand("set_time", this, static_cast<TSerialCmdMethod>(&CRealTime::SerialSetTime));
+	gSerialCmd->RegisterCommand("get_time", this, static_cast<TSerialCmdMethod>(&CRealTime::SerialGetTime));
+	gSerialCmd->RegisterCommand("set_timezone", this, static_cast<TSerialCmdMethod>(&CRealTime::SerialSetTimeZone));
+	gSerialCmd->RegisterCommand("get_timezone", this, static_cast<TSerialCmdMethod>(&CRealTime::SerialGetTimeZone));
 }
 
 void
 CRealTime::Update(
 	uint32_t	inDeltaTimeUS)
 {
-	if(provider != NULL && gCurLocalMS - epocUTCTimeAtLastSet >= provierSyncPeriodMS)
+	if(provider != NULL && (gCurLocalMS - localMSAtLastSet) / 1000 >= providerSyncPeriod)
 	{
 		provider->RequestSync();
 	}
 
-	// Do not fire any alarms off on the first update (or until curEpochTime is at least 1)
-	if(lastUTCEpochTimeAlarmCheck == 0)
-	{
-		lastUTCEpochTimeAlarmCheck = GetEpochTime(true);
-		return;
-	}
+	TEpochTime	curEpochTimeUTC = GetEpochTime(true);
 
-	TEpochTime	startLocalEpochTime = UTCToLocal(lastUTCEpochTimeAlarmCheck);
-	TEpochTime	endLocalEpochTime = GetEpochTime();
-
-	bool	alarmTrigger[eAlarm_MaxActive];
-	memset(alarmTrigger, 0, sizeof(alarmTrigger));
-
-	// Compute which alarms need to fire off
-	int	curYear = 0;
-	int	curMonth = 0;
-	int	curDayOfMonth = 0;
-	int	curDayOfWeek = 0;
-	int	curHour = 0;
-	int	curMin = 0;
-	int	curSec = 0;
-
-	// Start with local time zone alarms
-	GetComponentsFromEpochTime(
-		startLocalEpochTime,
-		curYear,
-		curMonth,
-		curDayOfMonth,
-		curDayOfWeek,
-		curHour,
-		curMin,
-		curSec);
-
-	// We have to run through all of the seconds since the last update to make sure no alarms are missed
-	for(TEpochTime epocTimeItr = startLocalEpochTime; epocTimeItr <= endLocalEpochTime; ++epocTimeItr)
-	{
-		SAlarm* curAlarm = alarmArray;
-		for(int alarmItr = 0; alarmItr < eAlarm_MaxActive; ++alarmItr, ++curAlarm)
-		{
-			if(curAlarm->name[0] == 0 || alarmTrigger[alarmItr] || curAlarm->utc)
-			{
-				continue;
-			}
-
-			// Check to see if its time to fire this alarm off
-			if((curAlarm->year == eAlarm_Any || curAlarm->year == curYear)
-				&& (curAlarm->month == eAlarm_Any || curAlarm->month == curMonth)
-				&& (curAlarm->dayOfMonth == eAlarm_Any || curAlarm->dayOfMonth == curDayOfMonth)
-				&& (curAlarm->dayOfWeek == eAlarm_Any || curAlarm->dayOfWeek == curDayOfWeek)
-				&& (curAlarm->hour == eAlarm_Any || curAlarm->hour == curHour)
-				&& (curAlarm->minute == eAlarm_Any || curAlarm->minute == curMin)
-				&& (curAlarm->second == eAlarm_Any || curAlarm->second == curSec)
-				)
-			{
-				alarmTrigger[alarmItr] = true;
-			}
-		}
-
-		// Update the time
-		++curSec;
-		if(curSec >= 60)
-		{
-			curSec = 0;
-			++curMin;
-
-			if(curMin >= 60)
-			{
-				curMin = 0;
-				++curHour;
-
-				if(curHour >= 24)
-				{
-					curHour = 0;
-					++curDayOfMonth;
-					++curDayOfWeek;
-
-					if(curDayOfWeek >= 8)
-					{
-						curDayOfWeek = 1;
-					}
-
-					int	daysInThisMonth = gDaysInMonth[curMonth - 1];
-					if(curMonth == 2 && MIsLeapYear(curYear))
-					{
-						// leap year
-						++daysInThisMonth;
-					}
-
-					if(curDayOfMonth > daysInThisMonth)
-					{
-						curDayOfMonth = 1;
-						++curMonth;
-
-						if(curMonth > 12)
-						{
-							curMonth = 1;
-							++curYear;
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// Now run through all the UTC timers
-	TEpochTime	startUTCEpochTime = lastUTCEpochTimeAlarmCheck;
-	TEpochTime	endUTCEpochTime = GetEpochTime(true);
-
-	GetComponentsFromEpochTime(
-		startUTCEpochTime,
-		curYear,
-		curMonth,
-		curDayOfMonth,
-		curDayOfWeek,
-		curHour,
-		curMin,
-		curSec);
-
-	for(TEpochTime epocTimeItr = startUTCEpochTime; epocTimeItr <= endUTCEpochTime; ++epocTimeItr)
-	{
-		SAlarm* curAlarm = alarmArray;
-		for(int alarmItr = 0; alarmItr < eAlarm_MaxActive; ++alarmItr, ++curAlarm)
-		{
-			if(curAlarm->name[0] == 0 || alarmTrigger[alarmItr] || !curAlarm->utc)
-			{
-				continue;
-			}
-
-			// Check to see if its time to fire this alarm off
-			if((curAlarm->year == eAlarm_Any || curAlarm->year == curYear)
-				&& (curAlarm->month == eAlarm_Any || curAlarm->month == curMonth)
-				&& (curAlarm->dayOfMonth == eAlarm_Any || curAlarm->dayOfMonth == curDayOfMonth)
-				&& (curAlarm->dayOfWeek == eAlarm_Any || curAlarm->dayOfWeek == curDayOfWeek)
-				&& (curAlarm->hour == eAlarm_Any || curAlarm->hour == curHour)
-				&& (curAlarm->minute == eAlarm_Any || curAlarm->minute == curMin)
-				&& (curAlarm->second == eAlarm_Any || curAlarm->second == curSec)
-				)
-			{
-				alarmTrigger[alarmItr] = true;
-			}
-		}
-
-		// Update the time
-		++curSec;
-		if(curSec >= 60)
-		{
-			curSec = 0;
-			++curMin;
-
-			if(curMin >= 60)
-			{
-				curMin = 0;
-				++curHour;
-
-				if(curHour >= 24)
-				{
-					curHour = 0;
-					++curDayOfMonth;
-					++curDayOfWeek;
-
-					if(curDayOfWeek >= 8)
-					{
-						curDayOfWeek = 1;
-					}
-
-					int	daysInThisMonth = gDaysInMonth[curMonth - 1];
-					if(curMonth == 2 && MIsLeapYear(curYear))
-					{
-						// leap year
-						++daysInThisMonth;
-					}
-
-					if(curDayOfMonth > daysInThisMonth)
-					{
-						curDayOfMonth = 1;
-						++curMonth;
-
-						if(curMonth > 12)
-						{
-							curMonth = 1;
-							++curYear;
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// Now call each alarm method
 	SAlarm* curAlarm = alarmArray;
-	for(int itr = 0; itr < eAlarm_MaxActive; ++itr, ++curAlarm)
+	for(int alarmItr = 0; alarmItr < eAlarm_MaxActive; ++alarmItr, ++curAlarm)
 	{
-		if(alarmTrigger[itr])
+		if(curAlarm->name[0] == 0)
 		{
+			continue;
+		}
+
+		if(curAlarm->nextTriggerTimeUTC < curEpochTimeUTC)
+		{
+			// this alarm is triggered
 			(curAlarm->object->*curAlarm->method)(curAlarm->name, curAlarm->reference);
+			ScheduleAlarm(curAlarm);
 		}
 	}
-
-	lastUTCEpochTimeAlarmCheck = endUTCEpochTime + 1;
 
 	// Now look for events to fire
 	SEvent*	curEvent = eventArray;
@@ -376,10 +241,17 @@ CRealTime::Update(
 
 void
 CRealTime::SetTimeZone(
-	STimeZoneRule&	inTimeZone)
+	STimeZoneRule&	inTimeZone,
+	bool			inWriteToEEPROM)
 {
 	timeZoneInfo = inTimeZone;
-	WriteDataToEEPROM(&timeZoneInfo, eepromOffset, sizeof(timeZoneInfo));
+
+	if(inWriteToEEPROM)
+	{
+		WriteDataToEEPROM(&timeZoneInfo, eepromOffset, sizeof(timeZoneInfo));
+	}
+
+	RecomputeAlarms();
 }
 
 void
@@ -388,7 +260,7 @@ CRealTime::SetProvider(
 	uint32_t				inProviderSyncPeriod)	// In seconds, the period between refreshing the time with the given provider
 {
 	provider = inProvider;
-	provierSyncPeriodMS = inProviderSyncPeriod * 1000;
+	providerSyncPeriod = inProviderSyncPeriod;
 
 	if(provider != NULL)
 	{
@@ -416,26 +288,18 @@ CRealTime::SetEpochTime(
 	TEpochTime	inEpochTime,
 	bool		inUTC)
 {
-	localMSAtLastSet = millis();
+	localMSAtLastSet = gCurLocalMS;
 	
-	TEpochTime newEpochTime;
-
 	if(inUTC)
 	{
-		newEpochTime = inEpochTime;
+		epocUTCTimeAtLastSet = inEpochTime;
 	}
 	else
 	{
-		newEpochTime = LocalToUTC(inEpochTime);
+		epocUTCTimeAtLastSet = LocalToUTC(inEpochTime);
 	}
 
-	if(newEpochTime < epocUTCTimeAtLastSet || newEpochTime - epocUTCTimeAtLastSet > 120)
-	{
-		// If we are setting time back in the past or if we are leaping forward more then a small amount reset the alarm check
-		lastUTCEpochTimeAlarmCheck = epocUTCTimeAtLastSet;
-	}
-
-	epocUTCTimeAtLastSet = newEpochTime;
+	RecomputeAlarms();
 }
 
 void
@@ -456,7 +320,7 @@ TEpochTime
 CRealTime::GetEpochTime(
 	bool	inUTC)
 {
-	TEpochTime	result = epocUTCTimeAtLastSet + (millis() - localMSAtLastSet) / 1000;
+	TEpochTime	result = epocUTCTimeAtLastSet + (uint32_t)((gCurLocalMS - localMSAtLastSet) / 1000);
 
 	if(!inUTC)
 	{
@@ -520,7 +384,7 @@ CRealTime::GetYearFromEpoch(
 	TEpochTime	inEpochTime)
 {
 	TEpochTime	daysEpochTime = inEpochTime / (60 * 60 * 24);
-	int				year = 1970;
+	int			year = 1970;
 	TEpochTime	days = 0;
 
 	for(;;)
@@ -704,13 +568,13 @@ CRealTime::GetEpochTimeFromComponents(
 void
 CRealTime::GetComponentsFromEpochTime(
 	TEpochTime	inEpocTime,
-	int&			outYear,		// 20xx
-	int&			outMonth,		// 1 to 12
-	int&			outDayOfMonth,	// 1 to 31
-	int&			outDayOfWeek,	// 1 to 7
-	int&			outHour,		// 00 to 23
-	int&			outMinute,		// 00 to 59
-	int&			outSecond)		// 00 to 59
+	int&		outYear,		// 20xx
+	int&		outMonth,		// 1 to 12
+	int&		outDayOfMonth,	// 1 to 31
+	int&		outDayOfWeek,	// 1 to 7
+	int&		outHour,		// 00 to 23
+	int&		outMinute,		// 00 to 59
+	int&		outSecond)		// 00 to 59
 {
 	int				year;
 	int				month;
@@ -855,11 +719,11 @@ CRealTime::RegisterAlarm(
 	int			inMin,			// 00 to 59 or eAlarm_Any
 	int			inSec,			// 00 to 59 or eAlarm_Any
 	IRealTimeHandler*	inObject,
-	TRealTimeMethod	inMethod,
-	void*					inReference,
-	bool					inUTC)
+	TRealTimeMethod		inMethod,
+	void*				inReference,
+	bool				inUTC)
 {
-	MReturnOnError(strlen(inAlarmName) >= eRealTime_MaxNameLength);
+	MReturnOnError(strlen(inAlarmName) == 0 || strlen(inAlarmName) >= eRealTime_MaxNameLength);
 
 	SAlarm*	targetAlarm = FindAlarmByName(inAlarmName);
 
@@ -883,6 +747,8 @@ CRealTime::RegisterAlarm(
 	targetAlarm->method = inMethod;
 	targetAlarm->reference = inReference;
 	targetAlarm->utc = inUTC;
+
+	ScheduleAlarm(targetAlarm);
 }
 
 void
@@ -890,8 +756,10 @@ CRealTime::CancelAlarm(
 	char const*	inAlarmName)
 {
 	SAlarm*	targetAlarm = FindAlarmByName(inAlarmName);
-	MReturnOnError(targetAlarm == NULL);
-	targetAlarm->name[0] = 0;
+	if(targetAlarm != NULL)
+	{
+		targetAlarm->name[0] = 0;
+	}
 }
 
 void
@@ -903,7 +771,7 @@ CRealTime::RegisterEvent(
 	TRealTimeMethod		inMethod,		// The method on the above object
 	void*				inReference)	// The reference value passed into the above method
 {
-	MReturnOnError(strlen(inEventName) >= eRealTime_MaxNameLength);
+	MReturnOnError(strlen(inEventName) == 0 || strlen(inEventName) >= eRealTime_MaxNameLength);
 
 	SEvent*	targetEvent = FindEventByName(inEventName);
 
@@ -929,8 +797,10 @@ CRealTime::CancelEvent(
 	char const*	inEventName)
 {
 	SEvent*	targetEvent = FindEventByName(inEventName);
-	MReturnOnError(targetEvent == NULL);
-	targetEvent->name[0] = 0;
+	if(targetEvent != NULL)
+	{
+		targetEvent->name[0] = 0;
+	}
 }
 
 IRealTimeDataProvider*
@@ -1049,6 +919,49 @@ CRealTime::ComputeEpochTimeForOffsetSpecifier(
 	}
 
     return result;
+}
+
+void
+CRealTime::RecomputeAlarms(
+	void)
+{
+	SAlarm* curAlarm = alarmArray;
+	for(int alarmItr = 0; alarmItr < eAlarm_MaxActive; ++alarmItr, ++curAlarm)
+	{
+		if(curAlarm->name[0] == 0)
+		{
+			continue;
+		}
+
+		ScheduleAlarm(curAlarm);
+	}
+}
+
+void
+CRealTime::ScheduleAlarm(
+	SAlarm*	inAlarm)
+{
+	// Reschedule it if possible
+	int	year = inAlarm->year;
+	int	month = inAlarm->month;
+	int	day = inAlarm->dayOfMonth;
+	int	dow = inAlarm->dayOfWeek;
+	int	hour = inAlarm->hour;
+	int	min = inAlarm->minute;
+	int	sec = inAlarm->second;
+
+	if(GetNextDateTime(year, month, day, dow, hour, min, sec, inAlarm->utc))
+	{
+		inAlarm->nextTriggerTimeUTC = GetEpochTimeFromComponents(year, month, day, hour, min, sec);
+		if(!inAlarm->utc)
+		{
+			inAlarm->nextTriggerTimeUTC = LocalToUTC(inAlarm->nextTriggerTimeUTC);
+		}
+	}
+	else
+	{
+		inAlarm->nextTriggerTimeUTC = 0xFFFFFFF;
+	}
 }
 
 bool
@@ -1233,7 +1146,7 @@ CRealTime::SerialSetTimeZone(
 		return false;
 	}
 
-	SetTimeZone(newTimeZone);
+	SetTimeZone(newTimeZone, true);
 
 	return true;
 }
@@ -1252,4 +1165,189 @@ CRealTime::SerialGetTimeZone(
 	return true;
 }
 
-CRealTime	gRealTime;
+enum
+{
+	eYear,
+	eMonth,
+	eDay,
+	eHour,
+	eMin,
+	eSec,
+	eTimeCompCount,
+};
+
+static bool
+IncrementComp(
+	int*	ioComponents,
+	bool*	inAnyComponents,
+	int		inStart)
+{
+	for(int i = inStart; i >= eYear; --i)
+	{
+		if(inAnyComponents[i])
+		{
+			++ioComponents[i];
+
+			switch(i)
+			{
+				case eYear:
+					return true;
+
+				case eMonth:
+					if(ioComponents[i] <= 12)
+					{
+						return true;
+					}
+					ioComponents[i] = 1;
+					break;
+
+				case eDay:
+				{
+					int	daysThisMonth = gDaysInMonth[ioComponents[eMonth] - 1];
+					if(ioComponents[eMonth] == 2 && MIsLeapYear(ioComponents[eYear]))
+					{
+						++daysThisMonth;
+					}
+					if(ioComponents[i] < daysThisMonth)
+					{
+						return true;
+					}
+					ioComponents[i] = 1;
+					break;
+				}
+
+				case eHour:
+					if(ioComponents[i] < 24)
+					{
+						return true;
+					}
+					ioComponents[i] = 0;
+					break;
+
+				case eMin:
+				case eSec:
+					if(ioComponents[i] < 60)
+					{
+						return true;
+					}
+					ioComponents[i] = 0;
+			}
+		}
+	}
+
+	return false;
+}
+
+bool
+CRealTime::GetNextDateTime(
+	int&	ioYear,
+	int&	ioMonth,
+	int&	ioDay,
+	int&	ioDayOfWeek,
+	int&	ioHour,
+	int&	ioMin,
+	int&	ioSec,
+	bool	inUTC)
+{
+	int		curComponents[eTimeCompCount];
+	int		ioComponents[eTimeCompCount] = {ioYear, ioMonth, ioDay, ioHour, ioMin, ioSec};
+	bool	anyComponents[eTimeCompCount];
+	int		compDOW;
+
+	GetComponentsFromEpochTime(GetEpochTime(inUTC), curComponents[eYear], curComponents[eMonth], curComponents[eDay], compDOW, curComponents[eHour], curComponents[eMin], curComponents[eSec]);
+	
+	for(int i = 0; i < eTimeCompCount; ++i)
+	{
+		anyComponents[i] = ioComponents[i] == eAlarm_Any;
+		if(anyComponents[i])
+		{
+			ioComponents[i] = curComponents[i];
+		}
+	}
+
+	for(int i = 0; i < eTimeCompCount; ++i)
+	{
+		if(ioComponents[i] < curComponents[i])
+		{
+			if(IncrementComp(ioComponents, anyComponents, i - 1) == false)
+			{
+				return false;
+			}
+
+			break;
+		}
+	}
+
+	for(int i = 0; i < eTimeCompCount; ++i)
+	{
+		if(ioComponents[i] > curComponents[i])
+		{
+			for(int j = i + 1; j < eTimeCompCount; ++j)
+			{
+				if(anyComponents[j])
+				{
+					ioComponents[j] = (j == eMonth || j == eDay) ? 1 : 0;
+				}
+			}
+			break;
+		}
+	}
+
+	compDOW = GetDayOfWeekFromEpoch(GetEpochTimeFromComponents(ioComponents[eYear], ioComponents[eMonth], ioComponents[eDay], 0, 0, 0));
+	if(ioDayOfWeek == eAlarm_Any)
+	{
+		ioDayOfWeek = compDOW;
+	}
+	else
+	{
+		while(ioDayOfWeek != compDOW && ioComponents[eYear] <= 2069)
+		{
+			if(IncrementComp(ioComponents, anyComponents, eDay) == false)
+			{
+				return false;
+			}
+
+			compDOW = GetDayOfWeekFromEpoch(GetEpochTimeFromComponents(ioComponents[eYear], ioComponents[eMonth], ioComponents[eDay], 0, 0, 0));
+		}
+
+		if(ioDayOfWeek != compDOW)
+		{
+			return false;
+		}
+	}
+
+	ioYear = ioComponents[eYear];
+	ioMonth = ioComponents[eMonth];
+	ioDay = ioComponents[eDay];
+	ioHour = ioComponents[eHour];
+	ioMin = ioComponents[eMin];
+	ioSec = ioComponents[eSec];
+
+	return true;
+}
+
+int
+CRealTime::CompareDateTimeWithNow(
+	int		inYear,
+	int		inMonth,
+	int		inDay,
+	int		inHour,
+	int		inMin,
+	int		inSec,
+	bool	inUTC)
+{
+	TEpochTime targetTime = GetEpochTimeFromComponents(inYear, inMonth, inDay, inHour, inMin, inSec);
+	TEpochTime curTime = GetEpochTime(inUTC);
+
+	if(targetTime < curTime)
+	{
+		return -1;
+	}
+
+	if(targetTime > curTime)
+	{
+		return 1;
+	}
+
+	return 0;
+}
