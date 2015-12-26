@@ -286,32 +286,21 @@ CSunRiseAndSetModule::ScheduleNextEvent(
 		return;
 	}
 
-	if(!inEvent->utc)
-	{
-		// need to convert this to UTC
-		TEpochTime	epochTime = gRealTime->GetEpochTimeFromComponents(targetYear, targetMonth, targetDay, targetHour, targetMin, targetSec);
-		epochTime = gRealTime->LocalToUTC(epochTime);
-		gRealTime->GetComponentsFromEpochTime(epochTime, targetYear, targetMonth, targetDay, targetDOW, targetHour, targetMin, targetSec);
-	}
-
 	// Get the event hour for the target date
-	double		eventHour;
+	TEpochTime		eventEpochTime;
 	if(inEvent->sunRise)
 	{
-		eventHour = GetSunriseHour(targetYear, targetMonth, targetDay, lon, lat, inEvent->sunOffset, inEvent->sunRelativePosition);
+		eventEpochTime = GetSunriseHour(targetYear, targetMonth, targetDay, inEvent->utc, lon, lat, inEvent->sunOffset, inEvent->sunRelativePosition);
 	}
 	else
 	{
-		eventHour = GetSunsetHour(targetYear, targetMonth, targetDay, lon, lat, inEvent->sunOffset, inEvent->sunRelativePosition);
+		eventEpochTime = GetSunsetHour(targetYear, targetMonth, targetDay, inEvent->utc, lon, lat, inEvent->sunOffset, inEvent->sunRelativePosition);
 	}
 
-	// Get the event epoch time by taking the target date at midnight utc and adding the event hour
-	TEpochTime	utcEpochEventTime = gRealTime->GetEpochTimeFromComponents(targetYear, targetMonth, targetDay, 0, 0, 0) + (TEpochTime)(eventHour * 60.0 * 60.0);
-
-	gRealTime->GetComponentsFromEpochTime(utcEpochEventTime, targetYear, targetMonth, targetDay, targetDOW, targetHour, targetMin, targetSec);
+	gRealTime->GetComponentsFromEpochTime(eventEpochTime, targetYear, targetMonth, targetDay, targetDOW, targetHour, targetMin, targetSec);
 
 	// if this event was in the past and any component is eAlarm_Any then reschedule given the computed hour, min, sec of the event
-	if(utcEpochEventTime < gRealTime->GetEpochTime(true))
+	if(eventEpochTime < gRealTime->GetEpochTime(inEvent->utc))
 	{
 		if(inEvent->year == eAlarm_Any || inEvent->month == eAlarm_Any || inEvent->day == eAlarm_Any || inEvent->dow == eAlarm_Any)
 		{
@@ -321,7 +310,7 @@ CSunRiseAndSetModule::ScheduleNextEvent(
 			targetDOW = inEvent->dow;
 
 			// Get the next date and time given the computed hour, min, sec of the event
-			if(gRealTime->GetNextDateTime(targetYear, targetMonth, targetDay, targetDOW, targetHour, targetMin, targetSec, true) == false)
+			if(gRealTime->GetNextDateTime(targetYear, targetMonth, targetDay, targetDOW, targetHour, targetMin, targetSec, inEvent->utc) == false)
 			{
 				// only in extreme corner cases should this fail...
 				return;
@@ -330,15 +319,14 @@ CSunRiseAndSetModule::ScheduleNextEvent(
 			// Since we will have a new date we need to compute the event again
 			if(inEvent->sunRise)
 			{
-				eventHour = GetSunriseHour(targetYear, targetMonth, targetDay, lon, lat, inEvent->sunOffset, inEvent->sunRelativePosition);
+				eventEpochTime = GetSunriseHour(targetYear, targetMonth, targetDay, inEvent->utc, lon, lat, inEvent->sunOffset, inEvent->sunRelativePosition);
 			}
 			else
 			{
-				eventHour = GetSunsetHour(targetYear, targetMonth, targetDay, lon, lat, inEvent->sunOffset, inEvent->sunRelativePosition);
+				eventEpochTime = GetSunsetHour(targetYear, targetMonth, targetDay, inEvent->utc, lon, lat, inEvent->sunOffset, inEvent->sunRelativePosition);
 			}
 
-			utcEpochEventTime = gRealTime->GetEpochTimeFromComponents(targetYear, targetMonth, targetDay, 0, 0, 0) + (TEpochTime)(eventHour * 60.0 * 60.0);
-			gRealTime->GetComponentsFromEpochTime(utcEpochEventTime, targetYear, targetMonth, targetDay, targetDOW, targetHour, targetMin, targetSec);
+			gRealTime->GetComponentsFromEpochTime(eventEpochTime, targetYear, targetMonth, targetDay, targetDOW, targetHour, targetMin, targetSec);
 		}
 		else
 		{
@@ -360,7 +348,7 @@ CSunRiseAndSetModule::ScheduleNextEvent(
 		this,
 		static_cast<TRealTimeMethod>(&CSunRiseAndSetModule::RealTimeAlarmHandler),
 		inEvent,
-		true);
+		inEvent->utc);
 }
 
 void
@@ -573,72 +561,90 @@ CSunRiseAndSetModule::GetDayLength(
 
 int 
 CSunRiseAndSetModule::GetSunRiseAndSetHour(
-	double&	outSunriseTime,
-	double&	outSunsetTime,
-	int		inYear, 
-	int		inMonth, 
-	int		inDay, 
-	double	inLon, 
-	double	inLat,
-    double	inAltit,
-	int		inUpperLimb)
+	TEpochTime&	outSunriseTime,
+	TEpochTime&	outSunsetTime,
+	int			inYear, 
+	int			inMonth, 
+	int			inDay, 
+	bool		inUTC,
+	double		inLon, 
+	double		inLat,
+    double		inAltit,
+	int			inUpperLimb)
 {
-      double  d,  /* Days since 2000 Jan 0.0 (negative before) */
-      sr,         /* Solar distance, astronomical units */
-      sRA,        /* Sun's Right Ascension */
-      sdec,       /* Sun's declination */
-      sradius,    /* Sun's apparent radius */
-      t,          /* Diurnal arc */
-      tsouth,     /* Time when Sun is at south */
-      sidtime;    /* Local sidereal time */
+	double  d,  /* Days since 2000 Jan 0.0 (negative before) */
+	sr,         /* Solar distance, astronomical units */
+	sRA,        /* Sun's Right Ascension */
+	sdec,       /* Sun's declination */
+	sradius,    /* Sun's apparent radius */
+	t,          /* Diurnal arc */
+	tsouth,     /* Time when Sun is at south */
+	sidtime;    /* Local sidereal time */
 
-      int rc = 0; /* Return cde from function - usually 0 */
+	int rc = 0; /* Return cde from function - usually 0 */
 
-      /* Compute d of 12h local mean solar time */
-      d = days_since_2000_Jan_0(inYear,inMonth,inDay) + 0.5 - inLon/360.0;
+	if(!inUTC)
+	{
+		// convert to UTC
+		TEpochTime tempTime = gRealTime->GetEpochTimeFromComponents(inYear, inMonth, inDay, 0, 0, 0);
+		tempTime = gRealTime->LocalToUTC(tempTime);
+		int	tempDOW, tempHour, tempMin, tempSec;
+		gRealTime->GetComponentsFromEpochTime(tempTime, inYear, inMonth, inDay, tempDOW, tempHour, tempMin, tempSec);
+		// inYear, inMonth, inDay are now UTC
+	}
 
-      /* Compute the local sidereal time of this moment */
-      sidtime = Revolution( GMST0(d) + 180.0 + inLon );
+	/* Compute d of 12h local mean solar time */
+	d = days_since_2000_Jan_0(inYear,inMonth,inDay) + 0.5 - inLon/360.0;
 
-      /* Compute Sun's RA, Decl and distance at this moment */
-      SunRADec( d, &sRA, &sdec, &sr );
+	/* Compute the local sidereal time of this moment */
+	sidtime = Revolution( GMST0(d) + 180.0 + inLon );
 
-      /* Compute time when Sun is at south - in hours UT */
-      tsouth = 12.0 - Rev180(sidtime - sRA)/15.0;
+	/* Compute Sun's RA, Decl and distance at this moment */
+	SunRADec( d, &sRA, &sdec, &sr );
 
-      /* Compute the Sun's apparent radius in degrees */
-      sradius = 0.2666 / sr;
+	/* Compute time when Sun is at south - in hours UT */
+	tsouth = 12.0 - Rev180(sidtime - sRA)/15.0;
 
-      /* Do correction to upper limb, if necessary */
-      if ( inUpperLimb )
-            inAltit -= sradius;
+	/* Compute the Sun's apparent radius in degrees */
+	sradius = 0.2666 / sr;
 
-      /* Compute the diurnal arc that the Sun traverses to reach */
-      /* the specified altitude altit: */
-      {
-            double cost;
-            cost = ( sind(inAltit) - sind(inLat) * sind(sdec) ) /
-                  ( cosd(inLat) * cosd(sdec) );
-            if ( cost >= 1.0 )
-                  rc = -1, t = 0.0;       /* Sun always below altit */
-            else if ( cost <= -1.0 )
-                  rc = +1, t = 12.0;      /* Sun always above altit */
-            else
-                  t = acosd(cost)/15.0;   /* The diurnal arc, hours */
-      }
+	/* Do correction to upper limb, if necessary */
+	if ( inUpperLimb )
+	inAltit -= sradius;
 
-      /* Store rise and set times - in hours UT */
-      outSunriseTime = tsouth - t;
-      outSunsetTime  = tsouth + t;
+	/* Compute the diurnal arc that the Sun traverses to reach */
+	/* the specified altitude altit: */
+	{
+		double cost;
+		cost = ( sind(inAltit) - sind(inLat) * sind(sdec) ) / ( cosd(inLat) * cosd(sdec) );
+		if ( cost >= 1.0 )
+			rc = -1, t = 0.0;       /* Sun always below altit */
+		else if ( cost <= -1.0 )
+			rc = +1, t = 12.0;      /* Sun always above altit */
+		else
+			t = acosd(cost)/15.0;   /* The diurnal arc, hours */
+	}
 
-      return rc;
+	// now compute the epoch time
+	outSunriseTime = gRealTime->GetEpochTimeFromComponents(inYear, inMonth, inDay, 0, 0, 0) + TEpochTime((tsouth - t) * 60.0 * 60.0);
+	outSunsetTime = gRealTime->GetEpochTimeFromComponents(inYear, inMonth, inDay, 0, 0, 0) + TEpochTime((tsouth + t) * 60.0 * 60.0);
+
+	if(!inUTC)
+	{
+		// convert to local time
+		outSunriseTime = gRealTime->UTCToLocal(outSunriseTime);
+		outSunsetTime = gRealTime->UTCToLocal(outSunsetTime);
+	}
+
+	return rc;
 }
 
-double
+TEpochTime
 CSunRiseAndSetModule::GetSunriseHour(
 	int		inYear,
 	int		inMonth,
 	int		inDay,
+	bool	inUTC,
 	double	inLon,
 	double	inLat,
 	double	inAltit,
@@ -652,6 +658,16 @@ CSunRiseAndSetModule::GetSunriseHour(
 	t,          /* Diurnal arc */
 	tsouth,     /* Time when Sun is at south */
 	sidtime;    /* Local sidereal time */
+
+	if(!inUTC)
+	{
+		// convert to UTC
+		TEpochTime tempTime = gRealTime->GetEpochTimeFromComponents(inYear, inMonth, inDay, 0, 0, 0);
+		tempTime = gRealTime->LocalToUTC(tempTime);
+		int	tempDOW, tempHour, tempMin, tempSec;
+		gRealTime->GetComponentsFromEpochTime(tempTime, inYear, inMonth, inDay, tempDOW, tempHour, tempMin, tempSec);
+		// inYear, inMonth, inDay are now UTC
+	}
 
 	/* Compute d of 12h local mean solar time */
 	d = days_since_2000_Jan_0(inYear,inMonth,inDay) + 0.5 - inLon/360.0;
@@ -686,15 +702,23 @@ CSunRiseAndSetModule::GetSunriseHour(
 				t = acosd(cost)/15.0;   /* The diurnal arc, hours */
 	}
 
-	/* Store rise and set times - in hours UT */
-	return tsouth - t;
+	TEpochTime	result = gRealTime->GetEpochTimeFromComponents(inYear, inMonth, inDay, 0, 0, 0) + TEpochTime((tsouth - t) * 60.0 * 60.0);
+
+	if(!inUTC)
+	{
+		// convert to local time
+		result = gRealTime->UTCToLocal(result);
+	}
+
+	return result;
 }
 
-double
+TEpochTime
 CSunRiseAndSetModule::GetSunsetHour(
 	int		inYear,
 	int		inMonth,
 	int		inDay,
+	bool	inUTC,
 	double	inLon,
 	double	inLat,
 	double	inAltit,
@@ -708,6 +732,16 @@ CSunRiseAndSetModule::GetSunsetHour(
 	t,          /* Diurnal arc */
 	tsouth,     /* Time when Sun is at south */
 	sidtime;    /* Local sidereal time */
+
+	if(!inUTC)
+	{
+		// convert to UTC
+		TEpochTime tempTime = gRealTime->GetEpochTimeFromComponents(inYear, inMonth, inDay, 0, 0, 0);
+		tempTime = gRealTime->LocalToUTC(tempTime);
+		int	tempDOW, tempHour, tempMin, tempSec;
+		gRealTime->GetComponentsFromEpochTime(tempTime, inYear, inMonth, inDay, tempDOW, tempHour, tempMin, tempSec);
+		// inYear, inMonth, inDay are now UTC
+	}
 
 	/* Compute d of 12h local mean solar time */
 	d = days_since_2000_Jan_0(inYear,inMonth,inDay) + 0.5 - inLon/360.0;
@@ -742,6 +776,13 @@ CSunRiseAndSetModule::GetSunsetHour(
 				t = acosd(cost)/15.0;   /* The diurnal arc, hours */
 	}
 
-	/* Store rise and set times - in hours UT */
-	return tsouth + t;
+	TEpochTime	result = gRealTime->GetEpochTimeFromComponents(inYear, inMonth, inDay, 0, 0, 0) + TEpochTime((tsouth + t) * 60.0 * 60.0);
+	
+	if(!inUTC)
+	{
+		// convert to local time
+		result = gRealTime->UTCToLocal(result);
+	}
+
+	return result;
 }
