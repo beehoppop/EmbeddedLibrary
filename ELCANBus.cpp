@@ -2,6 +2,9 @@
 #include <ELAssert.h>
 #include <ELConfig.h>
 
+CModule_CANBus*	gCANBus;
+CModule_CANBus	CModule_CANBus::module;
+
 void
 CANIDToComponents(
 	uint32_t	inID,
@@ -32,8 +35,8 @@ CModule_CANBus::CModule_CANBus(
 	CModule("canb", 0, 0, 100, 254),
 	canBus(500000)
 {
+	gCANBus = this;
 	canBus.begin();
-	ready = true;
 }
 
 void
@@ -123,13 +126,6 @@ CModule_CANBus::SendFormatMsg(
 	}
 }
 
-bool
-CModule_CANBus::Ready(
-	void)
-{
-	return ready;
-}
-
 void
 CModule_CANBus::ProcessCANMsg(
 	CAN_message_t const&	inMsg)
@@ -173,4 +169,3 @@ CModule_CANBus::DumpMsg(
 		);
 }
 
-CModule_CANBus	gCANBus;

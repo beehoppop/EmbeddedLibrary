@@ -59,7 +59,7 @@ class IDigitalIOEventHandler
 public:
 };
 
-typedef bool
+typedef void
 (IDigitalIOEventHandler::*TDigitalIOEventMethod)(
 	uint8_t		inPin,
 	EPinEvent	inEvent,

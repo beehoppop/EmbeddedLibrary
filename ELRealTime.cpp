@@ -210,7 +210,7 @@ CRealTime::Update(
 			continue;
 		}
 
-		if(curAlarm->nextTriggerTimeUTC < curEpochTimeUTC)
+		if(curAlarm->nextTriggerTimeUTC <= curEpochTimeUTC)
 		{
 			// this alarm is triggered
 			(curAlarm->object->*curAlarm->method)(curAlarm->name, curAlarm->reference);
@@ -1256,7 +1256,8 @@ CRealTime::GetNextDateTime(
 
 	GetComponentsFromEpochTime(GetEpochTime(inUTC), curComponents[eYear], curComponents[eMonth], curComponents[eDay], compDOW, curComponents[eHour], curComponents[eMin], curComponents[eSec]);
 	
-	for(int i = 0; i < eTimeCompCount; ++i)
+	int	i;
+	for(i = 0; i < eTimeCompCount; ++i)
 	{
 		anyComponents[i] = ioComponents[i] == eAlarm_Any;
 		if(anyComponents[i])
@@ -1265,7 +1266,7 @@ CRealTime::GetNextDateTime(
 		}
 	}
 
-	for(int i = 0; i < eTimeCompCount; ++i)
+	for(i = 0; i < eTimeCompCount; ++i)
 	{
 		if(ioComponents[i] < curComponents[i])
 		{
@@ -1278,7 +1279,16 @@ CRealTime::GetNextDateTime(
 		}
 	}
 
-	for(int i = 0; i < eTimeCompCount; ++i)
+	if(i == eTimeCompCount && ioComponents[eSec] == curComponents[eSec])
+	{
+		// ensure we return a time in the future and not now
+		if(IncrementComp(ioComponents, anyComponents, eSec) == false)
+		{
+			return false;
+		}
+	}
+
+	for(i = 0; i < eTimeCompCount; ++i)
 	{
 		if(ioComponents[i] > curComponents[i])
 		{

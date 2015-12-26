@@ -75,7 +75,7 @@ class ISunRiseAndSetEventHandler
 public:
 };
 
-typedef bool
+typedef void
 (ISunRiseAndSetEventHandler::*TSunRiseAndSetEventMethod)(
 	char const*	inName);
 
@@ -101,6 +101,7 @@ public:
 		int							inYear,			// The specific year for the event or eAlarm_Any
 		int							inMonth,		// The specific month for the event or eAlarm_Any
 		int							inDay,			// The specific day for the event or eAlarm_Any
+		int							inDOW,			// The specific day of week or eAlarm_Any
 		ISunRiseAndSetEventHandler*	inCmdHandler,
 		TSunRiseAndSetEventMethod	inMethod,
 		double						inSunOffset = cSunOffset_SunsetSunRise,
@@ -113,6 +114,7 @@ public:
 		int							inYear,			// The specific year for the event or eAlarm_Any
 		int							inMonth,		// The specific month for the event or eAlarm_Any
 		int							inDay,			// The specific day for the event or eAlarm_Any
+		int							inDOW,			// The specific day of week or eAlarm_Any
 		ISunRiseAndSetEventHandler*	inCmdHandler,
 		TSunRiseAndSetEventMethod	inMethod,
 		double						inSunOffset = cSunOffset_SunsetSunRise,
@@ -218,6 +220,7 @@ private:
 		int		year;
 		int		month;
 		int		day;
+		int		dow;
 		double	sunOffset;
 		int		sunRelativePosition;
 		bool	utc;

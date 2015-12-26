@@ -1,5 +1,5 @@
-#ifndef _ELCANBUS_H_
-#define _ELCANBUS_H_
+#ifndef _ELTOUCH_h
+#define _ELTOUCH_h
 /*
 	Author: Brent Pease
 
@@ -32,86 +32,94 @@
 	
 */
 
-#include <FlexCAN.h>
-
-#include "ELModule.h"
+#include <EL.h>
+#include <ELModule.h>
 
 enum
 {
-	eCANBus_MaxMsgLength = 8,
-	eCANBus_MaxMsgType = 32,
+	eTouch_MaxEvents = 16,
 };
 
-class ICANBusMsgHandler
+enum ETouchEvent
+{
+	eTouchEvent_Touch,
+	eTouchEvent_Release,
+};
+
+enum ETouchSource
+{
+	eTouchSource_None,
+	eTouchSource_Pin,
+	eTouchSource_MPR121	// This is not supported yet
+};
+
+class ITouchEventHandler
 {
 public:
 };
 
-typedef void
-(ICANBusMsgHandler::*TCANBusMsgHandler)(
-	uint8_t		inSrcNodeID,
-	uint8_t		inDstNodeID,
-	uint8_t		inMsgType,
-	uint8_t		inMsgFlags,
-	uint8_t		inMsgSize,
-	void const*	inMsgData);
+typedef bool
+(ITouchEventHandler::*TTouchEventMethod)(
+	uint8_t		inID,
+	ETouchEvent	inEvent,
+	void*		inReference);
 
-class CModule_CANBus : public CModule
+class CModule_Touch : public CModule
 {
 public:
 
+	// Register an event handler method for the given pin
 	void
-	RegisterMsgHandler(
-		uint8_t				inMsgType,
-		ICANBusMsgHandler*	inHandlerObject,
-		TCANBusMsgHandler	inMethod);
-
-	void
-	SendMsg(
-		uint8_t		inDstNode,
-		uint8_t		inMsgType,
-		uint8_t		inMsgFlags,
-		uint8_t		inMsgSize,
-		void const*	inMsgData);
-
-	void
-	SendFormatMsg(
-		uint8_t		inDstNode,
-		uint8_t		inMsgType,
-		char const*	inMsg,
-		...);
+	RegisterTouchHandler(
+		uint8_t				inID,
+		ETouchSource		inSource,
+		ITouchEventHandler*	inObject,
+		TTouchEventMethod	inMethod,
+		void*				inReference);
 
 private:
 	
-	CModule_CANBus(
+	CModule_Touch(
 		);
+
+	virtual void
+	Setup(
+		void);
 
 	virtual void
 	Update(
 		uint32_t	inDeltaTimeUS);
-	
-	struct SMsgHandler
+
+	struct STouch
 	{
-		ICANBusMsgHandler*	handlerObject;
-		TCANBusMsgHandler	method;
+		uint8_t				id;
+		uint8_t				source;
+		uint8_t				state;
+		ITouchEventHandler*	object;
+		TTouchEventMethod	method;
+		void*				reference;
+
+		uint64_t	time;
+
 	};
 
-	void
-	ProcessCANMsg(
-		CAN_message_t const&	inMsg);
+	STouch*
+	FindTouch(
+		uint8_t	inID,
+		uint8_t	inSource);
 
-	void
-	DumpMsg(
-		CAN_message_t const&	inMsg);
+	STouch*
+	FindUnused(
+		void);
 
-	SMsgHandler	handlerList[eCANBus_MaxMsgType];
-	FlexCAN	canBus;
+	int		touchCount;
+	STouch	touchList[eTouch_MaxEvents];
 
-	static CModule_CANBus	module;
+	static CModule_Touch	module;
+
 };
 
-extern CModule_CANBus*	gCANBus;
+extern CModule_Touch*	gTouch;
 
-#endif /* _ELCANBUS_H_ */
-
+#endif /* _ELTOUCH_h */
 

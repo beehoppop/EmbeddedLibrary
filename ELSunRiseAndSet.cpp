@@ -128,6 +128,7 @@ CSunRiseAndSetModule::RegisterSunriseEvent(
 	int							inYear,			// The specific year for the event or eAlarm_Any
 	int							inMonth,		// The specific month for the event or eAlarm_Any
 	int							inDay,			// The specific day for the event or eAlarm_Any
+	int							inDOW,			// The specific day of week or eAlarm_Any
 	ISunRiseAndSetEventHandler*	inCmdHandler,
 	TSunRiseAndSetEventMethod	inMethod,
 	double						inSunOffset,
@@ -147,6 +148,7 @@ CSunRiseAndSetModule::RegisterSunriseEvent(
 	newEvent->year = inYear;
 	newEvent->month = inMonth;
 	newEvent->day = inDay;
+	newEvent->dow = inDOW;
 	newEvent->cmdHandler = inCmdHandler;
 	newEvent->method = inMethod;
 	newEvent->sunOffset = inSunOffset;
@@ -163,6 +165,7 @@ CSunRiseAndSetModule::RegisterSunsetEvent(
 	int							inYear,			// The specific year for the event or eAlarm_Any
 	int							inMonth,		// The specific month for the event or eAlarm_Any
 	int							inDay,			// The specific day for the event or eAlarm_Any
+	int							inDOW,			// The specific day of week or eAlarm_Any
 	ISunRiseAndSetEventHandler*	inCmdHandler,
 	TSunRiseAndSetEventMethod	inMethod,
 	double						inSunOffset,
@@ -182,6 +185,7 @@ CSunRiseAndSetModule::RegisterSunsetEvent(
 	newEvent->year = inYear;
 	newEvent->month = inMonth;
 	newEvent->day = inDay;
+	newEvent->dow = inDOW;
 	newEvent->cmdHandler = inCmdHandler;
 	newEvent->method = inMethod;
 	newEvent->sunOffset = inSunOffset;
@@ -267,120 +271,92 @@ void
 CSunRiseAndSetModule::ScheduleNextEvent(
 	SEvent*	inEvent)
 {
-	int	year = inEvent->year;
-	int	month = inEvent->month;
-	int	day = inEvent->day;
-	int	hour = eAlarm_Any;
-	int	min = eAlarm_Any;
-	int	sec = eAlarm_Any;
-	int dow = eAlarm_Any;
+	// Get the target utc date
+	int	targetYear = inEvent->year;
+	int	targetMonth = inEvent->month;
+	int	targetDay = inEvent->day;
+	int	targetDOW = inEvent->dow;
+	int	targetHour = eAlarm_Any;
+	int	targetMin = eAlarm_Any;
+	int	targetSec = eAlarm_Any;
 
-	// Get the next date
-	if(gRealTime->GetNextDateTime(year, month, day, dow, hour, min, sec, inEvent->utc) == false)
+	if(gRealTime->GetNextDateTime(targetYear, targetMonth, targetDay, targetDOW, targetHour, targetMin, targetSec, inEvent->utc) == false)
 	{
-		// there is no next occurrence
-		gRealTime->CancelAlarm(inEvent->name);
+		// there is not a next time so just don't schedule
 		return;
 	}
 
-	// Convert to epoch utc time since the sun rise and set calcs are done in UTC
 	if(!inEvent->utc)
 	{
-		TEpochTime	epochTime = gRealTime->GetEpochTimeFromComponents(year, month, day, hour, min, sec);
+		// need to convert this to UTC
+		TEpochTime	epochTime = gRealTime->GetEpochTimeFromComponents(targetYear, targetMonth, targetDay, targetHour, targetMin, targetSec);
 		epochTime = gRealTime->LocalToUTC(epochTime);
-		gRealTime->GetComponentsFromEpochTime(epochTime, year, month, day, dow, hour, min, sec);
+		gRealTime->GetComponentsFromEpochTime(epochTime, targetYear, targetMonth, targetDay, targetDOW, targetHour, targetMin, targetSec);
 	}
-		
-	// now compute the time of the event
-	double eventHour;
+
+	// Get the event hour for the target date
+	double		eventHour;
 	if(inEvent->sunRise)
 	{
-		eventHour = GetSunriseHour(year, month, day, lon, lat, inEvent->sunOffset, inEvent->sunRelativePosition);
+		eventHour = GetSunriseHour(targetYear, targetMonth, targetDay, lon, lat, inEvent->sunOffset, inEvent->sunRelativePosition);
 	}
 	else
 	{
-		eventHour = GetSunsetHour(year, month, day, lon, lat, inEvent->sunOffset, inEvent->sunRelativePosition);
+		eventHour = GetSunsetHour(targetYear, targetMonth, targetDay, lon, lat, inEvent->sunOffset, inEvent->sunRelativePosition);
 	}
 
-	hour = int(eventHour);
-	eventHour -= (float)hour;
+	// Get the event epoch time by taking the target date at midnight utc and adding the event hour
+	TEpochTime	utcEpochEventTime = gRealTime->GetEpochTimeFromComponents(targetYear, targetMonth, targetDay, 0, 0, 0) + (TEpochTime)(eventHour * 60.0 * 60.0);
 
-	min = int(eventHour * 60.0);
-	eventHour -= (float)min * 60.0;
+	gRealTime->GetComponentsFromEpochTime(utcEpochEventTime, targetYear, targetMonth, targetDay, targetDOW, targetHour, targetMin, targetSec);
 
-	sec = int(eventHour * 60.0);
-	
-	// Check if this event has already happened and if so recompute for next allowed date
-	if(gRealTime->CompareDateTimeWithNow(year, month, day, hour, min, sec, true) < 0)
+	// if this event was in the past and any component is eAlarm_Any then reschedule given the computed hour, min, sec of the event
+	if(utcEpochEventTime < gRealTime->GetEpochTime(true))
 	{
-		if(inEvent->day == eAlarm_Any)
+		if(inEvent->year == eAlarm_Any || inEvent->month == eAlarm_Any || inEvent->day == eAlarm_Any || inEvent->dow == eAlarm_Any)
 		{
-			++day;
-			
-			int	daysInMonth = gDaysInMonth[month - 1];
-			if(month == 2 && MIsLeapYear(year))
+			targetYear = inEvent->year;
+			targetMonth = inEvent->month;
+			targetDay = inEvent->day;
+			targetDOW = inEvent->dow;
+
+			// Get the next date and time given the computed hour, min, sec of the event
+			if(gRealTime->GetNextDateTime(targetYear, targetMonth, targetDay, targetDOW, targetHour, targetMin, targetSec, true) == false)
 			{
-				++daysInMonth;
+				// only in extreme corner cases should this fail...
+				return;
 			}
 
-			if(day >= daysInMonth)
+			// Since we will have a new date we need to compute the event again
+			if(inEvent->sunRise)
 			{
-				day = 1;
-				++month;
-				if(month > 12)
-				{
-					month = 1;
-					++year;
-				}
+				eventHour = GetSunriseHour(targetYear, targetMonth, targetDay, lon, lat, inEvent->sunOffset, inEvent->sunRelativePosition);
 			}
-		}
-		else if(inEvent->month == eAlarm_Any)
-		{
-			++month;
-			if(month > 12)
+			else
 			{
-				month = 1;
-				++year;
+				eventHour = GetSunsetHour(targetYear, targetMonth, targetDay, lon, lat, inEvent->sunOffset, inEvent->sunRelativePosition);
 			}
-		}
-		else if(inEvent->year == eAlarm_Any)
-		{
-			++year;
+
+			utcEpochEventTime = gRealTime->GetEpochTimeFromComponents(targetYear, targetMonth, targetDay, 0, 0, 0) + (TEpochTime)(eventHour * 60.0 * 60.0);
+			gRealTime->GetComponentsFromEpochTime(utcEpochEventTime, targetYear, targetMonth, targetDay, targetDOW, targetHour, targetMin, targetSec);
 		}
 		else
 		{
-			// don't bother scheduling the alarm
+			// don't try to schedule something in the past
 			return;
 		}
-
-		if(inEvent->sunRise)
-		{
-			eventHour = GetSunriseHour(year, month, day, lon, lat, inEvent->sunOffset, inEvent->sunRelativePosition);
-		}
-		else
-		{
-			eventHour = GetSunsetHour(year, month, day, lon, lat, inEvent->sunOffset, inEvent->sunRelativePosition);
-		}
-
-		hour = int(eventHour);
-		eventHour -= (float)hour;
-
-		min = int(eventHour * 60.0);
-		eventHour -= (float)min * 60.0;
-
-		sec = int(eventHour * 60.0);
 	}
 
 	// Set the alarm to fire
 	gRealTime->RegisterAlarm(
 		inEvent->name,
-		year,
-		month,
-		day,
+		targetYear,
+		targetMonth,
+		targetDay,
 		eAlarm_Any,
-		hour,
-		min,
-		sec,
+		targetHour,
+		targetMin,
+		targetSec,
 		this,
 		static_cast<TRealTimeMethod>(&CSunRiseAndSetModule::RealTimeAlarmHandler),
 		inEvent,

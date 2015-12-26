@@ -63,7 +63,7 @@ CModule_DigitalIO::Update(
 {
 	SPinState*	curState = pinState;
 
-	for(int i = 0; i < eDigitalIO_PinCount; ++i)
+	for(int i = 0; i < eDigitalIO_PinCount; ++i, ++curState)
 	{
 		if(curState->mode == ePinMode_Input)
 		{
@@ -152,7 +152,7 @@ CModule_DigitalIO::RegisterEventHandler(
 	targetState->time = 0;
 	targetState->lastState = eState_WaitingForChangeToActive;
 
-	pinMode(inPin, INPUT_PULLUP);
+	pinMode(inPin, inActiveHigh ? INPUT : INPUT_PULLUP);
 }
 
 void
