@@ -1,6 +1,4 @@
 
-#include <SparkFunTSL2561.h>
-#include <Wire.h>
 
 #include <ELModule.h>
 #include <ELUtilities.h>
@@ -29,7 +27,8 @@ CModule_LuminositySensor::CModule_LuminositySensor(
 		"lumn",
 		sizeof(SLuminositySettings),
 		1,
-		500000)
+		500000,
+		1)
 {
 	gLuminositySensor = this;
 }
@@ -38,14 +37,28 @@ float
 CModule_LuminositySensor::GetActualLux(
 	void)
 {
-	return lux;
+	return (float)lux;
 }
 
 float
 CModule_LuminositySensor::GetNormalizedLux(
 	void)
 {
-	return normalized;
+	return (float)normalized;
+}
+
+void
+CModule_LuminositySensor::SetMinMaxLux(
+	float	inMinLux,
+	float	inMaxLux,
+	bool	inUpdateEEPROM)
+{
+	settings.minBrightnessLux = inMinLux;
+	settings.maxBrightnessLux = inMaxLux;
+	if(inUpdateEEPROM)
+	{
+		WriteDataToEEPROM(&settings, eepromOffset, sizeof(settings));
+	}
 }
 
 bool
@@ -108,6 +121,8 @@ CModule_LuminositySensor::Update(
 			if(adjLux > settings.maxBrightnessLux) adjLux = settings.maxBrightnessLux;
 
 			normalized = float((adjLux - settings.minBrightnessLux) / (settings.maxBrightnessLux - settings.minBrightnessLux));
+
+			//Serial.printf("%f %f\n", lux, normalized);
 		}
 	}
 }

@@ -82,7 +82,7 @@ CSunRiseAndSetModule*	gSunRiseAndSet;
 CSunRiseAndSetModule::CSunRiseAndSetModule(
 	)
 	:
-	CModule("SRAS", sizeof(double) * 2, 1)
+	CModule("SRAS", sizeof(double) * 2, 1, 0, 1)
 {
 	gSunRiseAndSet = this;
 }
@@ -283,6 +283,7 @@ CSunRiseAndSetModule::ScheduleNextEvent(
 	if(gRealTime->GetNextDateTime(targetYear, targetMonth, targetDay, targetDOW, targetHour, targetMin, targetSec, inEvent->utc) == false)
 	{
 		// there is not a next time so just don't schedule
+		DebugMsg(eDbgLevel_Basic, "Could not schedule %s 1", inEvent->name);
 		return;
 	}
 
@@ -313,6 +314,7 @@ CSunRiseAndSetModule::ScheduleNextEvent(
 			if(gRealTime->GetNextDateTime(targetYear, targetMonth, targetDay, targetDOW, targetHour, targetMin, targetSec, inEvent->utc) == false)
 			{
 				// only in extreme corner cases should this fail...
+				DebugMsg(eDbgLevel_Basic, "Could not schedule %s 2", inEvent->name);
 				return;
 			}
 
@@ -331,9 +333,12 @@ CSunRiseAndSetModule::ScheduleNextEvent(
 		else
 		{
 			// don't try to schedule something in the past
+			DebugMsg(eDbgLevel_Basic, "Could not schedule %s 3", inEvent->name);
 			return;
 		}
 	}
+
+	DebugMsg(eDbgLevel_Medium, "%s scheduled for %02d/%02d/%04d %02d:%02d:%02d", inEvent->name, targetMonth, targetDay, targetYear, targetHour, targetMin, targetSec);
 
 	// Set the alarm to fire
 	gRealTime->RegisterAlarm(
@@ -346,12 +351,12 @@ CSunRiseAndSetModule::ScheduleNextEvent(
 		targetMin,
 		targetSec,
 		this,
-		static_cast<TRealTimeMethod>(&CSunRiseAndSetModule::RealTimeAlarmHandler),
+		static_cast<TRealTimeAlarmMethod>(&CSunRiseAndSetModule::RealTimeAlarmHandler),
 		inEvent,
 		inEvent->utc);
 }
 
-void
+bool
 CSunRiseAndSetModule::RealTimeAlarmHandler(
 	char const*	inName,
 	void*		inReference)
@@ -361,6 +366,7 @@ CSunRiseAndSetModule::RealTimeAlarmHandler(
 	((targetEvent->cmdHandler)->*(targetEvent->method))(targetEvent->name);
 
 	 ScheduleNextEvent(targetEvent);
+	 return false;
 }
 
 /******************************************************************/

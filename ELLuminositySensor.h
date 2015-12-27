@@ -1,7 +1,64 @@
 #ifndef _FHLUMINOSITYSENSOR_H_
 #define _FHLUMINOSITYSENSOR_H_
 
-#include <SparkFunTSL2561.h>
+#if defined(WIN32)
+	class SFE_TSL2561
+	{
+	public:
+		
+		void
+		begin(
+			void)
+		{
+
+		}
+
+		bool
+		getData(
+			unsigned int&	outData1,
+			unsigned int&	outData2)
+		{
+			return true;
+		}
+
+		bool
+		getLux(
+			int				inGain,
+			int				inIntTime,
+			unsigned int	inData1,
+			unsigned int	inData2,
+			double&			outLux)
+		{
+			return true;
+		}
+
+		bool
+		getID(
+			uint8_t&	outSensorID)
+		{
+			outSensorID = 0x50;
+			return true;
+		}
+
+		void
+		setTiming(
+			int	inGain,
+			int	inTime,
+			int	inIntegration)
+		{
+
+		}
+
+		void
+		setPowerUp(
+			void)
+		{
+
+		}
+	};
+#else
+	#include <SparkFunTSL2561.h>
+#endif
 
 class CModule_LuminositySensor : public CModule, public ISerialCmdHandler
 {
@@ -15,6 +72,11 @@ public:
 	GetNormalizedLux(
 		void);
 
+	void
+	SetMinMaxLux(
+		float	inMinLux,
+		float	inMaxLux,
+		bool	inUpdateEEPROM);
 
 private:
 

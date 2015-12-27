@@ -35,6 +35,47 @@ int			gDaysInMonth[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
 CRealTime	CRealTime::module;
 CRealTime*	gRealTime;
 
+#if defined(WIN32)
+STimeZoneRule gTimeZone = 
+{
+	"Pacific",
+	2, 1, 3, 2, -7 * 60,
+	1, 1, 11, 2, -8 * 60,
+};
+
+class CRealTimeDataProvider_DS3234 : public IRealTimeDataProvider
+{
+public:
+
+	CRealTimeDataProvider_DS3234(
+		int	inChipSelect)
+	{
+	}
+
+	virtual void
+	SetUTCDateAndTime(
+		int			inYear,			// 20xx
+		int			inMonth,		// 1 to 12
+		int			inDayOfMonth,	// 1 to 31
+		int			inHour,			// 00 to 23
+		int			inMinute,		// 00 to 59
+		int			inSecond)		// 00 to 59
+	{
+
+	}
+
+	// This requests a syncronization from the provider which must call gRealTime->SetDateAndTime() to set the time, this allows the fetching of the date and time to be asyncronous
+	virtual void
+	RequestSync(
+		void)
+	{
+		time_t	localTime = time(NULL) /*- 33 * 60*/;
+		gRealTime->SetEpochTime((TEpochTime)localTime, true);
+	}
+};
+
+#else
+
 class CRealTimeDataProvider_DS3234 : public IRealTimeDataProvider
 {
 public:
@@ -160,6 +201,7 @@ public:
 
 	int chipselect;
 };
+#endif
 
 CRealTime::CRealTime(
 	)
@@ -168,7 +210,8 @@ CRealTime::CRealTime(
 		"rtc ",					// The module ID
 		sizeof(STimeZoneRule),	// eeprom size
 		1,						// eeprom version number
-		1000000)				// Call the update method once a second
+		1000000,				// Call the update method once a second
+		1)
 {
 	gRealTime = this;
 }
@@ -185,10 +228,16 @@ CRealTime::Setup(
 		memset(&timeZoneInfo, 0, sizeof(timeZoneInfo));
 	}
 
+	#if defined(WIN32)
+		// For testing
+		SetTimeZone(gTimeZone, false);
+	#endif
+
 	gSerialCmd->RegisterCommand("set_time", this, static_cast<TSerialCmdMethod>(&CRealTime::SerialSetTime));
 	gSerialCmd->RegisterCommand("get_time", this, static_cast<TSerialCmdMethod>(&CRealTime::SerialGetTime));
 	gSerialCmd->RegisterCommand("set_timezone", this, static_cast<TSerialCmdMethod>(&CRealTime::SerialSetTimeZone));
 	gSerialCmd->RegisterCommand("get_timezone", this, static_cast<TSerialCmdMethod>(&CRealTime::SerialGetTimeZone));
+	gSerialCmd->RegisterCommand("realtime_dump", this, static_cast<TSerialCmdMethod>(&CRealTime::SerialDumpTable));
 }
 
 void
@@ -213,8 +262,15 @@ CRealTime::Update(
 		if(curAlarm->nextTriggerTimeUTC <= curEpochTimeUTC)
 		{
 			// this alarm is triggered
-			(curAlarm->object->*curAlarm->method)(curAlarm->name, curAlarm->reference);
-			ScheduleAlarm(curAlarm);
+			bool	reschedule = (curAlarm->object->*curAlarm->method)(curAlarm->name, curAlarm->reference);
+			if(reschedule)
+			{
+				ScheduleAlarm(curAlarm);
+			}
+			else
+			{
+				curAlarm->name[0] = 0;
+			}
 		}
 	}
 
@@ -719,7 +775,7 @@ CRealTime::RegisterAlarm(
 	int			inMin,			// 00 to 59 or eAlarm_Any
 	int			inSec,			// 00 to 59 or eAlarm_Any
 	IRealTimeHandler*	inObject,
-	TRealTimeMethod		inMethod,
+	TRealTimeAlarmMethod	inMethod,
 	void*				inReference,
 	bool				inUTC)
 {
@@ -768,7 +824,7 @@ CRealTime::RegisterEvent(
 	uint64_t			inPeriodUS,
 	bool				inOnlyOnce,
 	IRealTimeHandler*	inObject,		// The object on which the method below lives
-	TRealTimeMethod		inMethod,		// The method on the above object
+	TRealTimeEventMethod	inMethod,		// The method on the above object
 	void*				inReference)	// The reference value passed into the above method
 {
 	MReturnOnError(strlen(inEventName) == 0 || strlen(inEventName) >= eRealTime_MaxNameLength);
@@ -960,7 +1016,8 @@ CRealTime::ScheduleAlarm(
 	}
 	else
 	{
-		inAlarm->nextTriggerTimeUTC = 0xFFFFFFF;
+		DebugMsg(eDbgLevel_Basic, "%s could not be scheduled", inAlarm->name);
+		inAlarm->name[0] = 0;
 	}
 }
 
@@ -1165,6 +1222,29 @@ CRealTime::SerialGetTimeZone(
 	return true;
 }
 
+bool
+CRealTime::SerialDumpTable(
+	int		inArgC,
+	char*	inArgv[])
+{
+	SAlarm* curAlarm = alarmArray;
+	for(int alarmItr = 0; alarmItr < eAlarm_MaxActive; ++alarmItr, ++curAlarm)
+	{
+		if(curAlarm->name[0] == 0)
+		{
+			continue;
+		}
+
+		int	 year, month, day, dow, hour, min, sec;
+
+		GetComponentsFromEpochTime(curAlarm->nextTriggerTimeUTC, year, month, day, dow, hour, min, sec);
+
+		DebugMsg(eDbgLevel_Basic, "%s will alarm at %02d/%02d/%02d %02d:%02d:%02d UTC", curAlarm->name, month, day, year, hour, min, sec);
+	}
+
+	return true;
+}
+
 enum
 {
 	eYear,
@@ -1275,6 +1355,26 @@ CRealTime::GetNextDateTime(
 				return false;
 			}
 
+			for(int j = i + 1; j < eTimeCompCount; ++j)
+			{
+				if(anyComponents[j])
+				{
+					ioComponents[j] = (j == eMonth || j == eDay) ? 1 : 0;
+				}
+			}
+
+			break;
+		}
+		else if(ioComponents[i] > curComponents[i])
+		{
+			for(int j = i + 1; j < eTimeCompCount; ++j)
+			{
+				if(anyComponents[j])
+				{
+					ioComponents[j] = (j == eMonth || j == eDay) ? 1 : 0;
+				}
+			}
+
 			break;
 		}
 	}
@@ -1285,21 +1385,6 @@ CRealTime::GetNextDateTime(
 		if(IncrementComp(ioComponents, anyComponents, eSec) == false)
 		{
 			return false;
-		}
-	}
-
-	for(i = 0; i < eTimeCompCount; ++i)
-	{
-		if(ioComponents[i] > curComponents[i])
-		{
-			for(int j = i + 1; j < eTimeCompCount; ++j)
-			{
-				if(anyComponents[j])
-				{
-					ioComponents[j] = (j == eMonth || j == eDay) ? 1 : 0;
-				}
-			}
-			break;
 		}
 	}
 

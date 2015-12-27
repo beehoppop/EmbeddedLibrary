@@ -93,9 +93,15 @@ class IRealTimeHandler
 public:
 };
 
-// A typedef for a alarm or event handler method
+// A typedef for a alarm handler method, alarm methods should return true if it wants to be rescheduled
+typedef bool
+(IRealTimeHandler::*TRealTimeAlarmMethod)(
+	char const*	inName,
+	void*		inReference);
+
+// A typedef for a event handler method
 typedef void
-(IRealTimeHandler::*TRealTimeMethod)(
+(IRealTimeHandler::*TRealTimeEventMethod)(
 	char const*	inName,
 	void*		inReference);
 
@@ -254,7 +260,7 @@ public:
 		int					inMinute,		// 00 to 59 or eAlarm_Any
 		int					inSecond,		// 00 to 59 or eAlarm_Any
 		IRealTimeHandler*	inObject,		// The object on which the method below lives
-		TRealTimeMethod		inMethod,		// The method on the above object
+		TRealTimeAlarmMethod	inMethod,		// The method on the above object
 		void*				inReference,	// The reference value passed into the above method
 		bool				inUTC = false);
 	
@@ -270,7 +276,7 @@ public:
 		uint64_t			inPeriodUS,		// The period for which to call
 		bool				inOnlyOnce,		// True if the event is only called once
 		IRealTimeHandler*	inObject,		// The object on which the method below lives
-		TRealTimeMethod		inMethod,		// The method on the above object
+		TRealTimeEventMethod	inMethod,		// The method on the above object
 		void*				inReference);	// The reference value passed into the above method
 
 	// Cancel the given event
@@ -330,7 +336,7 @@ private:
 		int					minute;
 		int					second;
 		IRealTimeHandler*	object;
-		TRealTimeMethod		method;
+		TRealTimeAlarmMethod	method;
 		void*				reference;
 		bool				utc;
 
@@ -344,7 +350,7 @@ private:
 		bool				onceOnly;
 		uint64_t			lastFireTime;
 		IRealTimeHandler*	object;
-		TRealTimeMethod		method;
+		TRealTimeEventMethod	method;
 		void*				reference;
 	};
 
@@ -416,6 +422,11 @@ private:
 
 	bool
 	SerialGetTimeZone(
+		int		inArgC,
+		char*	inArgv[]);
+
+	bool
+	SerialDumpTable(
 		int		inArgC,
 		char*	inArgv[]);
 

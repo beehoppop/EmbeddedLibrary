@@ -293,8 +293,7 @@ CModule::SetupAll(
 	}
 
 	#if MDebugDelayStart
-		Need to fix this code to not reference gConfig since it has not been initialized yet
-		if(MDebugTargetNode == 0xFF || MDebugTargetNode == gConfig->GetVal(eConfigVar_NodeID))
+		if(MDebugTargetNode == 0xFF /*|| MDebugTargetNode == gConfig->GetVal(eConfigVar_NodeID)*/)	// 		Need to fix this code to not reference gConfig since it has not been initialized yet
 		{
 			delay(6000);
 		}

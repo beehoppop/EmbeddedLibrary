@@ -253,7 +253,7 @@ private:
 	ScheduleNextEvent(
 		SEvent*	inEvent);
 
-	void
+	bool
 	RealTimeAlarmHandler(
 		char const*	inName,
 		void*		inReference);

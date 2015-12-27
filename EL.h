@@ -37,6 +37,7 @@
 	#include "arduino.h"
 	#include <EEPROM.h>
 	#include <SPI.h>
+	#include <Wire.h>
 #elif defined(WIN32)
 	#include "ArduinoSimulator.h"
 #else

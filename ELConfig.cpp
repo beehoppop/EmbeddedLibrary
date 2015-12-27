@@ -36,13 +36,13 @@ CModule_Config::CModule_Config(
 	:
 	CModule("cnfg", sizeof(configVar), 0, 0, 255)
 {
-	gConfig = this;
 }
 
 void
 CModule_Config::Setup(
 	void)
 {
+	gConfig = this;
 	MAssert(eepromOffset > 0);
 
 	LoadDataFromEEPROM(configVar, eepromOffset, sizeof(configVar));

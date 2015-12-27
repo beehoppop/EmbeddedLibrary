@@ -72,7 +72,11 @@ DebugMsg(
 
 	snprintf(finalBuffer, sizeof(finalBuffer), "[%s] %s", timestamp, vabuffer);
 	Serial.print(finalBuffer);
-	Serial.print('\n');
+	int	strLen = strlen(finalBuffer);
+	if(finalBuffer[strLen - 1] != '\n')
+	{
+		Serial.print('\n');
+	}
 
 	for(int itr = 0; itr < gHandlerCount; ++itr)
 	{
