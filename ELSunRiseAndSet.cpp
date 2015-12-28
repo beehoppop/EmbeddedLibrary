@@ -291,11 +291,11 @@ CSunRiseAndSetModule::ScheduleNextEvent(
 	TEpochTime		eventEpochTime;
 	if(inEvent->sunRise)
 	{
-		eventEpochTime = GetSunriseHour(targetYear, targetMonth, targetDay, inEvent->utc, lon, lat, inEvent->sunOffset, inEvent->sunRelativePosition);
+		eventEpochTime = GetSunriseEpochTime(targetYear, targetMonth, targetDay, inEvent->utc, lon, lat, inEvent->sunOffset, inEvent->sunRelativePosition);
 	}
 	else
 	{
-		eventEpochTime = GetSunsetHour(targetYear, targetMonth, targetDay, inEvent->utc, lon, lat, inEvent->sunOffset, inEvent->sunRelativePosition);
+		eventEpochTime = GetSunsetEpochTime(targetYear, targetMonth, targetDay, inEvent->utc, lon, lat, inEvent->sunOffset, inEvent->sunRelativePosition);
 	}
 
 	gRealTime->GetComponentsFromEpochTime(eventEpochTime, targetYear, targetMonth, targetDay, targetDOW, targetHour, targetMin, targetSec);
@@ -321,11 +321,11 @@ CSunRiseAndSetModule::ScheduleNextEvent(
 			// Since we will have a new date we need to compute the event again
 			if(inEvent->sunRise)
 			{
-				eventEpochTime = GetSunriseHour(targetYear, targetMonth, targetDay, inEvent->utc, lon, lat, inEvent->sunOffset, inEvent->sunRelativePosition);
+				eventEpochTime = GetSunriseEpochTime(targetYear, targetMonth, targetDay, inEvent->utc, lon, lat, inEvent->sunOffset, inEvent->sunRelativePosition);
 			}
 			else
 			{
-				eventEpochTime = GetSunsetHour(targetYear, targetMonth, targetDay, inEvent->utc, lon, lat, inEvent->sunOffset, inEvent->sunRelativePosition);
+				eventEpochTime = GetSunsetEpochTime(targetYear, targetMonth, targetDay, inEvent->utc, lon, lat, inEvent->sunOffset, inEvent->sunRelativePosition);
 			}
 
 			gRealTime->GetComponentsFromEpochTime(eventEpochTime, targetYear, targetMonth, targetDay, targetDOW, targetHour, targetMin, targetSec);
@@ -529,6 +529,16 @@ CSunRiseAndSetModule::GetDayLength(
 	sradius,    /* Sun's apparent radius */
 	t;          /* Diurnal arc */
 
+	if(inLon > 360.0)
+	{
+		inLon = lon;
+	}
+
+	if(inLat > 360.0)
+	{
+		inLat = lat;
+	}
+
 	/* Compute d of 12h local mean solar time */
 	d = days_since_2000_Jan_0(inYear,inMonth,inDay) + 0.5 - inLon/360.0;
 
@@ -566,7 +576,7 @@ CSunRiseAndSetModule::GetDayLength(
 }
 
 int 
-CSunRiseAndSetModule::GetSunRiseAndSetHour(
+CSunRiseAndSetModule::GetSunRiseAndSetEpochTime(
 	TEpochTime&	outSunriseTime,
 	TEpochTime&	outSunsetTime,
 	int			inYear, 
@@ -588,6 +598,16 @@ CSunRiseAndSetModule::GetSunRiseAndSetHour(
 	sidtime;    /* Local sidereal time */
 
 	int rc = 0; /* Return cde from function - usually 0 */
+
+	if(inLon > 360.0)
+	{
+		inLon = lon;
+	}
+
+	if(inLat > 360.0)
+	{
+		inLat = lat;
+	}
 
 	if(!inUTC)
 	{
@@ -646,7 +666,7 @@ CSunRiseAndSetModule::GetSunRiseAndSetHour(
 }
 
 TEpochTime
-CSunRiseAndSetModule::GetSunriseHour(
+CSunRiseAndSetModule::GetSunriseEpochTime(
 	int		inYear,
 	int		inMonth,
 	int		inDay,
@@ -664,6 +684,16 @@ CSunRiseAndSetModule::GetSunriseHour(
 	t,          /* Diurnal arc */
 	tsouth,     /* Time when Sun is at south */
 	sidtime;    /* Local sidereal time */
+
+	if(inLon > 360.0)
+	{
+		inLon = lon;
+	}
+
+	if(inLat > 360.0)
+	{
+		inLat = lat;
+	}
 
 	if(!inUTC)
 	{
@@ -720,7 +750,7 @@ CSunRiseAndSetModule::GetSunriseHour(
 }
 
 TEpochTime
-CSunRiseAndSetModule::GetSunsetHour(
+CSunRiseAndSetModule::GetSunsetEpochTime(
 	int		inYear,
 	int		inMonth,
 	int		inDay,
@@ -738,6 +768,16 @@ CSunRiseAndSetModule::GetSunsetHour(
 	t,          /* Diurnal arc */
 	tsouth,     /* Time when Sun is at south */
 	sidtime;    /* Local sidereal time */
+
+	if(inLon > 360.0)
+	{
+		inLon = lon;
+	}
+
+	if(inLat > 360.0)
+	{
+		inLat = lat;
+	}
 
 	if(!inUTC)
 	{

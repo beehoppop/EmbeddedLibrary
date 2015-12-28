@@ -2,6 +2,7 @@
 #define _FHLUMINOSITYSENSOR_H_
 
 #if defined(WIN32)
+// for testing
 	class SFE_TSL2561
 	{
 	public:

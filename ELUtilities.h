@@ -27,6 +27,7 @@
 */
 
 #include "EL.h"
+
 bool
 IsStrDigit(
 	char const*	inStr);

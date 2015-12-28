@@ -180,7 +180,7 @@ public:
 
 	int
 	GetSecondsNow(
-		bool	inUTC);
+		bool	inUTC = false);
 
 	int
 	GetYearFromEpoch(

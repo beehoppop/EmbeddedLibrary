@@ -151,37 +151,37 @@ public:
 	/*                                                                    */
 	/**********************************************************************/
 	int
-	GetSunRiseAndSetHour(
+	GetSunRiseAndSetEpochTime(
 		TEpochTime&	outSunrise,
 		TEpochTime&	outSunset,
 		int			inYear,		// 1801 to 2099
 		int			inMonth,	// 1 to 12
 		int			inDay,		// 1 to 31
 		bool		inUTC,		// true if the given date and returned time are in UTC
-		double		inLongitude,
-		double		inLatitude,
+		double		inLongitude = 1000.0,
+		double		inLatitude = 1000.0,
 		double		inSunOffset = cSunOffset_SunsetSunRise,
 		int			inSunRelativePosition = eSunRelativePosition_UpperLimb);
 
 	TEpochTime
-	GetSunriseHour(
+	GetSunriseEpochTime(
 		int		inYear,		// 1801 to 2099
 		int		inMonth,	// 1 to 12
 		int		inDay,		// 1 to 31
 		bool	inUTC,		// true if the given date and returned time are in UTC
-		double	inLongitude,
-		double	inLatitude,
+		double	inLongitude = 1000.0,
+		double	inLatitude = 1000.0,
 		double	inSunOffset = cSunOffset_SunsetSunRise,
 		int		inSunRelativePosition = eSunRelativePosition_UpperLimb);
 
 	TEpochTime
-	GetSunsetHour(
+	GetSunsetEpochTime(
 		int		inYear,		// 1801 to 2099
 		int		inMonth,	// 1 to 12
 		int		inDay,		// 1 to 31
 		bool	inUTC,		// true if the given date and returned time are in UTC
-		double	inLongitude,
-		double	inLatitude,
+		double	inLongitude = 1000.0,
+		double	inLatitude = 1000.0,
 		double	inSunOffset = cSunOffset_SunsetSunRise,
 		int		inSunRelativePosition = eSunRelativePosition_UpperLimb);
 
@@ -202,8 +202,8 @@ public:
 		int		inYear,		// 1801 to 2099
 		int		inMonth,	// 1 to 12
 		int		inDay,		// 1 to 31
-		double	inLongitude,
-		double	inLatitude,
+		double	inLongitude = 1000.0,
+		double	inLatitude = 1000.0,
 		double	inSunOffset = cSunOffset_SunsetSunRise,
 		int		inSunRelativePosition = eSunRelativePosition_UpperLimb);
 
