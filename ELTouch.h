@@ -1,7 +1,7 @@
 #ifndef _ELTOUCH_h
 #define _ELTOUCH_h
 /*
-	Author: Brent Pease
+	Author: Brent Pease (embeddedlibraryfeedback@gmail.com)
 
 	The MIT License (MIT)
 

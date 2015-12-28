@@ -1,7 +1,7 @@
 #ifndef _ELUTILITIES_H_
 #define _ELUTILITIES_H_
 /*
-	Author: Brent Pease
+	Author: Brent Pease (embeddedlibraryfeedback@gmail.com)
 
 	The MIT License (MIT)
 

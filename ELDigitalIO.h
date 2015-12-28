@@ -1,7 +1,7 @@
 #ifndef _ELDIGITALINPUT_h
 #define _ELDIGITALINPUT_h
 /*
-	Author: Brent Pease
+	Author: Brent Pease (embeddedlibraryfeedback@gmail.com)
 
 	The MIT License (MIT)
 

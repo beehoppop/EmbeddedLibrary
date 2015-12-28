@@ -1,7 +1,7 @@
 #ifndef _ELSUNRISEANDSET_H_
 #define _ELSUNRISEANDSET_H_
 /*
-	Author: Brent Pease
+	Author: Brent Pease (embeddedlibraryfeedback@gmail.com)
 
 	The MIT License (MIT)
 

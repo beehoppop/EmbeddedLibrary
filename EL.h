@@ -1,7 +1,7 @@
 #ifndef _EL_H_
 #define _EL_H_
 /*
-	Author: Brent Pease
+	Author: Brent Pease (embeddedlibraryfeedback@gmail.com)
 
 	The MIT License (MIT)
 

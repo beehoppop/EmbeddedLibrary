@@ -54,8 +54,10 @@ My development environment is as follows:
  - Visual Assist X (http://www.wholetomato.com/) which is not free but well worth the $99.
  - Teensyduino 3.x
  
- I mention this because this library is very new and has not been tested outside of this setup. 
- 
+I mention this because this library is very new and has not been tested outside of this setup. 
+
+Please send feedback to embeddedlibraryfeedback@gmail.com. Thanks!
+
 License Information
 -------------------
 
