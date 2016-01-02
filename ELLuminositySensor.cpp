@@ -24,10 +24,12 @@
 	SOFTWARE.
 */
 
+
 #include <ELModule.h>
 #include <ELUtilities.h>
 #include <ELSerial.h>
 #include <ELLuminositySensor.h>
+#include <ELAssert.h>
 
 enum ELuminositySensor
 {
@@ -86,11 +88,13 @@ CModule_LuminositySensor::SetMinMaxLux(
 }
 
 bool
-CModule_LuminositySensor::SerialConfig(
-	int		inArgC,
-	char*	inArgv[])
+CModule_LuminositySensor::SerialGetLux(
+	int			inArgC,
+	char const*	inArgv[])
 {
-	return false;
+	DebugMsg(eDbgLevel_Basic, "lux = %f\n", GetActualLux());
+
+	return true;
 }
 
 void
@@ -124,7 +128,7 @@ CModule_LuminositySensor::Setup(
 	light.setTiming(settings.gain, settings.time, integrationTimeMS);
 	light.setPowerUp();
 
-	gSerialCmd->RegisterCommand("lumin", this, static_cast<TSerialCmdMethod>(&CModule_LuminositySensor::SerialConfig));
+	gSerialCmd->RegisterCommand("get_lux", this, static_cast<TSerialCmdMethod>(&CModule_LuminositySensor::SerialGetLux));
 }
 
 void

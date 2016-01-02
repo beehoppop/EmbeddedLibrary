@@ -26,8 +26,15 @@
 	SOFTWARE.
 */
 
+/*
+	ABOUT
+
+	Get luminosity values from the SparkFun TSL2561 or equivalent
+
+*/
+
 #if defined(WIN32)
-// for testing
+
 	class SFE_TSL2561
 	{
 	public:
@@ -55,6 +62,7 @@
 			unsigned int	inData2,
 			double&			outLux)
 		{
+			outLux = 0.0f;
 			return true;
 		}
 
@@ -127,9 +135,9 @@ private:
 		uint32_t inDeltaTimeUS);
 
 	bool
-	SerialConfig(
-		int		inArgC,
-		char*	inArgv[]);
+	SerialGetLux(
+		int			inArgC,
+		char const*	inArgv[]);
 		
 	unsigned int		integrationTimeMS;
 	SLuminositySettings	settings;
