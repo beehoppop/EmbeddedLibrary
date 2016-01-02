@@ -346,6 +346,8 @@ CModule::SetupAll(
 		}
 	}
 
+	gConfig->SetupFinished();
+
 	#if MDebugDelayEachModule || MDebugDelayStart
 		DebugMsg(eDbgLevel_Medium, "Module: Setup Complete\n");
 	#endif
@@ -405,12 +407,17 @@ void
 CModule::LoopAll(
 	void)
 {
-	if(gFlashLED && gConfig->GetVal(eConfigVar_BlinkLED) == 1)
+	if(gFlashLED && gConfig->GetVal(gConfig->blinkLEDIndex) == 1)
 	{
 		static bool	on = false;
+		static uint64_t	lastBlinkTime;
 
-		digitalWriteFast(13, on);
-		on = !on;
+		if(gCurLocalMS - lastBlinkTime >= 500)
+		{
+			on = !on;
+			digitalWriteFast(13, on);
+			lastBlinkTime = gCurLocalMS;
+		}
 	}
 
 	for(int i = 0; i < gModuleCount; ++i)
