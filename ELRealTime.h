@@ -30,6 +30,28 @@
 	ABOUT
 
 	This module handles date and time. It allows for an external time provider, understands time zones, and provides alarm and event services.
+
+	Serial Port Commands:
+		set_time [year] [month] [day] [hour] [min] [sec] ["local" | "utc"] - sets the current time and sets it with the provider if possible
+		get_time - prints the time to the console
+
+		set_timezone [name] [dst start week] [dst start day of week] [dst start month] [dst start hour] [dst utc offset mins] [std start week] [std start day of week] [std start month] [std start hour] [std utc offset mins]
+			[name] - the name of the time zone
+			[dst start week] - 0 is the last week of the month, 1-4 specifies first through 4th week of the month for daylight savings time start
+			[dst start day of week] - 1-7 the start day of the week for daylight savings time start
+			[dst start month] - 1-12 the month for daylight savings time start
+			[dst start hour] - the hour for daylight savings time start
+			[dst utc offset mins] - the offset from UTC for daylight savings time
+			[std start week] - 0 is the last week of the month, 1-4 specifies first through 4th week of the month for standard time start
+			[std start day of week] - 1-7 the start day of the week for standard time start
+			[std start month] - 1-12 the month for standard time start
+			[std start hour] - the hour for standard time start
+			[std utc offset mins] - the offset from UTC for standard time
+
+		get_timezone - prints the current time zone info in the above format to the serial port
+
+		realtime_dump - dump the list of scheduled alarms and events - used for debugging
+		set_time_mult - speed up time by the given amount - used for debugging
 */
 
 #include <ELModule.h>
@@ -372,6 +394,8 @@ private:
 	TEpochTime	dstStartLocal;
 	TEpochTime	stdStartLocal;
 
+	int	timeMultiplier;
+
 	SAlarm*
 	FindAlarmByName(
 		char const*	inName);
@@ -407,28 +431,33 @@ private:
 
 	bool
 	SerialSetTime(
-		int		inArgC,
-		char*	inArgv[]);
+		int			inArgC,
+		char const*	inArgv[]);
 
 	bool
 	SerialGetTime(
-		int		inArgC,
-		char*	inArgv[]);
+		int			inArgC,
+		char const*	inArgv[]);
 
 	bool
 	SerialSetTimeZone(
-		int		inArgC,
-		char*	inArgv[]);
+		int			inArgC,
+		char const*	inArgv[]);
 
 	bool
 	SerialGetTimeZone(
-		int		inArgC,
-		char*	inArgv[]);
+		int			inArgC,
+		char const*	inArgv[]);
 
 	bool
 	SerialDumpTable(
-		int		inArgC,
-		char*	inArgv[]);
+		int			inArgC,
+		char const*	inArgv[]);
+
+	bool
+	SerialSetMultiplier(
+		int			inArgC,
+		char const*	inArgv[]);
 
 	static CRealTime	module;
 };

@@ -238,13 +238,16 @@ CRealTime::Setup(
 	gSerialCmd->RegisterCommand("set_timezone", this, static_cast<TSerialCmdMethod>(&CRealTime::SerialSetTimeZone));
 	gSerialCmd->RegisterCommand("get_timezone", this, static_cast<TSerialCmdMethod>(&CRealTime::SerialGetTimeZone));
 	gSerialCmd->RegisterCommand("realtime_dump", this, static_cast<TSerialCmdMethod>(&CRealTime::SerialDumpTable));
+	gSerialCmd->RegisterCommand("set_time_mult", this, static_cast<TSerialCmdMethod>(&CRealTime::SerialSetMultiplier));
+
+	timeMultiplier = 1.0f;
 }
 
 void
 CRealTime::Update(
 	uint32_t	inDeltaTimeUS)
 {
-	if(provider != NULL && (gCurLocalMS - localMSAtLastSet) / 1000 >= providerSyncPeriod)
+	if(provider != NULL && (gCurLocalMS - localMSAtLastSet) / 1000 >= providerSyncPeriod && timeMultiplier == 1.0f)
 	{
 		provider->RequestSync();
 	}
@@ -262,14 +265,11 @@ CRealTime::Update(
 		if(curAlarm->nextTriggerTimeUTC <= curEpochTimeUTC)
 		{
 			// this alarm is triggered
+			DebugMsg(eDbgLevel_Medium, "Triggering alarm %s\n", curAlarm->name);
 			bool	reschedule = (curAlarm->object->*curAlarm->method)(curAlarm->name, curAlarm->reference);
 			if(reschedule)
 			{
 				ScheduleAlarm(curAlarm);
-			}
-			else
-			{
-				curAlarm->name[0] = 0;
 			}
 		}
 	}
@@ -286,6 +286,7 @@ CRealTime::Update(
 		if(gCurLocalUS - curEvent->lastFireTime >= curEvent->periodUS)
 		{
 			curEvent->lastFireTime = gCurLocalUS;
+			DebugMsg(eDbgLevel_Medium, "Triggering event %s\n", curEvent->name);
 			(curEvent->object->*curEvent->method)(curEvent->name, curEvent->reference);
 			if(curEvent->onceOnly)
 			{
@@ -376,7 +377,7 @@ TEpochTime
 CRealTime::GetEpochTime(
 	bool	inUTC)
 {
-	TEpochTime	result = epocUTCTimeAtLastSet + (uint32_t)((gCurLocalMS - localMSAtLastSet) / 1000);
+	TEpochTime	result = epocUTCTimeAtLastSet + (uint32_t)((gCurLocalMS - localMSAtLastSet) * timeMultiplier / 1000);
 
 	if(!inUTC)
 	{
@@ -981,6 +982,8 @@ void
 CRealTime::RecomputeAlarms(
 	void)
 {
+	DebugMsg(eDbgLevel_Medium, "Recomputing alarms\n");
+
 	SAlarm* curAlarm = alarmArray;
 	for(int alarmItr = 0; alarmItr < eAlarm_MaxActive; ++alarmItr, ++curAlarm)
 	{
@@ -1013,6 +1016,7 @@ CRealTime::ScheduleAlarm(
 		{
 			inAlarm->nextTriggerTimeUTC = LocalToUTC(inAlarm->nextTriggerTimeUTC);
 		}
+		DebugMsg(eDbgLevel_Medium, "%s scheduled for %02d/%02d/%04d %02d:%02d:%02d", inAlarm->name, month, day, year, hour, min, sec);
 	}
 	else
 	{
@@ -1023,12 +1027,12 @@ CRealTime::ScheduleAlarm(
 
 bool
 CRealTime::SerialSetTime(
-	int		inArgC,
-	char*	inArgv[])
+	int			inArgC,
+	char const*	inArgv[])
 {
 	// year month day hour min sec in UTC
 
-	if(inArgC != 7)
+	if(inArgC != 8)
 	{
 		Serial.printf("Wrong number of arguments got %d expected 6\n", inArgC - 1);
 		return false;
@@ -1076,20 +1080,22 @@ CRealTime::SerialSetTime(
 		return false;
 	}
 	
+	bool	utc = strcmp(inArgv[7], "utc") == 0;
+
 	if(provider != NULL)
 	{
 		provider->SetUTCDateAndTime(year, month, day, hour, min, sec);
 	}
 
-	SetDateAndTime(year, month, day, hour, min, sec, true);
+	SetDateAndTime(year, month, day, hour, min, sec, utc);
 
 	return true;
 }
 
 bool
 CRealTime::SerialGetTime(
-	int		inArgC,
-	char*	inArgv[])
+	int			inArgC,
+	char const*	inArgv[])
 {
 	int	year;
 	int	month;
@@ -1099,22 +1105,17 @@ CRealTime::SerialGetTime(
 	int	sec;
 	int	dow;
 
-	if(provider != NULL)
-	{
-		provider->RequestSync();
-	}
-
 	GetDateAndTime(year, month, day, dow, hour, min, sec, false);
 
-	Serial.printf("%02d/%02d/%04d %02d:%02d:%02d\n", month, day, year, hour, min, sec);
+	Serial.printf("%02d/%02d/%04d %02d:%02d:%02d local\n", month, day, year, hour, min, sec);
 
 	return true;
 }
 
 bool
 CRealTime::SerialSetTimeZone(
-	int		inArgC,
-	char*	inArgv[])
+	int			inArgC,
+	char const*	inArgv[])
 {
 	STimeZoneRule	newTimeZone;
 	
@@ -1210,8 +1211,8 @@ CRealTime::SerialSetTimeZone(
 
 bool
 CRealTime::SerialGetTimeZone(
-	int		inArgC,
-	char*	inArgv[])
+	int			inArgC,
+	char const*	inArgv[])
 {
 	Serial.printf("%s %d %d %d %d %d %d %d %d %d %d\n", 
 		timeZoneInfo.abbrev, 
@@ -1224,8 +1225,8 @@ CRealTime::SerialGetTimeZone(
 
 bool
 CRealTime::SerialDumpTable(
-	int		inArgC,
-	char*	inArgv[])
+	int			inArgC,
+	char const*	inArgv[])
 {
 	SAlarm* curAlarm = alarmArray;
 	for(int alarmItr = 0; alarmItr < eAlarm_MaxActive; ++alarmItr, ++curAlarm)
@@ -1241,6 +1242,21 @@ CRealTime::SerialDumpTable(
 
 		DebugMsg(eDbgLevel_Basic, "%s will alarm at %02d/%02d/%02d %02d:%02d:%02d UTC", curAlarm->name, month, day, year, hour, min, sec);
 	}
+
+	return true;
+}
+
+bool
+CRealTime::SerialSetMultiplier(
+	int			inArgC,
+	char const*	inArgv[])
+{
+	if(inArgC != 2)
+	{
+		return false;
+	}
+
+	timeMultiplier = atoi(inArgv[1]);
 
 	return true;
 }
