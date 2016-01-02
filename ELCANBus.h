@@ -29,10 +29,61 @@
 /*
 	ABOUT
 
-	
+	Send and receive CAN bus messages
 */
 
-#include <FlexCAN.h>
+#if defined(WIN32)
+
+	#include <Arduino.h>
+
+	struct CAN_message_t
+	{
+		uint32_t id; // can identifier
+		uint8_t ext; // identifier is extended
+		uint8_t len; // length of data
+		uint16_t timeout; // milliseconds, zero will disable waiting
+		uint8_t buf[8];
+	};
+
+	class FlexCAN
+	{
+	public:
+		
+		FlexCAN(
+			uint32_t baud /* = 125000 */)
+		{
+		}
+
+		void
+		begin(
+			void)
+		{
+		}
+
+		bool
+		available(
+			void)
+		{
+			return false;
+		}
+
+		int
+		read(
+			CAN_message_t&	outMsg)
+		{
+			return 0;
+		}
+
+		int
+		write(
+			CAN_message_t const&	outMsg)
+		{
+			return 0;
+		}
+	};
+#else
+	#include <FlexCAN.h>
+#endif
 
 #include "ELModule.h"
 
