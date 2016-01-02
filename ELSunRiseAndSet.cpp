@@ -212,8 +212,8 @@ CSunRiseAndSetModule::CancelEvent(
 
 bool
 CSunRiseAndSetModule::SerialSetLonLat(
-	int		inArgC,
-	char*	inArgv[])
+	int			inArgC,
+	char const*	inArgv[])
 {
 	if(inArgC != 3)
 	{
@@ -230,8 +230,8 @@ CSunRiseAndSetModule::SerialSetLonLat(
 
 bool
 CSunRiseAndSetModule::SerialGetLonLat(
-	int		inArgC,
-	char*	inArgv[])
+	int			inArgC,
+	char const*	inArgv[])
 {
 	Serial.printf("%03.03f %03.03f\n", lon, lat);
 	return true;
@@ -337,8 +337,6 @@ CSunRiseAndSetModule::ScheduleNextEvent(
 			return;
 		}
 	}
-
-	DebugMsg(eDbgLevel_Medium, "%s scheduled for %02d/%02d/%04d %02d:%02d:%02d", inEvent->name, targetMonth, targetDay, targetYear, targetHour, targetMin, targetSec);
 
 	// Set the alarm to fire
 	gRealTime->RegisterAlarm(

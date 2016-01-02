@@ -233,13 +233,13 @@ private:
 
 	bool
 	SerialSetLonLat(
-		int		inArgC,
-		char*	inArgv[]);
+		int			inArgC,
+		char const*	inArgv[]);
 
 	bool
 	SerialGetLonLat(
-		int		inArgC,
-		char*	inArgv[]);
+		int			inArgC,
+		char const*	inArgv[]);
 
 	SEvent*
 	FindEvent(
