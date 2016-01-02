@@ -84,8 +84,8 @@ class CExampleModule : public CModule, public IDigitalIOEventHandler, public ISe
 
 	bool
 	SerialCmdHello(
-		int		inArgC,
-		char*	inArgv[])
+		int			inArgC,
+		char const*	inArgv[])
 	{
 		Serial.printf("Hello World\n");
 
