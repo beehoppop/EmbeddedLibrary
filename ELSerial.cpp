@@ -83,7 +83,8 @@ CModule_SerialCmd::RegisterCommand(
 	ISerialCmdHandler*	inCmdHandler,
 	TSerialCmdMethod	inMethod)
 {
-	MReturnOnError(handlerCount >= eSerial_MaxCommands || strlen(inCmdName) + 1 >= eSerial_MaxNameLen);
+	MReturnOnError(handlerCount >= eSerial_MaxCommands);
+	MReturnOnError(strlen(inCmdName) > eSerial_MaxNameLen);
 
 	SCommand*	newCommand = commandList + handlerCount++;
 
@@ -133,7 +134,7 @@ CModule_SerialCmd::ProcessSerialMsg(
 	{
 		if(strcmp(commandList[itr].name, components[0]) == 0)
 		{
-			return (commandList[itr].handler->*commandList[itr].method)(curCompIndex, components);
+			return (commandList[itr].handler->*commandList[itr].method)(curCompIndex, (char const**)components);
 		}
 	}
 

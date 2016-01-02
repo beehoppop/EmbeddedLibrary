@@ -36,7 +36,7 @@
 
 enum
 {
-	eSerial_MaxNameLen = 16,
+	eSerial_MaxNameLen = 15,
 	eSerial_MaxCommands = 64,
 	eSerial_MaxCommandArgs = 64,
 };
@@ -50,8 +50,8 @@ public:
 // The typedef for the command handler method
 typedef bool
 (ISerialCmdHandler::*TSerialCmdMethod)(
-	int		inArgC,
-	char*	inArgv[]);
+	int			inArgC,
+	char const*	inArgv[]);
 
 class CModule_SerialCmd : public CModule
 {
@@ -75,7 +75,7 @@ private:
 	
 	struct SCommand
 	{
-		char				name[eSerial_MaxNameLen];
+		char				name[eSerial_MaxNameLen + 1];
 		ISerialCmdHandler*	handler;
 		TSerialCmdMethod	method;
 	};
