@@ -28,8 +28,65 @@
 #include "ELModule.h"
 #include "ELConfig.h"
 
+#define MBufferMsgs 1
+
 static IDebugMsgHandler*	gHandlers[eMaxDebugMsgHandlers];
 static int					gHandlerCount;
+
+#if MBufferMsgs
+static char		gMsgBuffer[2048];
+static uint32_t	gMsgBufferIndex = 0;
+
+class CDebugSerialHanlder : public CModule, public ISerialCmdHandler
+{
+public:
+	
+	CDebugSerialHanlder(
+		)
+		:
+		CModule(
+			"asrt",
+			0,
+			0,
+			0,
+			1)
+	{
+	}
+
+	virtual void
+	Setup(
+		void)
+	{
+		gSerialCmd->RegisterCommand("dump_dbg", this, static_cast<TSerialCmdMethod>(&CDebugSerialHanlder::DbgLogDump));
+	}
+
+	bool
+	DbgLogDump(
+		int			inArgC,
+		char const*	inArgV[])
+	{
+		#if MBufferMsgs
+		Serial.write("*****\n");
+		if(gMsgBufferIndex <= sizeof(gMsgBuffer))
+		{
+			Serial.write(gMsgBuffer, gMsgBufferIndex);
+		}
+		else
+		{
+			Serial.write(gMsgBuffer + (gMsgBufferIndex % sizeof(gMsgBuffer)), sizeof(gMsgBuffer) - (gMsgBufferIndex % sizeof(gMsgBuffer)));
+			Serial.write(gMsgBuffer, (gMsgBufferIndex % sizeof(gMsgBuffer)));
+		}
+		Serial.write("\n*****\n");
+		#endif
+
+		return true;
+	}
+
+};
+
+CDebugSerialHanlder	gDebugSerialHandler;
+#endif
+
 
 void
 AssertFailed(
@@ -49,7 +106,7 @@ DebugMsg(
 	char const*	inMsg,
 	...)
 {
-	if(gConfig != NULL && inLevel > gConfig->GetVal(eConfigVar_DebugLevel))
+	if(gConfig != NULL && inLevel > gConfig->GetVal(gConfig->debugLevelIndex))
 		return;
 
 	va_list	varArgs;
@@ -73,9 +130,20 @@ DebugMsg(
 	snprintf(finalBuffer, sizeof(finalBuffer), "[%s] %s", timestamp, vabuffer);
 	Serial.print(finalBuffer);
 	int	strLen = strlen(finalBuffer);
+
+	#if MBufferMsgs
+	for(int i = 0; i < strLen; ++i)
+	{
+		gMsgBuffer[gMsgBufferIndex++ % sizeof(gMsgBuffer)] = finalBuffer[i];
+	}
+	#endif
+
 	if(finalBuffer[strLen - 1] != '\n')
 	{
 		Serial.print('\n');
+		#if MBufferMsgs
+		gMsgBuffer[gMsgBufferIndex++ % sizeof(gMsgBuffer)] = '\n';
+		#endif
 	}
 
 	for(int itr = 0; itr < gHandlerCount; ++itr)
