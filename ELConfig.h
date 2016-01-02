@@ -37,12 +37,9 @@
 
 enum
 {
-	eConfigVar_NodeID,				// A unique number to identify this node in a networked environment such as a CAN bus
-	eConfigVar_BlinkLED,			// If non-zero blink the LED during the main update loop as proof of life
-	eConfigVar_DebugLevel,			// See ELAssert.h eDbgLevel_* enum values
-	eConfigVar_FirstUserAvailable,	// User sketches can add additional config values here
+	eConfigVar_Max = 16,
 
-	eConfigVar_Max = 16
+	eConfigVar_MaxNameLength = 15,
 };
 
 class CModule_Config : public CModule, public ISerialCmdHandler
@@ -60,6 +57,14 @@ public:
 		uint8_t	inVar,
 		uint8_t	inVal);
 
+	int
+	RegisterConfigVar(
+		char const*	inName);
+	
+	int	nodeIDIndex;		// config index for the node ID config var
+	int	blinkLEDIndex;		// config index for blink LED config var
+	int	debugLevelIndex;	// config index for the debug level config var
+
 private:
 	
 	CModule_Config(
@@ -68,14 +73,41 @@ private:
 	virtual void
 	Setup(
 		void);
-	
+
 	virtual void
-	ResetState(
+	EEPROMInitialize(
 		void);
 
-	uint8_t	configVar[eConfigVar_Max];
+	bool
+	SetConfig(
+		int			inArgC,
+		char const*	inArgv[]);
+
+	bool
+	GetConfig(
+		int			inArgC,
+		char const*	inArgv[]);
+
+	int
+	GetVarFromStr(
+		char const*	inStr);
+
+	void
+	SetupFinished(
+		void);
+
+	struct SConfigVar
+	{
+		char	name[eConfigVar_MaxNameLength];
+		uint8_t	value;
+	};
+
+	SConfigVar	configVars[eConfigVar_Max];
+	bool		configVarUsed[eConfigVar_Max];
 
 	static CModule_Config	module;
+
+	friend class CModule;
 };
 
 extern CModule_Config*	gConfig;

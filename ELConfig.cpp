@@ -27,6 +27,7 @@
 #include "ELAssert.h"
 #include "ELConfig.h"
 #include "ELUtilities.h"
+#include "ELSerial.h"
 
 CModule_Config*	gConfig;
 CModule_Config	CModule_Config::module;
@@ -34,7 +35,7 @@ CModule_Config	CModule_Config::module;
 CModule_Config::CModule_Config(
 	)
 	:
-	CModule("cnfg", sizeof(configVar), 0, 0, 255)
+	CModule("cnfg", sizeof(configVars), 1, 0, 255)
 {
 }
 
@@ -45,13 +46,27 @@ CModule_Config::Setup(
 	gConfig = this;
 	MAssert(eepromOffset > 0);
 
-	LoadDataFromEEPROM(configVar, eepromOffset, sizeof(configVar));
+	LoadDataFromEEPROM(configVars, eepromOffset, sizeof(configVars));
+
+	for(int i = 0; i < eConfigVar_Max; ++i)
+	{
+		configVarUsed[i] = false;
+	}
+
+	gSerialCmd->RegisterCommand("set_config", this, static_cast<TSerialCmdMethod>(&CModule_Config::SetConfig));
+	gSerialCmd->RegisterCommand("get_config", this, static_cast<TSerialCmdMethod>(&CModule_Config::GetConfig));
+
+	nodeIDIndex = RegisterConfigVar("node_id");
+	blinkLEDIndex = RegisterConfigVar("blink_led");
+	debugLevelIndex = RegisterConfigVar("debug_level");
 }
 
 void
-CModule_Config::ResetState(
+CModule_Config::EEPROMInitialize(
 	void)
 {
+	memset(configVars, sizeof(configVars), 0);
+	WriteDataToEEPROM(configVars, eepromOffset, sizeof(configVars));
 }
 
 uint8_t
@@ -60,7 +75,7 @@ CModule_Config::GetVal(
 {
 	MAssert(eepromOffset > 0);
 	MAssert(inVar < eConfigVar_Max);
-	return configVar[inVar];
+	return configVars[inVar].value;
 }
 
 void
@@ -70,6 +85,114 @@ CModule_Config::SetVal(
 {
 	MAssert(eepromOffset > 0);
 	MAssert(inVar < eConfigVar_Max);
-	configVar[inVar] = inVal;
-	EEPROM.write(eepromOffset + inVar, inVal);
+	configVars[inVar].value = inVal;
+	EEPROM.write(eepromOffset + ((uint8_t*)&configVars[inVar].value - (uint8_t*)configVars), inVal);
 }
+
+bool
+CModule_Config::SetConfig(
+	int			inArgC,
+	char const*	inArgv[])
+{
+	if(inArgC != 3)
+	{
+		return false;
+	}
+
+	int	targetVar = GetVarFromStr(inArgv[1]);
+	int	targetVal = atoi(inArgv[2]);
+
+	if(targetVar < 0)
+	{
+		return false;
+	}
+
+	SetVal((uint8_t)targetVar, (uint8_t)targetVal);
+
+	return true;
+}
+
+bool
+CModule_Config::GetConfig(
+	int			inArgC,
+	char const*	inArgv[])
+{
+	if(inArgC != 2)
+	{
+		return false;
+	}
+	
+	int	targetVar = GetVarFromStr(inArgv[1]);
+
+	if(targetVar < 0)
+	{
+		return false;
+	}
+
+	Serial.printf("%s = %d\n", inArgv[1], GetVal((uint8_t)targetVar));
+
+	return true;
+}
+
+int
+CModule_Config::RegisterConfigVar(
+	char const*	inName)
+{
+	MReturnOnError(strlen(inName) > eConfigVar_MaxNameLength, -1);
+
+	int	targetIndex = -1;
+	for(int i = 0; i < eConfigVar_Max; ++i)
+	{
+		if(strcmp(inName, configVars[i].name) == 0)
+		{
+			configVarUsed[i] = true;
+			return i;
+		}
+
+		if(targetIndex < 0 && configVars[i].name[0] == 0)
+		{
+			targetIndex = i;
+		}
+	}
+
+	MReturnOnError(targetIndex < 0, -1);
+
+	configVarUsed[targetIndex] = true;
+	strcpy(configVars[targetIndex].name, inName);
+	configVars[targetIndex].value = 0;
+
+	WriteDataToEEPROM(&configVars[targetIndex], eepromOffset + ((uint8_t*)&configVars[targetIndex] - (uint8_t*)configVars), sizeof(configVars[0]));
+
+	return targetIndex;
+}
+
+int
+CModule_Config::GetVarFromStr(
+	char const*	inStr)
+{
+	for(int i = 0; i < eConfigVar_Max; ++i)
+	{
+		if(strcmp(inStr, configVars[i].name) == 0)
+		{
+			return i;
+		}
+
+	}
+
+	return -1;
+}
+
+void
+CModule_Config::SetupFinished(
+	void)
+{
+	for(int i = 0; i < eConfigVar_Max; ++i)
+	{
+		if(configVarUsed[i] == false)
+		{
+			// This var is no longer in use so reclaim it
+			configVars[i].name[0] = 0;
+		}
+	}
+}
+
