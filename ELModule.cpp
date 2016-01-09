@@ -64,10 +64,43 @@ static bool			gFlashLED;
 uint64_t	gCurLocalMS;
 uint64_t	gCurLocalUS;
 
+char const*	gVersionStr;
+
+class CModuleManager : public CModule, public ISerialCmdHandler
+{
+	CModuleManager(
+		)
+		:
+		CModule("mdmg", 0, 0, 0, 253)
+	{
+	}
+
+	virtual void
+	Setup(
+		void)
+	{
+		gSerialCmd->RegisterCommand("alive", this, static_cast<TSerialCmdMethod>(&CModuleManager::SerialCmdAlive));
+	}
+
+	bool
+	SerialCmdAlive(
+		int			inArgC,
+		char const*	inArgV[])
+	{
+		DebugMsg(eDbgLevel_Basic, "ALIVE node=%d ver=%s build date=%s %s\n", gConfig->GetVal(gConfig->nodeIDIndex), gVersionStr, __DATE__, __TIME__);
+		
+		return true;
+	}
+
+	static CModuleManager	module;
+};
+CModuleManager	CModuleManager::module;
+
 CModule::CModule(
 	char const*	inUID,
 	uint16_t	inEEPROMSize,
 	uint16_t	inEEPROMVersion,
+	void*		inEEPROMData,
 	uint32_t	inUpdateTimeUS,
 	uint8_t		inPriority,
 	bool		inEnabled)
@@ -75,6 +108,7 @@ CModule::CModule(
 	uid((inUID[0] << 24) | (inUID[1] << 16) | (inUID[2] << 8) | inUID[3]),
 	eepromSize(inEEPROMSize),
 	eepromVersion(inEEPROMVersion),
+	eepromData(inEEPROMData),
 	updateTimeUS(inUpdateTimeUS),
 	priority(inPriority),
 	enabled(inEnabled)
@@ -137,6 +171,16 @@ CModule::EEPROMInitialize(
 	for(int i = eepromOffset; i < eepromOffset + eepromSize; ++i)
 	{
 		EEPROM.write(i, 0xFF);
+	}
+}
+
+void
+CModule::EEPROMSave(
+	void)
+{
+	if(eepromData != NULL)
+	{
+		WriteDataToEEPROM(eepromData, eepromOffset, eepromSize);
 	}
 }
 
@@ -216,8 +260,10 @@ FindAvailableEEPROMOffset(
 
 void
 CModule::SetupAll(
-	bool	inFlashLED)
+	char const*	inVersionStr,
+	bool		inFlashLED)
 {
+	gVersionStr = inVersionStr;
 	gFlashLED = inFlashLED;
 	if(inFlashLED)
 	{
@@ -328,20 +374,25 @@ CModule::SetupAll(
 	{
 		for(int i = 0; i < gModuleCount; ++i)
 		{
-			if(gModuleList[i]->priority == priorityItr)
+			CModule*	curModule = gModuleList[i];
+			if(curModule->priority == priorityItr)
 			{
 				#if MDebugDelayEachModule || MDebugDelayStart
-					DebugMsg(eDbgLevel_Medium, "Module: Setup %s\n", StringizeUInt32(gModuleList[i]->uid));
+					DebugMsg(eDbgLevel_Medium, "Module: Setup %s\n", StringizeUInt32(curModule->uid));
 				#endif
 				#if MDebugDelayEachModule
-					Need to fix this code to not reference gConfig since it has not been initialized yet
-					if(MDebugTargetNode == 0xFF || MDebugTargetNode == gConfig->GetVal(eConfigVar_NodeID))
+					//Need to fix this code to not reference gConfig since it has not been initialized yet
+					//if(MDebugTargetNode == 0xFF || MDebugTargetNode == gConfig->GetVal(eConfigVar_NodeID))
 					{
 						delay(3000);
 					}
 				#endif
-				gModuleList[i]->Setup();
-				gModuleList[i]->lastUpdateUS = gCurLocalUS;
+				if(curModule->eepromData != NULL)
+				{
+					LoadDataFromEEPROM(curModule->eepromData, curModule->eepromOffset, curModule->eepromSize);
+				}
+				curModule->Setup();
+				curModule->lastUpdateUS = gCurLocalUS;
 			}
 		}
 	}
@@ -394,7 +445,7 @@ CModule::ResetAllState(
 		gModuleList[i]->ResetState();
 	}
 
-	SetupAll(gFlashLED);
+	SetupAll(gVersionStr, gFlashLED);
 
 	gTearingDown = true;
 

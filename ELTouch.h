@@ -58,7 +58,7 @@ class ITouchEventHandler
 public:
 };
 
-typedef bool
+typedef void
 (ITouchEventHandler::*TTouchEventMethod)(
 	uint8_t		inID,
 	ETouchEvent	inEvent,

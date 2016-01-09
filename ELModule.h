@@ -60,12 +60,13 @@ protected:
 	
 	// This is the initializer for the module
 	CModule(
-		char const*	inUID,				// This is the 4 character unique ID for the module
-		uint16_t	inEEPROMSize,		// This is the amount of eeprom space needed for the module
-		uint16_t	inEEPROMVersion,	// This is the version number of the eeprom (so the system can reinitialize eeprom when the version number changes)
-		uint32_t	inUpdateTimeUS = 0,	// The period between Update() calles
-		uint8_t		inPriority = 0,		// This is the priority for initializing the module, higher priority modules are initialized before lower priority ones)
-		bool		inEnabled = true);	// This is the initial enabled state for the module
+		char const*	inUID,					// This is the 4 character unique ID for the module
+		uint16_t	inEEPROMSize = 0,		// This is the amount of eeprom space needed for the module
+		uint16_t	inEEPROMVersion = 0,	// This is the version number of the eeprom (so the system can reinitialize eeprom when the version number changes)
+		void*		inEEPROMData = NULL,	// A pointer to the local eeprom data storage
+		uint32_t	inUpdateTimeUS = 0,		// The period between Update() calles
+		uint8_t		inPriority = 0,			// This is the priority for initializing the module, higher priority modules are initialized before lower priority ones)
+		bool		inEnabled = true);		// This is the initial enabled state for the module
 	
 	// Override this to setup the initial state of the module
 	virtual void
@@ -87,9 +88,14 @@ protected:
 	ResetState(
 		void);
 	
-	// Override this to initialize eeprom state to a default value
+	// Override this to initialize eeprom data to a default value
 	virtual void
 	EEPROMInitialize(
+		void);
+
+	// This saves the eeprom data into the eeprom
+	void
+	EEPROMSave(
 		void);
 	
 	uint16_t		eepromOffset;
@@ -98,6 +104,7 @@ private:
 
 	uint16_t		eepromSize;
 	uint16_t		eepromVersion;
+	void*			eepromData;
 	uint32_t		updateTimeUS;
 	uint64_t		lastUpdateUS;
 	uint8_t			priority;
@@ -106,7 +113,8 @@ private:
 	// This is called from the sketch's setup() function in the .ino file
 	static void
 	SetupAll(
-		bool	inFlashLED);
+		char const*	inVersionStr,
+		bool		inFlashLED);
 
 	// This is called from the sketch's loop() function in the .ino file
 	static void

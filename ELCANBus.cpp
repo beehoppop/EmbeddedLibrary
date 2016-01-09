@@ -31,6 +31,12 @@
 CModule_CANBus*	gCANBus;
 CModule_CANBus	CModule_CANBus::module;
 
+enum
+{
+	eSysMsg_SerialOutput = 128,
+	eSysMsg_SerialCmd = 129,
+};
+
 void
 CANIDToComponents(
 	uint32_t	inID,
@@ -58,11 +64,26 @@ CANIDFromComponents(
 CModule_CANBus::CModule_CANBus(
 	)
 	:
-	CModule("canb", 0, 0, 100, 254),
+	CModule("canb", 0, 0, NULL, 100, 254),
 	canBus(500000)
 {
 	gCANBus = this;
 	canBus.begin();
+
+	targetNodeID = 0xFF;
+
+	for(int i = 0; i < eCANBus_MaxSerialCmdStates; ++i)
+	{
+		serialCmdStates[i].srcNodeID = 0xFF;
+		serialCmdStates[i].serialCmdLength = 0;
+	}
+}
+
+void
+CModule_CANBus::Setup(
+	void)
+{
+	gSerialCmd->RegisterCommand("cb_send", this, static_cast<TSerialCmdMethod>(&CModule_CANBus::SerialCmdSend));
 }
 
 void
@@ -122,6 +143,51 @@ CModule_CANBus::SendFormatMsg(
 {
 	CAN_message_t	msg;
 
+	va_list	varArgs;
+	va_start(varArgs, inMsg);
+	char	vabuffer[256];
+	vsnprintf(vabuffer, sizeof(vabuffer), inMsg, varArgs);
+	va_end(varArgs);
+
+	msg.id = CANIDFromComponents(gConfig->GetVal(gConfig->nodeIDIndex), inDstNode, inMsgType, 0);
+	msg.ext = 1;
+	msg.timeout = 100;
+
+	int	msgLen = 0;
+	char*	cp = vabuffer;
+
+	for(;;)
+	{
+		char c = *cp++;
+
+		msg.buf[msgLen++] = c;
+
+		if(c == 0)
+			break;
+
+		if(msgLen >= (int)sizeof(msg.buf))
+		{
+			msg.len = sizeof(msg.buf);
+			canBus.write(msg);
+			msgLen = 0;
+		}
+	}
+
+	if(msgLen > 0)
+	{
+		msg.len = msgLen;
+		canBus.write(msg);
+	}
+}
+
+void
+CModule_CANBus::SendString(
+	uint8_t		inDstNode,
+	uint8_t		inMsgType,
+	char const*	inStr)
+{
+	CAN_message_t	msg;
+
 	msg.id = CANIDFromComponents(gConfig->GetVal(gConfig->nodeIDIndex), inDstNode, inMsgType, 0);
 	msg.ext = 1;
 	msg.timeout = 100;
@@ -130,16 +196,16 @@ CModule_CANBus::SendFormatMsg(
 
 	for(;;)
 	{
-		char c = *inMsg++;
+		char c = *inStr++;
+
+		msg.buf[msgLen++] = c;
 
 		if(c == 0)
 			break;
 
-		msg.buf[msgLen++] = c;
-
-		if(msgLen >= 8)
+		if(msgLen >= (int)sizeof(msg.buf))
 		{
-			msg.len = 8;
+			msg.len = sizeof(msg.buf);
 			canBus.write(msg);
 			msgLen = 0;
 		}
@@ -171,8 +237,47 @@ CModule_CANBus::ProcessCANMsg(
 		return;
 	}
 
-	(handlerList[msgType].handlerObject->*handlerList[msgType].method)(srcNode, dstNode, msgType, flags, inMsg.len, inMsg.buf);
+	if(msgType == eSysMsg_SerialOutput)
+	{
+		Serial.write(inMsg.buf, inMsg.len);
+	}
+	else if(msgType == eSysMsg_SerialCmd)
+	{
+		SSerialCmdState*	targetState = NULL;
 
+		for(int i = 0; i < eCANBus_MaxSerialCmdStates; ++i)
+		{
+			if(serialCmdStates[i].srcNodeID == srcNode)
+			{
+				targetState = serialCmdStates + i;
+				break;
+			}
+			else if(targetState == NULL && serialCmdStates[i].srcNodeID == 0xFF)
+			{
+				targetState = serialCmdStates + i;
+			}
+		}
+		MReturnOnError(targetState == NULL);
+
+		targetState->srcNodeID = srcNode;
+
+		memcpy(targetState->serialCmdBuffer + targetState->serialCmdLength, inMsg.buf, inMsg.len);
+		targetState->serialCmdLength += inMsg.len;
+
+		if(targetState->serialCmdBuffer[targetState->serialCmdLength - 1] == 0)
+		{
+			targetNodeID = srcNode;
+			gSerialCmd->ProcessCommand(targetState->serialCmdBuffer);
+			targetNodeID = 0xFF;
+
+			targetState->srcNodeID = 0xFF;
+			targetState->serialCmdLength = 0;
+		}
+	}
+	else
+	{
+		(handlerList[msgType].handlerObject->*handlerList[msgType].method)(srcNode, dstNode, msgType, flags, inMsg.len, inMsg.buf);
+	}
 }
 
 void
@@ -195,3 +300,36 @@ CModule_CANBus::DumpMsg(
 		);
 }
 
+bool
+CModule_CANBus::SerialCmdSend(
+	int			inArgC,
+	char const*	inArgV[])
+{
+	int	dstNodeID = atoi(inArgV[1]);
+
+	char	buffer[256];
+	int		bufferLen = 0;
+
+	for(int i = 2; i < inArgC; ++i)
+	{
+		int	argLen = strlen(inArgV[i]);
+		memcpy(buffer + bufferLen, inArgV[i], argLen);
+		bufferLen += argLen;
+		buffer[bufferLen++] = ' ';
+	}
+	buffer[bufferLen++] = 0;
+
+	SendString(dstNodeID, eSysMsg_SerialCmd, buffer);
+
+	return true;
+}
+
+void
+CModule_CANBus::OutputDebugMsg(
+	char const*	inMsg)
+{
+	if(targetNodeID != 0xFF)
+	{
+		SendString(targetNodeID, eSysMsg_SerialOutput, inMsg);
+	}
+}

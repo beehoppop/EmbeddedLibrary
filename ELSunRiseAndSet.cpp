@@ -82,7 +82,7 @@ CSunRiseAndSetModule*	gSunRiseAndSet;
 CSunRiseAndSetModule::CSunRiseAndSetModule(
 	)
 	:
-	CModule("SRAS", sizeof(double) * 2, 1, 0, 1)
+	CModule("SRAS", sizeof(SSettings), 1, &settings, 0, 1)
 {
 	gSunRiseAndSet = this;
 }
@@ -91,11 +91,8 @@ void
 CSunRiseAndSetModule::Setup(
 	void)
 {
-	LoadDataFromEEPROM(&lon, eepromOffset, sizeof(double));
-	LoadDataFromEEPROM(&lat, eepromOffset + sizeof(double), sizeof(double));
-
-	gSerialCmd->RegisterCommand("set_lonlat", this, static_cast<TSerialCmdMethod>(&CSunRiseAndSetModule::SerialSetLonLat));
-	gSerialCmd->RegisterCommand("get_lonlat", this, static_cast<TSerialCmdMethod>(&CSunRiseAndSetModule::SerialGetLonLat));
+	gSerialCmd->RegisterCommand("lonlat_set", this, static_cast<TSerialCmdMethod>(&CSunRiseAndSetModule::SerialSetLonLat));
+	gSerialCmd->RegisterCommand("lonlat_get", this, static_cast<TSerialCmdMethod>(&CSunRiseAndSetModule::SerialGetLonLat));
 }
 
 void
@@ -104,12 +101,11 @@ CSunRiseAndSetModule::SetLongitudeAndLatitude(
 	double	inLatitude,
 	bool	inSaveInEEPROM)
 {
-	lon = inLongitude;
-	lat = inLatitude;
+	settings.lon = inLongitude;
+	settings.lat = inLatitude;
 	if(inSaveInEEPROM)
 	{
-		WriteDataToEEPROM(&lon, eepromOffset, sizeof(double));
-		WriteDataToEEPROM(&lat, eepromOffset + sizeof(double), sizeof(double));
+		EEPROMSave();
 	}
 }
 
@@ -118,8 +114,8 @@ CSunRiseAndSetModule::GetLongitudeAndLatitude(
 	double&	outLongitude,
 	double&	outLatitude)
 {
-	outLongitude = lon;
-	outLatitude = lat;
+	outLongitude = settings.lon;
+	outLatitude = settings.lat;
 }
 
 void
@@ -233,7 +229,7 @@ CSunRiseAndSetModule::SerialGetLonLat(
 	int			inArgC,
 	char const*	inArgv[])
 {
-	Serial.printf("%03.03f %03.03f\n", lon, lat);
+	Serial.printf("%03.03f %03.03f\n", settings.lon, settings.lat);
 	return true;
 }
 
@@ -287,22 +283,23 @@ CSunRiseAndSetModule::ScheduleNextEvent(
 		return;
 	}
 
-	// Get the event hour for the target date
+	// Get the event epoch time for the target date
 	TEpochTime		eventEpochTime;
 	if(inEvent->sunRise)
 	{
-		eventEpochTime = GetSunriseEpochTime(targetYear, targetMonth, targetDay, inEvent->utc, lon, lat, inEvent->sunOffset, inEvent->sunRelativePosition);
+		eventEpochTime = GetSunriseEpochTime(targetYear, targetMonth, targetDay, inEvent->utc, settings.lon, settings.lat, inEvent->sunOffset, inEvent->sunRelativePosition);
 	}
 	else
 	{
-		eventEpochTime = GetSunsetEpochTime(targetYear, targetMonth, targetDay, inEvent->utc, lon, lat, inEvent->sunOffset, inEvent->sunRelativePosition);
+		eventEpochTime = GetSunsetEpochTime(targetYear, targetMonth, targetDay, inEvent->utc, settings.lon, settings.lat, inEvent->sunOffset, inEvent->sunRelativePosition);
 	}
 
 	gRealTime->GetComponentsFromEpochTime(eventEpochTime, targetYear, targetMonth, targetDay, targetDOW, targetHour, targetMin, targetSec);
 
 	// if this event was in the past and any component is eAlarm_Any then reschedule given the computed hour, min, sec of the event
-	if(eventEpochTime < gRealTime->GetEpochTime(inEvent->utc))
+	if(eventEpochTime <= gRealTime->GetEpochTime(inEvent->utc))
 	{
+		DebugMsg(eDbgLevel_Basic, "%s scheduling for next day because it has passed", inEvent->name);
 		if(inEvent->year == eAlarm_Any || inEvent->month == eAlarm_Any || inEvent->day == eAlarm_Any || inEvent->dow == eAlarm_Any)
 		{
 			targetYear = inEvent->year;
@@ -321,11 +318,11 @@ CSunRiseAndSetModule::ScheduleNextEvent(
 			// Since we will have a new date we need to compute the event again
 			if(inEvent->sunRise)
 			{
-				eventEpochTime = GetSunriseEpochTime(targetYear, targetMonth, targetDay, inEvent->utc, lon, lat, inEvent->sunOffset, inEvent->sunRelativePosition);
+				eventEpochTime = GetSunriseEpochTime(targetYear, targetMonth, targetDay, inEvent->utc, settings.lon, settings.lat, inEvent->sunOffset, inEvent->sunRelativePosition);
 			}
 			else
 			{
-				eventEpochTime = GetSunsetEpochTime(targetYear, targetMonth, targetDay, inEvent->utc, lon, lat, inEvent->sunOffset, inEvent->sunRelativePosition);
+				eventEpochTime = GetSunsetEpochTime(targetYear, targetMonth, targetDay, inEvent->utc, settings.lon, settings.lat, inEvent->sunOffset, inEvent->sunRelativePosition);
 			}
 
 			gRealTime->GetComponentsFromEpochTime(eventEpochTime, targetYear, targetMonth, targetDay, targetDOW, targetHour, targetMin, targetSec);
@@ -529,12 +526,12 @@ CSunRiseAndSetModule::GetDayLength(
 
 	if(inLon > 360.0)
 	{
-		inLon = lon;
+		inLon = settings.lon;
 	}
 
 	if(inLat > 360.0)
 	{
-		inLat = lat;
+		inLat = settings.lat;
 	}
 
 	/* Compute d of 12h local mean solar time */
@@ -599,12 +596,12 @@ CSunRiseAndSetModule::GetSunRiseAndSetEpochTime(
 
 	if(inLon > 360.0)
 	{
-		inLon = lon;
+		inLon = settings.lon;
 	}
 
 	if(inLat > 360.0)
 	{
-		inLat = lat;
+		inLat = settings.lat;
 	}
 
 	if(!inUTC)
@@ -685,12 +682,12 @@ CSunRiseAndSetModule::GetSunriseEpochTime(
 
 	if(inLon > 360.0)
 	{
-		inLon = lon;
+		inLon = settings.lon;
 	}
 
 	if(inLat > 360.0)
 	{
-		inLat = lat;
+		inLat = settings.lat;
 	}
 
 	if(!inUTC)
@@ -769,12 +766,12 @@ CSunRiseAndSetModule::GetSunsetEpochTime(
 
 	if(inLon > 360.0)
 	{
-		inLon = lon;
+		inLon = settings.lon;
 	}
 
 	if(inLat > 360.0)
 	{
-		inLat = lat;
+		inLat = settings.lat;
 	}
 
 	if(!inUTC)

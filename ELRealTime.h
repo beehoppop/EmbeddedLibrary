@@ -32,10 +32,10 @@
 	This module handles date and time. It allows for an external time provider, understands time zones, and provides alarm and event services.
 
 	Serial Port Commands:
-		set_time [year] [month] [day] [hour] [min] [sec] ["local" | "utc"] - sets the current time and sets it with the provider if possible
-		get_time - prints the time to the console
+		time_set [year] [month] [day] [hour] [min] [sec] ["local" | "utc"] - sets the current time and sets it with the provider if possible
+		time_get - prints the time to the console
 
-		set_timezone [name] [dst start week] [dst start day of week] [dst start month] [dst start hour] [dst utc offset mins] [std start week] [std start day of week] [std start month] [std start hour] [std utc offset mins]
+		timezone_set [name] [dst start week] [dst start day of week] [dst start month] [dst start hour] [dst utc offset mins] [std start week] [std start day of week] [std start month] [std start hour] [std utc offset mins]
 			[name] - the name of the time zone
 			[dst start week] - 0 is the last week of the month, 1-4 specifies first through 4th week of the month for daylight savings time start
 			[dst start day of week] - 1-7 the start day of the week for daylight savings time start
@@ -48,10 +48,10 @@
 			[std start hour] - the hour for standard time start
 			[std utc offset mins] - the offset from UTC for standard time
 
-		get_timezone - prints the current time zone info in the above format to the serial port
+		timezone_get - prints the current time zone info in the above format to the serial port
 
 		realtime_dump - dump the list of scheduled alarms and events - used for debugging
-		set_time_mult - speed up time by the given amount - used for debugging
+		realtime_set_mult - speed up time by the given amount - used for debugging
 */
 
 #include <ELModule.h>
@@ -322,6 +322,18 @@ public:
 		int&	ioMin,			// 00 to 59 or eAlarm_Any
 		int&	ioSec,			// 00 to 59 or eAlarm_Any
 		bool	inUTC = false);
+
+	// Given the date and time (of which components may be eAlarm_Any) return the next date time past the current time, return false if there is not a valid date and time past the current time
+	bool
+	GetNextDateTimeFromTime(
+		TEpochTime	inTime,
+		int&		ioYear,			// xxxx 4 digit year or eAlarm_Any
+		int&		ioMonth,		// 1 to 12 or eAlarm_Any
+		int&		ioDay,			// 1 to 31 or eAlarm_Any
+		int&		ioDayOfWeek,	// 1 to 7 or eAlarm_Any
+		int&		ioHour,			// 00 to 23 or eAlarm_Any
+		int&		ioMin,			// 00 to 59 or eAlarm_Any
+		int&		ioSec);			// 00 to 59 or eAlarm_Any
 	
 	// Return -1 if the given time components are earlier then now, 1 if later, or 0 if right now
 	int

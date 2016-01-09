@@ -258,9 +258,14 @@ private:
 		char const*	inName,
 		void*		inReference);
 
-	int		eventCount;
-	SEvent	eventList[eMaxSunRiseSetEvents];
-	double	lon, lat;
+	struct SSettings
+	{
+		double	lon, lat;
+	};
+
+	int			eventCount;
+	SEvent		eventList[eMaxSunRiseSetEvents];
+	SSettings	settings;
 
 	static CSunRiseAndSetModule	module;
 

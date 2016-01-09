@@ -86,11 +86,14 @@
 #endif
 
 #include "ELModule.h"
+#include "ELSerial.h"
+#include "ELAssert.h"
 
 enum
 {
 	eCANBus_MaxMsgLength = 8,
 	eCANBus_MaxMsgType = 32,
+	eCANBus_MaxSerialCmdStates = 4,
 };
 
 class ICANBusMsgHandler
@@ -107,7 +110,7 @@ typedef void
 	uint8_t		inMsgSize,
 	void const*	inMsgData);
 
-class CModule_CANBus : public CModule
+class CModule_CANBus : public CModule, public ISerialCmdHandler, public IDebugMsgHandler
 {
 public:
 
@@ -132,10 +135,20 @@ public:
 		char const*	inMsg,
 		...);
 
+	void
+	SendString(
+		uint8_t		inDstNode,
+		uint8_t		inMsgType,
+		char const*	inStr);
+
 private:
 	
 	CModule_CANBus(
 		);
+
+	virtual void
+	Setup(
+		void);
 
 	virtual void
 	Update(
@@ -155,8 +168,27 @@ private:
 	DumpMsg(
 		CAN_message_t const&	inMsg);
 
+	bool
+	SerialCmdSend(
+		int			inArgC,
+		char const*	inArgV[]);
+
+	virtual void
+	OutputDebugMsg(
+		char const*	inMsg);
+
+	struct SSerialCmdState
+	{
+		uint8_t	srcNodeID;
+		uint8_t	serialCmdLength;
+		char	serialCmdBuffer[128];
+	};
+
 	SMsgHandler	handlerList[eCANBus_MaxMsgType];
 	FlexCAN	canBus;
+	SSerialCmdState	serialCmdStates[eCANBus_MaxSerialCmdStates];
+
+	uint8_t	targetNodeID;
 
 	static CModule_CANBus	module;
 };

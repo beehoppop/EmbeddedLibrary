@@ -35,7 +35,7 @@ CModule_Config	CModule_Config::module;
 CModule_Config::CModule_Config(
 	)
 	:
-	CModule("cnfg", sizeof(configVars), 1, 0, 255)
+	CModule("cnfg", sizeof(configVars), 1, configVars, 0, 255)
 {
 }
 
@@ -46,15 +46,13 @@ CModule_Config::Setup(
 	gConfig = this;
 	MAssert(eepromOffset > 0);
 
-	LoadDataFromEEPROM(configVars, eepromOffset, sizeof(configVars));
-
 	for(int i = 0; i < eConfigVar_Max; ++i)
 	{
 		configVarUsed[i] = false;
 	}
 
-	gSerialCmd->RegisterCommand("set_config", this, static_cast<TSerialCmdMethod>(&CModule_Config::SetConfig));
-	gSerialCmd->RegisterCommand("get_config", this, static_cast<TSerialCmdMethod>(&CModule_Config::GetConfig));
+	gSerialCmd->RegisterCommand("config_set", this, static_cast<TSerialCmdMethod>(&CModule_Config::SetConfig));
+	gSerialCmd->RegisterCommand("config_get", this, static_cast<TSerialCmdMethod>(&CModule_Config::GetConfig));
 
 	nodeIDIndex = RegisterConfigVar("node_id");
 	blinkLEDIndex = RegisterConfigVar("blink_led");
@@ -66,7 +64,7 @@ CModule_Config::EEPROMInitialize(
 	void)
 {
 	memset(configVars, sizeof(configVars), 0);
-	WriteDataToEEPROM(configVars, eepromOffset, sizeof(configVars));
+	EEPROMSave();
 }
 
 uint8_t
@@ -86,7 +84,7 @@ CModule_Config::SetVal(
 	MAssert(eepromOffset > 0);
 	MAssert(inVar < eConfigVar_Max);
 	configVars[inVar].value = inVal;
-	EEPROM.write(eepromOffset + ((uint8_t*)&configVars[inVar].value - (uint8_t*)configVars), inVal);
+	EEPROMSave();
 }
 
 bool
@@ -161,7 +159,7 @@ CModule_Config::RegisterConfigVar(
 	strcpy(configVars[targetIndex].name, inName);
 	configVars[targetIndex].value = 0;
 
-	WriteDataToEEPROM(&configVars[targetIndex], eepromOffset + ((uint8_t*)&configVars[targetIndex] - (uint8_t*)configVars), sizeof(configVars[0]));
+	EEPROMSave();
 
 	return targetIndex;
 }
@@ -176,7 +174,6 @@ CModule_Config::GetVarFromStr(
 		{
 			return i;
 		}
-
 	}
 
 	return -1;
@@ -195,4 +192,3 @@ CModule_Config::SetupFinished(
 		}
 	}
 }
-

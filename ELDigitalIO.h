@@ -1,5 +1,5 @@
-#ifndef _ELDIGITALINPUT_h
-#define _ELDIGITALINPUT_h
+#ifndef _ELDIGITALIO_h
+#define _ELDIGITALIO_h
 /*
 	Author: Brent Pease (embeddedlibraryfeedback@gmail.com)
 
@@ -120,6 +120,7 @@ private:
 		uint8_t		mode;
 		bool		activeHigh;
 		uint8_t		lastState;
+		uint8_t		changeCount;
 		uint32_t	settleMS;
 		uint64_t	time;
 
@@ -135,5 +136,5 @@ private:
 
 extern CModule_DigitalIO*	gDigitalIO;
 
-#endif /* _ELDIGITALINPUT_h */
+#endif /* _ELDIGITALIO_h */
 

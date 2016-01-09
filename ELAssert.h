@@ -61,10 +61,6 @@ DebugMsg(
 class IDebugMsgHandler
 {
 public:
-	
-	virtual char const*
-	GetDebugID(
-		void) = 0;
 
 	virtual void
 	OutputDebugMsg(

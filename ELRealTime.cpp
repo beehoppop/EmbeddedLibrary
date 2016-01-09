@@ -210,6 +210,7 @@ CRealTime::CRealTime(
 		"rtc ",					// The module ID
 		sizeof(STimeZoneRule),	// eeprom size
 		1,						// eeprom version number
+		&timeZoneInfo,
 		1000000,				// Call the update method once a second
 		1)
 {
@@ -220,8 +221,6 @@ void
 CRealTime::Setup(
 	void)
 {
-	LoadDataFromEEPROM(&timeZoneInfo, eepromOffset, sizeof(timeZoneInfo));
-
 	if((uint8_t)timeZoneInfo.abbrev[0] == 0xFF)
 	{
 		// no time zone is set so just zero it out
@@ -233,14 +232,14 @@ CRealTime::Setup(
 		SetTimeZone(gTimeZone, false);
 	#endif
 
-	gSerialCmd->RegisterCommand("set_time", this, static_cast<TSerialCmdMethod>(&CRealTime::SerialSetTime));
-	gSerialCmd->RegisterCommand("get_time", this, static_cast<TSerialCmdMethod>(&CRealTime::SerialGetTime));
-	gSerialCmd->RegisterCommand("set_timezone", this, static_cast<TSerialCmdMethod>(&CRealTime::SerialSetTimeZone));
-	gSerialCmd->RegisterCommand("get_timezone", this, static_cast<TSerialCmdMethod>(&CRealTime::SerialGetTimeZone));
-	gSerialCmd->RegisterCommand("realtime_dump", this, static_cast<TSerialCmdMethod>(&CRealTime::SerialDumpTable));
-	gSerialCmd->RegisterCommand("set_time_mult", this, static_cast<TSerialCmdMethod>(&CRealTime::SerialSetMultiplier));
+	gSerialCmd->RegisterCommand("time_set", this, static_cast<TSerialCmdMethod>(&CRealTime::SerialSetTime));
+	gSerialCmd->RegisterCommand("time_get", this, static_cast<TSerialCmdMethod>(&CRealTime::SerialGetTime));
+	gSerialCmd->RegisterCommand("timezone_set", this, static_cast<TSerialCmdMethod>(&CRealTime::SerialSetTimeZone));
+	gSerialCmd->RegisterCommand("timezone_get", this, static_cast<TSerialCmdMethod>(&CRealTime::SerialGetTimeZone));
+	gSerialCmd->RegisterCommand("rt_dump", this, static_cast<TSerialCmdMethod>(&CRealTime::SerialDumpTable));
+	gSerialCmd->RegisterCommand("rt_set_mult", this, static_cast<TSerialCmdMethod>(&CRealTime::SerialSetMultiplier));
 
-	timeMultiplier = 1.0f;
+	timeMultiplier = 1;
 }
 
 void
@@ -266,10 +265,16 @@ CRealTime::Update(
 		{
 			// this alarm is triggered
 			DebugMsg(eDbgLevel_Medium, "Triggering alarm %s\n", curAlarm->name);
+			curAlarm->nextTriggerTimeUTC = 0;
 			bool	reschedule = (curAlarm->object->*curAlarm->method)(curAlarm->name, curAlarm->reference);
 			if(reschedule)
 			{
 				ScheduleAlarm(curAlarm);
+			}
+			else if(curAlarm->nextTriggerTimeUTC == 0)
+			{
+				// if the alarm has not been rescheduled by the event handler method cancel it here so it does not fire repeatedly
+				curAlarm->name[0] = 0;
 			}
 		}
 	}
@@ -305,7 +310,7 @@ CRealTime::SetTimeZone(
 
 	if(inWriteToEEPROM)
 	{
-		WriteDataToEEPROM(&timeZoneInfo, eepromOffset, sizeof(timeZoneInfo));
+		EEPROMSave();
 	}
 
 	RecomputeAlarms();
@@ -1020,7 +1025,10 @@ CRealTime::ScheduleAlarm(
 	}
 	else
 	{
-		DebugMsg(eDbgLevel_Basic, "%s could not be scheduled", inAlarm->name);
+		DebugMsg(eDbgLevel_Basic, "ScheduleAlarm: %s could not be scheduled", inAlarm->name);
+		DebugMsg(eDbgLevel_Medium, "  target was %02d/%02d/%04d %02d:%02d:%02d", inAlarm->month, inAlarm->dayOfMonth, inAlarm->year, inAlarm->hour, inAlarm->minute, inAlarm->second);
+		GetComponentsFromEpochTime(GetEpochTime(inAlarm->utc), year, month, day, dow, hour, min, sec);
+		DebugMsg(eDbgLevel_Medium, "  now is %02d/%02d/%04d %02d:%02d:%02d", month, day, year, hour, min, sec);
 		inAlarm->name[0] = 0;
 	}
 }
@@ -1304,7 +1312,7 @@ IncrementComp(
 					{
 						++daysThisMonth;
 					}
-					if(ioComponents[i] < daysThisMonth)
+					if(ioComponents[i] <= daysThisMonth)
 					{
 						return true;
 					}
@@ -1335,22 +1343,22 @@ IncrementComp(
 }
 
 bool
-CRealTime::GetNextDateTime(
-	int&	ioYear,
-	int&	ioMonth,
-	int&	ioDay,
-	int&	ioDayOfWeek,
-	int&	ioHour,
-	int&	ioMin,
-	int&	ioSec,
-	bool	inUTC)
+CRealTime::GetNextDateTimeFromTime(
+	TEpochTime	inTime,
+	int&		ioYear,			// xxxx 4 digit year or eAlarm_Any
+	int&		ioMonth,		// 1 to 12 or eAlarm_Any
+	int&		ioDay,			// 1 to 31 or eAlarm_Any
+	int&		ioDayOfWeek,	// 1 to 7 or eAlarm_Any
+	int&		ioHour,			// 00 to 23 or eAlarm_Any
+	int&		ioMin,			// 00 to 59 or eAlarm_Any
+	int&		ioSec)			// 00 to 59 or eAlarm_Any
 {
 	int		curComponents[eTimeCompCount];
 	int		ioComponents[eTimeCompCount] = {ioYear, ioMonth, ioDay, ioHour, ioMin, ioSec};
 	bool	anyComponents[eTimeCompCount];
 	int		compDOW;
 
-	GetComponentsFromEpochTime(GetEpochTime(inUTC), curComponents[eYear], curComponents[eMonth], curComponents[eDay], compDOW, curComponents[eHour], curComponents[eMin], curComponents[eSec]);
+	GetComponentsFromEpochTime(inTime, curComponents[eYear], curComponents[eMonth], curComponents[eDay], compDOW, curComponents[eHour], curComponents[eMin], curComponents[eSec]);
 	
 	int	i;
 	for(i = 0; i < eTimeCompCount; ++i)
@@ -1395,15 +1403,6 @@ CRealTime::GetNextDateTime(
 		}
 	}
 
-	if(i == eTimeCompCount && ioComponents[eSec] == curComponents[eSec])
-	{
-		// ensure we return a time in the future and not now
-		if(IncrementComp(ioComponents, anyComponents, eSec) == false)
-		{
-			return false;
-		}
-	}
-
 	compDOW = GetDayOfWeekFromEpoch(GetEpochTimeFromComponents(ioComponents[eYear], ioComponents[eMonth], ioComponents[eDay], 0, 0, 0));
 	if(ioDayOfWeek == eAlarm_Any)
 	{
@@ -1435,6 +1434,20 @@ CRealTime::GetNextDateTime(
 	ioSec = ioComponents[eSec];
 
 	return true;
+}
+
+bool
+CRealTime::GetNextDateTime(
+	int&	ioYear,
+	int&	ioMonth,
+	int&	ioDay,
+	int&	ioDayOfWeek,
+	int&	ioHour,
+	int&	ioMin,
+	int&	ioSec,
+	bool	inUTC)
+{
+	return GetNextDateTimeFromTime(GetEpochTime(inUTC), ioYear, ioMonth, ioDay, ioDayOfWeek, ioHour, ioMin, ioSec);
 }
 
 int

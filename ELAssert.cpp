@@ -34,7 +34,7 @@ static IDebugMsgHandler*	gHandlers[eMaxDebugMsgHandlers];
 static int					gHandlerCount;
 
 #if MBufferMsgs
-static char		gMsgBuffer[2048];
+static char		gMsgBuffer[1024 * 8];
 static uint32_t	gMsgBufferIndex = 0;
 
 class CDebugSerialHanlder : public CModule, public ISerialCmdHandler
@@ -48,6 +48,7 @@ public:
 			"asrt",
 			0,
 			0,
+			NULL,
 			0,
 			1)
 	{
@@ -57,7 +58,7 @@ public:
 	Setup(
 		void)
 	{
-		gSerialCmd->RegisterCommand("dump_dbg", this, static_cast<TSerialCmdMethod>(&CDebugSerialHanlder::DbgLogDump));
+		gSerialCmd->RegisterCommand("debug_dump", this, static_cast<TSerialCmdMethod>(&CDebugSerialHanlder::DbgLogDump));
 	}
 
 	bool

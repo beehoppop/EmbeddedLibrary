@@ -46,7 +46,7 @@ CModule_Touch*	gTouch;
 CModule_Touch::CModule_Touch(
 	)
 	:
-	CModule("toch", 0, 0, 10000)
+	CModule("toch", 0, 0, NULL, 10000)
 {
 	gTouch = this;
 }

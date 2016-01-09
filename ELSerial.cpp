@@ -36,7 +36,7 @@ CModule_SerialCmd*	gSerialCmd;
 CModule_SerialCmd::CModule_SerialCmd(
 	)
 	:
-	CModule("sril", 0, 0, 1000)
+	CModule("sril", 0, 0, NULL, 1000, 254)
 {
 	gSerialCmd = this;
 	handlerCount = 0;
@@ -65,7 +65,7 @@ CModule_SerialCmd::Update(
 			charBuffer[curIndex] = 0;
 			curIndex = 0;
 
-			if(ProcessSerialMsg(charBuffer) == false)
+			if(ProcessCommand(charBuffer) == false)
 			{
 				Serial.write("Command Failed\n");
 			}
@@ -94,7 +94,25 @@ CModule_SerialCmd::RegisterCommand(
 }
 
 bool
-CModule_SerialCmd::ProcessSerialMsg(
+CModule_SerialCmd::ProcessCommand(
+	int			inArgC,
+	char const*	inArgv[])
+{
+	for(int itr = 0; itr < handlerCount; ++itr)
+	{
+		if(strcmp(commandList[itr].name, inArgv[0]) == 0)
+		{
+			return (commandList[itr].handler->*commandList[itr].method)(inArgC, inArgv);
+		}
+	}
+
+	DebugMsg(eDbgLevel_Basic, "Could not find cmd %s\n", inArgv[0]);
+
+	return false;
+}
+
+bool
+CModule_SerialCmd::ProcessCommand(
 	char*	inStr)
 {
 	int strLen = strlen(inStr);
@@ -130,15 +148,5 @@ CModule_SerialCmd::ProcessSerialMsg(
 
 	components[curCompIndex] = NULL;
 
-	for(int itr = 0; itr < handlerCount; ++itr)
-	{
-		if(strcmp(commandList[itr].name, components[0]) == 0)
-		{
-			return (commandList[itr].handler->*commandList[itr].method)(curCompIndex, (char const**)components);
-		}
-	}
-
-	DebugMsg(eDbgLevel_Basic, "Could not find cmd %s\n", components[0]);
-
-	return false;
+	return ProcessCommand(curCompIndex, (char const**)components);
 }

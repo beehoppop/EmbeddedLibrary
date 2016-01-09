@@ -64,6 +64,16 @@ public:
 		ISerialCmdHandler*	inCmdHandler,	// The object of the command handler
 		TSerialCmdMethod	inMethod);		// The method of the command handler
 
+	// This will process the given command args as if they came in over the serial port
+	bool
+	ProcessCommand(
+		int			inArgC,
+		char const*	inArgv[]);
+
+	bool
+	ProcessCommand(
+		char*	inCmdStr);	// This input command string must be writable
+
 private:
 	
 	CModule_SerialCmd(
@@ -79,10 +89,6 @@ private:
 		ISerialCmdHandler*	handler;
 		TSerialCmdMethod	method;
 	};
-
-	bool
-	ProcessSerialMsg(
-		char*	inMsg);
 
 	int			handlerCount;
 	SCommand	commandList[eSerial_MaxCommands];

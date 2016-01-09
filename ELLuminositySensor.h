@@ -33,67 +33,6 @@
 
 */
 
-#if defined(WIN32)
-
-	class SFE_TSL2561
-	{
-	public:
-		
-		void
-		begin(
-			void)
-		{
-
-		}
-
-		bool
-		getData(
-			unsigned int&	outData1,
-			unsigned int&	outData2)
-		{
-			return true;
-		}
-
-		bool
-		getLux(
-			int				inGain,
-			int				inIntTime,
-			unsigned int	inData1,
-			unsigned int	inData2,
-			double&			outLux)
-		{
-			outLux = 0.0f;
-			return true;
-		}
-
-		bool
-		getID(
-			uint8_t&	outSensorID)
-		{
-			outSensorID = 0x50;
-			return true;
-		}
-
-		void
-		setTiming(
-			int	inGain,
-			int	inTime,
-			int	inIntegration)
-		{
-
-		}
-
-		void
-		setPowerUp(
-			void)
-		{
-
-		}
-	};
-#else
-	#include <SparkFunTSL2561.h>
-#endif
-
 class CModule_LuminositySensor : public CModule, public ISerialCmdHandler
 {
 public:
@@ -103,7 +42,7 @@ public:
 		void);
 
 	float
-	GetNormalizedLux(
+	GetNormalizedBrightness(
 		void);
 
 	void
@@ -119,8 +58,8 @@ private:
 		uint8_t		gain;
 		uint8_t		time;
 
-		double		minBrightnessLux;
-		double		maxBrightnessLux;
+		float		minBrightnessLux;
+		float		maxBrightnessLux;
 	};
 
 	CModule_LuminositySensor(
@@ -135,16 +74,55 @@ private:
 		uint32_t inDeltaTimeUS);
 
 	bool
-	SerialGetLux(
+	SerialCmdGetLux(
 		int			inArgC,
 		char const*	inArgv[]);
+
+	bool
+	SerialCmdConfig(
+		int			inArgC,
+		char const*	inArgv[]);
+	
+	void
+	SetupSensor(
+		void);
+
+	bool
+	GetLux(
+		unsigned char	inGain, 
+		unsigned int	inMS, 
+		unsigned int	inCH0, 
+		unsigned int	inCH1, 
+		double&			outLux);
+
+	bool 
+	ReadI2CByte(
+		uint8_t		inAddress, 
+		uint8_t&	outValue);
+
+	bool
+	WriteI2CByte(
+		uint8_t	inAddress,
+		uint8_t	inValue);
+
+	bool
+	ReadI2CUInt16(
+		uint8_t		inAddress,
+		uint16_t&	outValue);
+
+	bool 
+	WriteI2CUInt16(
+		uint8_t		inAddress, 
+		uint16_t	inValue);
 		
 	unsigned int		integrationTimeMS;
 	SLuminositySettings	settings;
-	SFE_TSL2561			light;
 
 	double lux;
 	double	normalized;
+
+	char _i2c_address;
+	byte _error;
 
 	static CModule_LuminositySensor	module;
 };
