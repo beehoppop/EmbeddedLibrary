@@ -34,7 +34,6 @@
 #include <Wire.h>
 #include <SPI.h>
 #include <FlexCAN.h>
-#include <SparkFunTSL2561.h>
 
 #include <ELModule.h>
 #include <ELDigitalIO.h>
