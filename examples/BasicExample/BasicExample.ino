@@ -51,6 +51,7 @@ class CExampleModule : public CModule, public IDigitalIOEventHandler, public ISe
 			"expl",		// This is the 4 character name of the module, every module has a unique 4 character code.
 			0,			// This is the amount of EEPROM space this module needs
 			0,			// This is the version number of the EEPROM data format. If this changes the system will re-initialize the EEPROM data for you
+			NULL,		// This is a pointer to the local memory to store the EEPROM data
 			30000)		// This is the period for calling the Update function
 	{
 	}
@@ -120,7 +121,7 @@ void
 setup(
 	void)
 {
-	CModule::SetupAll(true);	// Passing in true blinks the led
+	CModule::SetupAll("v0.2", true);	// Passing in true blinks the led
 }
 
 void
