@@ -109,6 +109,7 @@ private:
 	uint64_t		lastUpdateUS;
 	uint8_t			priority;
 	bool			enabled;
+	bool			hasBeenSetup;
 
 	// This is called from the sketch's setup() function in the .ino file
 	static void

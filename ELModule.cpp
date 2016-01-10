@@ -150,6 +150,13 @@ CModule::SetEnabledState(
 	bool	inEnabled)
 {
 	enabled = inEnabled;
+
+	if(enabled && !hasBeenSetup)
+	{
+		Setup();
+		lastUpdateUS = gCurLocalUS;
+		hasBeenSetup = true;
+	}
 }
 
 void
@@ -379,6 +386,12 @@ CModule::SetupAll(
 			CModule*	curModule = gModuleList[i];
 			if(curModule->priority == priorityItr)
 			{
+				if(!curModule->enabled)
+				{
+					// Don't try to setup modules that are not enabled
+					continue;
+				}
+
 				#if MDebugDelayEachModule || MDebugDelayStart
 					DebugMsg(eDbgLevel_Medium, "Module: Setup %s\n", StringizeUInt32(curModule->uid));
 				#endif
@@ -395,6 +408,7 @@ CModule::SetupAll(
 				}
 				curModule->Setup();
 				curModule->lastUpdateUS = gCurLocalUS;
+				curModule->hasBeenSetup = true;
 			}
 		}
 	}
@@ -495,8 +509,8 @@ CModule::LoopAll(
 			if(gModuleList[i]->enabled)
 			{
 				gModuleList[i]->Update((uint32_t)updateDeltaUS);
+				gModuleList[i]->lastUpdateUS = gCurLocalUS;
 			}
-			gModuleList[i]->lastUpdateUS = gCurLocalUS;
 		}
 	}
 

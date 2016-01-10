@@ -87,7 +87,8 @@ CModule_LuminositySensor::CModule_LuminositySensor(
 		1,
 		&settings,
 		500000,
-		1)
+		1,
+		false)
 {
 	gLuminositySensor = this;
 }
