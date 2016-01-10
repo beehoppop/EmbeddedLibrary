@@ -88,15 +88,15 @@ public:
 		pinMode(chipselect, OUTPUT);
 
 		SPI.begin();
-		SPI.setBitOrder(MSBFIRST); 
-		SPI.setDataMode(SPI_MODE1); 
-
-		//set control register 
+		SPI.beginTransaction(SPISettings(SPI_CLOCK_DIV128, MSBFIRST, SPI_MODE3));
 		digitalWrite(chipselect, LOW);  
+		//set control register 
 		SPI.transfer(0x8E);
 		SPI.transfer(0x60); //60= disable Osciallator and Battery SQ wave @1hz, temp compensation, Alarms disabled
 		digitalWrite(chipselect, HIGH);
-		
+		SPI.endTransaction();
+		SPI.end();
+
 		delay(10);
 	}
 
@@ -132,11 +132,19 @@ public:
 		else
 		{
 			// This is an invalid year so bail
+			DebugMsg(eDbgLevel_Basic, "SetUTCDateAndTime: Invalid year");
+			return;
+		}
+
+		if(inMonth < 1 || inMonth > 12 || inDayOfMonth < 1 || inDayOfMonth > 31 || inHour < 0 || inHour > 23 || inMin < 0 || inMin > 59 || inSec < 0 || inSec > 59)
+		{
+			DebugMsg(eDbgLevel_Basic, "SetUTCDateAndTime: Invalid date");
 			return;
 		}
 
 		int TimeDate [7] = {inSec, inMin, inHour, 0, inDayOfMonth, inMonth, inYear};
 
+		SPI.begin();
 		for(int i = 0; i < 7; ++i)
 		{
 			if(i == 3)
@@ -151,12 +159,15 @@ public:
 			{
 				TimeDate[i] |= 0x80;
 			}
-		  
+			
+			SPI.beginTransaction(SPISettings(SPI_CLOCK_DIV128, MSBFIRST, SPI_MODE3));
 			digitalWrite(chipselect, LOW);
 			SPI.transfer(i + 0x80); 
 			SPI.transfer(TimeDate[i]);        
 			digitalWrite(chipselect, HIGH);
+			SPI.endTransaction();
 		}
+		SPI.end();
 	}
 
 	virtual void
@@ -165,18 +176,21 @@ public:
 	{
 		int TimeDate [7]; //second,minute,hour,null,day,month,year
 
+		SPI.begin();
 		for(int i = 0; i < 7; ++i)
 		{
 			if(i == 3)
 				continue;
 
+			SPI.beginTransaction(SPISettings(SPI_CLOCK_DIV128, MSBFIRST, SPI_MODE3));
 			digitalWrite(chipselect, LOW);
 			SPI.transfer(i + 0x00); 
 			unsigned int n = SPI.transfer(0x00);        
 			digitalWrite(chipselect, HIGH);
+			SPI.endTransaction();
 
-			int a = n & B00001111;
-			int b = (n & B01110000) >> 4;
+			int a = n & 0x0F;
+			int b = (n & 0x70) >> 4;
 
 			TimeDate[i] = a + b * 10;	
 
@@ -186,6 +200,7 @@ public:
 				TimeDate[i] &= 0x1F;
 			}
 		}
+		SPI.end();
 
 		if(TimeDate[6] >= 70 && TimeDate[6] <= 99)
 		{
@@ -194,6 +209,14 @@ public:
 		else
 		{
 			TimeDate[6] += 2000;
+		}
+
+		//DebugMsg(eDbgLevel_Basic, "got %d %d %d %d %d %d\n", TimeDate[6], TimeDate[5], TimeDate[4], TimeDate[2], TimeDate[1], TimeDate[0]);
+
+		if(TimeDate[5] < 1 || TimeDate[5] > 12 || TimeDate[4] < 1 || TimeDate[4] > 31 || TimeDate[2] < 0 || TimeDate[2] > 23 || TimeDate[1] < 0 || TimeDate[1] > 59 || TimeDate[0] < 0 || TimeDate[0] > 59)
+		{
+			DebugMsg(eDbgLevel_Basic, "RequestSync: Invalid date from hardware");
+			return;
 		}
 
 		gRealTime->SetDateAndTime(TimeDate[6], TimeDate[5], TimeDate[4], TimeDate[2], TimeDate[1], TimeDate[0], true);
@@ -240,13 +263,15 @@ CRealTime::Setup(
 	gSerialCmd->RegisterCommand("rt_set_mult", this, static_cast<TSerialCmdMethod>(&CRealTime::SerialSetMultiplier));
 
 	timeMultiplier = 1;
+
+	SetEpochTime(0, false);
 }
 
 void
 CRealTime::Update(
 	uint32_t	inDeltaTimeUS)
 {
-	if(provider != NULL && (gCurLocalMS - localMSAtLastSet) / 1000 >= providerSyncPeriod && timeMultiplier == 1.0f)
+	if(provider != NULL && (gCurLocalMS - localMSAtLastSet) / 1000 >= providerSyncPeriod && timeMultiplier == 1)
 	{
 		provider->RequestSync();
 	}
@@ -313,7 +338,14 @@ CRealTime::SetTimeZone(
 		EEPROMSave();
 	}
 
-	RecomputeAlarms();
+	STimeChangeHandler*	curHandler = timeChangeHandlerArray;
+	for(int i = 0; i < eTimeChangeHandler_MaxCount; ++i, ++curHandler)
+	{
+		if(curHandler->name[0] != 0 && curHandler->object != NULL)
+		{
+			(curHandler->object->*curHandler->method)(curHandler->name, true);
+		}
+	}
 }
 
 void
@@ -350,8 +382,10 @@ CRealTime::SetEpochTime(
 	TEpochTime	inEpochTime,
 	bool		inUTC)
 {
+	TEpochTime	oldEpochTime = GetEpochTime(inUTC);
+
 	localMSAtLastSet = gCurLocalMS;
-	
+
 	if(inUTC)
 	{
 		epocUTCTimeAtLastSet = inEpochTime;
@@ -361,7 +395,17 @@ CRealTime::SetEpochTime(
 		epocUTCTimeAtLastSet = LocalToUTC(inEpochTime);
 	}
 
-	RecomputeAlarms();
+	if(oldEpochTime != GetEpochTime(inUTC))
+	{
+		STimeChangeHandler*	curHandler = timeChangeHandlerArray;
+		for(int i = 0; i < eTimeChangeHandler_MaxCount; ++i, ++curHandler)
+		{
+			if(curHandler->name[0] != 0 && curHandler->object != NULL)
+			{
+				(curHandler->object->*curHandler->method)(curHandler->name, false);
+			}
+		}
+	}
 }
 
 void
@@ -732,6 +776,34 @@ CRealTime::UTCToLocal(
 
 	return inUTCEpochTime + timeZoneInfo.stdStart.offsetMins * 60;
 }
+	
+void
+CRealTime::LocalToUTC(
+	int&	ioYear,
+	int&	ioMonth,
+	int&	ioDayOfMonth,
+	int&	ioHour,
+	int&	ioMinute,
+	int&	ioSecond)
+{
+	TEpochTime	localTime = GetEpochTimeFromComponents(ioYear, ioMonth, ioDayOfMonth, ioHour, ioMinute, ioSecond);
+	int	dow;
+	GetComponentsFromEpochTime(LocalToUTC(localTime), ioYear, ioMonth, ioDayOfMonth, dow, ioHour, ioMinute, ioSecond);
+}
+	
+void
+CRealTime::UTCToLocal(
+	int&	ioYear,
+	int&	ioMonth,
+	int&	ioDayOfMonth,
+	int&	ioHour,
+	int&	ioMinute,
+	int&	ioSecond)
+{
+	TEpochTime	utcTime = GetEpochTimeFromComponents(ioYear, ioMonth, ioDayOfMonth, ioHour, ioMinute, ioSecond);
+	int	dow;
+	GetComponentsFromEpochTime(UTCToLocal(utcTime), ioYear, ioMonth, ioDayOfMonth, dow, ioHour, ioMinute, ioSecond);
+}
 
 bool
 CRealTime::InDST(
@@ -865,6 +937,39 @@ CRealTime::CancelEvent(
 	}
 }
 
+void
+CRealTime::RegisterTimeChangeHandler(
+	char const*				inName,
+	IRealTimeHandler*		inObject,
+	TRealTimeChangeMethod	inMethod)
+{
+	MReturnOnError(strlen(inName) == 0 || strlen(inName) >= eRealTime_MaxNameLength);
+
+	STimeChangeHandler*	targetHandler = FindTimeChangeHandlerByName(inName);
+
+	if(targetHandler == NULL)
+	{
+		targetHandler = FindTimeChangeHandlerFirstEmpty();
+
+		MReturnOnError(targetHandler == NULL);
+	}
+
+	strncpy(targetHandler->name, inName, sizeof(targetHandler->name));
+	targetHandler->object = inObject;
+	targetHandler->method = inMethod;
+}
+
+void
+CRealTime::CancelTimeChangeHandler(
+	char const*	inName)
+{
+	STimeChangeHandler*	targetHandler = FindTimeChangeHandlerByName(inName);
+	if(targetHandler != NULL)
+	{
+		targetHandler->name[0] = 0;
+	}
+}
+
 IRealTimeDataProvider*
 CRealTime::CreateDS3234Provider(
 	uint8_t	inChipSelectPin)
@@ -939,6 +1044,36 @@ CRealTime::FindEventFirstEmpty(
 	return NULL;
 }
 
+CRealTime::STimeChangeHandler*
+CRealTime::FindTimeChangeHandlerByName(
+	char const*	inName)
+{
+	for(int i = 0; i < eTimeChangeHandler_MaxCount; ++i)
+	{
+		if(strcmp(inName, timeChangeHandlerArray[i].name) == 0)
+		{
+			return timeChangeHandlerArray + i;
+		}
+	}
+
+	return NULL;
+}
+
+CRealTime::STimeChangeHandler*
+CRealTime::FindTimeChangeHandlerFirstEmpty(
+	void)
+{
+	for(int i = 0; i < eTimeChangeHandler_MaxCount; ++i)
+	{
+		if(timeChangeHandlerArray[i].name[0] == 0)
+		{
+			return timeChangeHandlerArray + i;
+		}
+	}
+
+	return NULL;
+}
+
 void
 CRealTime::ComputeDSTStartAndEnd(
 	int	inYear)
@@ -981,24 +1116,6 @@ CRealTime::ComputeEpochTimeForOffsetSpecifier(
 	}
 
     return result;
-}
-
-void
-CRealTime::RecomputeAlarms(
-	void)
-{
-	DebugMsg(eDbgLevel_Medium, "Recomputing alarms\n");
-
-	SAlarm* curAlarm = alarmArray;
-	for(int alarmItr = 0; alarmItr < eAlarm_MaxActive; ++alarmItr, ++curAlarm)
-	{
-		if(curAlarm->name[0] == 0)
-		{
-			continue;
-		}
-
-		ScheduleAlarm(curAlarm);
-	}
 }
 
 void
@@ -1090,12 +1207,17 @@ CRealTime::SerialSetTime(
 	
 	bool	utc = strcmp(inArgv[7], "utc") == 0;
 
+	if(!utc)
+	{
+		LocalToUTC(year, month, day, hour, min, sec);
+	}
+
 	if(provider != NULL)
 	{
 		provider->SetUTCDateAndTime(year, month, day, hour, min, sec);
 	}
 
-	SetDateAndTime(year, month, day, hour, min, sec, utc);
+	SetDateAndTime(year, month, day, hour, min, sec, true);
 
 	return true;
 }
@@ -1113,9 +1235,16 @@ CRealTime::SerialGetTime(
 	int	sec;
 	int	dow;
 
-	GetDateAndTime(year, month, day, dow, hour, min, sec, false);
+	bool	utc = inArgC == 2 && strcmp(inArgv[1], "utc") == 0;
 
-	Serial.printf("%02d/%02d/%04d %02d:%02d:%02d local\n", month, day, year, hour, min, sec);
+	if(timeMultiplier == 1 && provider != NULL)
+	{
+		provider->RequestSync();
+	}
+
+	GetDateAndTime(year, month, day, dow, hour, min, sec, utc);
+
+	Serial.printf("%02d/%02d/%04d %02d:%02d:%02d %s\n", month, day, year, hour, min, sec, utc ? "utc" : "local");
 
 	return true;
 }
@@ -1263,6 +1392,9 @@ CRealTime::SerialSetMultiplier(
 	{
 		return false;
 	}
+
+	// Reset the internal state variables
+	SetEpochTime(GetEpochTime(true), true);
 
 	timeMultiplier = atoi(inArgv[1]);
 

@@ -65,6 +65,7 @@ enum
 
 	eAlarm_MaxActive = 8,
 	eEvent_MaxActive = 8,
+	eTimeChangeHandler_MaxCount = 8,
 
 	eRealTime_MaxNameLength = 15,
 };
@@ -113,6 +114,7 @@ public:
 class IRealTimeHandler
 {
 public:
+
 };
 
 // A typedef for a alarm handler method, alarm methods should return true if it wants to be rescheduled
@@ -126,6 +128,12 @@ typedef void
 (IRealTimeHandler::*TRealTimeEventMethod)(
 	char const*	inName,
 	void*		inReference);
+
+// A typedef for a time change handler
+typedef void
+(IRealTimeHandler::*TRealTimeChangeMethod)(
+	char const*	inName,
+	bool		inTimeZone);
 
 class CRealTime : public CModule, public ISerialCmdHandler
 {
@@ -264,6 +272,24 @@ public:
 	UTCToLocal(
 		TEpochTime	inUTCEpochTime);
 	
+	void
+	LocalToUTC(
+		int&	ioYear,
+		int&	ioMonth,
+		int&	ioDayOfMonth,
+		int&	ioHour,
+		int&	ioMinute,
+		int&	ioSecond);
+	
+	void
+	UTCToLocal(
+		int&	ioYear,
+		int&	ioMonth,
+		int&	ioDayOfMonth,
+		int&	ioHour,
+		int&	ioMinute,
+		int&	ioSecond);
+
 	// Return true if the given epoch time is in daylight savings time
 	bool
 	InDST(
@@ -282,7 +308,7 @@ public:
 		int					inMinute,		// 00 to 59 or eAlarm_Any
 		int					inSecond,		// 00 to 59 or eAlarm_Any
 		IRealTimeHandler*	inObject,		// The object on which the method below lives
-		TRealTimeAlarmMethod	inMethod,		// The method on the above object
+		TRealTimeAlarmMethod	inMethod,	// The method on the above object
 		void*				inReference,	// The reference value passed into the above method
 		bool				inUTC = false);
 	
@@ -298,7 +324,7 @@ public:
 		uint64_t			inPeriodUS,		// The period for which to call
 		bool				inOnlyOnce,		// True if the event is only called once
 		IRealTimeHandler*	inObject,		// The object on which the method below lives
-		TRealTimeEventMethod	inMethod,		// The method on the above object
+		TRealTimeEventMethod	inMethod,	// The method on the above object
 		void*				inReference);	// The reference value passed into the above method
 
 	// Cancel the given event
@@ -306,6 +332,18 @@ public:
 	CancelEvent(
 		char const*	inEventName);
 	
+	// Register a handler for when time has changed
+	void
+	RegisterTimeChangeHandler(
+		char const*				inName,	// All handlers have a unique name
+		IRealTimeHandler*		inObject,
+		TRealTimeChangeMethod	inMethod);
+	
+	// Cancel the given handler
+	void
+	CancelTimeChangeHandler(
+		char const*	inName);
+
 	// Create a provider for the DS3234 dead-on RTC clock on main SPI bus with the given chipselect pin
 	IRealTimeDataProvider*
 	CreateDS3234Provider(
@@ -388,8 +426,16 @@ private:
 		void*				reference;
 	};
 
+	struct STimeChangeHandler
+	{
+		char					name[eRealTime_MaxNameLength + 1];
+		IRealTimeHandler*		object;
+		TRealTimeChangeMethod	method;
+	};
+
 	SAlarm	alarmArray[eAlarm_MaxActive];
 	SEvent	eventArray[eEvent_MaxActive];
+	STimeChangeHandler	timeChangeHandlerArray[eTimeChangeHandler_MaxCount];
 
 	IRealTimeDataProvider*	provider;
 	uint32_t				providerSyncPeriod;
@@ -424,6 +470,14 @@ private:
 	FindEventFirstEmpty(
 		void);
 
+	STimeChangeHandler*
+	FindTimeChangeHandlerByName(
+		char const*	inName);
+
+	STimeChangeHandler*
+	FindTimeChangeHandlerFirstEmpty(
+		void);
+
 	void
 	ComputeDSTStartAndEnd(
 		int	inYear);
@@ -432,10 +486,6 @@ private:
 	ComputeEpochTimeForOffsetSpecifier(
 		STimeZoneOffsetSpecifier const&	inSpecifier,
 		int								inYear);
-
-	void
-	RecomputeAlarms(
-		void);
 
 	void
 	ScheduleAlarm(
