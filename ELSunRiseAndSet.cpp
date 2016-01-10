@@ -93,6 +93,7 @@ CSunRiseAndSetModule::Setup(
 {
 	gSerialCmd->RegisterCommand("lonlat_set", this, static_cast<TSerialCmdMethod>(&CSunRiseAndSetModule::SerialSetLonLat));
 	gSerialCmd->RegisterCommand("lonlat_get", this, static_cast<TSerialCmdMethod>(&CSunRiseAndSetModule::SerialGetLonLat));
+	gRealTime->RegisterTimeChangeHandler("ssar", this, static_cast<TRealTimeChangeMethod>(&CSunRiseAndSetModule::RealTimeChangeHandler));
 }
 
 void
@@ -280,6 +281,7 @@ CSunRiseAndSetModule::ScheduleNextEvent(
 	{
 		// there is not a next time so just don't schedule
 		DebugMsg(eDbgLevel_Basic, "Could not schedule %s 1", inEvent->name);
+		gRealTime->CancelAlarm(inEvent->name);
 		return;
 	}
 
@@ -312,6 +314,7 @@ CSunRiseAndSetModule::ScheduleNextEvent(
 			{
 				// only in extreme corner cases should this fail...
 				DebugMsg(eDbgLevel_Basic, "Could not schedule %s 2", inEvent->name);
+				gRealTime->CancelAlarm(inEvent->name);
 				return;
 			}
 
@@ -331,6 +334,7 @@ CSunRiseAndSetModule::ScheduleNextEvent(
 		{
 			// don't try to schedule something in the past
 			DebugMsg(eDbgLevel_Basic, "Could not schedule %s 3", inEvent->name);
+			gRealTime->CancelAlarm(inEvent->name);
 			return;
 		}
 	}
@@ -362,6 +366,20 @@ CSunRiseAndSetModule::RealTimeAlarmHandler(
 
 	 ScheduleNextEvent(targetEvent);
 	 return false;
+}
+
+void
+CSunRiseAndSetModule::RealTimeChangeHandler(
+	char const*	inName,
+	bool		inTimeZone)
+{
+	for(int i = 0; i < eMaxSunRiseSetEvents; ++i)
+	{
+		if(eventList[i].name[0] != 0)
+		{
+			ScheduleNextEvent(eventList + i);
+		}
+	}
 }
 
 /******************************************************************/

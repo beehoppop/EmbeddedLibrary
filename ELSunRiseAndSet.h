@@ -258,12 +258,16 @@ private:
 		char const*	inName,
 		void*		inReference);
 
+	void
+	RealTimeChangeHandler(
+		char const*	inName,
+		bool		inTimeZone);
+
 	struct SSettings
 	{
 		double	lon, lat;
 	};
 
-	int			eventCount;
 	SEvent		eventList[eMaxSunRiseSetEvents];
 	SSettings	settings;
 
