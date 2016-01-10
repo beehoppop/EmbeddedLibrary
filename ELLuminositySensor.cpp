@@ -185,8 +185,6 @@ void
 CModule_LuminositySensor::Setup(
 	void)
 {
-	return;
-
 	_i2c_address = TSL2561_ADDR; // just assume default address for now
 	Wire.begin();
 		
@@ -210,7 +208,6 @@ void
 CModule_LuminositySensor::Update(
 	uint32_t inDeltaTimeUS)
 {
-	return;
 
 	uint16_t data0, data1;
 
