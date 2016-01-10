@@ -120,7 +120,6 @@ private:
 		uint8_t		mode;
 		bool		activeHigh;
 		uint8_t		lastState;
-		uint8_t		changeCount;
 		uint32_t	settleMS;
 		uint64_t	time;
 

@@ -75,39 +75,25 @@ CModule_DigitalIO::Update(
 					if(value == curState->activeHigh)
 					{
 						DebugMsg(eDbgLevel_Verbose, "dio pin %d triggered\n", i);
-						if(curState->changeCount == 0)
-						{
-							curState->time = gCurLocalMS;
-						}
+						curState->time = gCurLocalMS;
 						curState->lastState = eState_WaitingForSettleActive;
-					}
-					else if(curState->changeCount > 0 && gCurLocalMS - curState->time >= curState->settleMS)
-					{
-						curState->changeCount = 0;
 					}
 					break;
 
 				case eState_WaitingForSettleActive:
-					if(gCurLocalMS - curState->time >= curState->settleMS)
-					{
-						if(value != curState->activeHigh || curState->changeCount <= 1)
-						{
-							curState->lastState = eState_WaitingForChangeToActive;
-						}
-						else
-						{
-							DebugMsg(eDbgLevel_Verbose, "dio pin %d activated\n", i);
-							curState->lastState = eState_WaitingForChangeToDeactive;
-						
-							((curState->object)->*(curState->method))(i, eDigitalIO_PinActivated, curState->reference);
-						}
-						curState->changeCount = 0;
-					}
-					else if(value != curState->activeHigh)
+					if(value != curState->activeHigh)
 					{
 						DebugMsg(eDbgLevel_Verbose, "dio pin %d UN triggered\n", i);
-						++curState->changeCount;
 						curState->lastState = eState_WaitingForChangeToActive;
+						break;
+					}
+
+					if(gCurLocalMS - curState->time >= curState->settleMS)
+					{
+						DebugMsg(eDbgLevel_Verbose, "dio pin %d activated\n", i);
+						curState->lastState = eState_WaitingForChangeToDeactive;
+						
+						((curState->object)->*(curState->method))(i, eDigitalIO_PinActivated, curState->reference);
 					}
 					break;
 
