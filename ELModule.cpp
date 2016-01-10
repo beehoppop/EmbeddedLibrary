@@ -60,6 +60,7 @@ static bool			gTearingDown = false;
 static uint32_t		gLastMillis;
 static uint32_t		gLastMicros;
 static bool			gFlashLED;
+static int			gBlinkLEDIndex;		// config index for blink LED config var
 
 uint64_t	gCurLocalMS;
 uint64_t	gCurLocalUS;
@@ -80,6 +81,7 @@ class CModuleManager : public CModule, public ISerialCmdHandler
 		void)
 	{
 		gSerialCmd->RegisterCommand("alive", this, static_cast<TSerialCmdMethod>(&CModuleManager::SerialCmdAlive));
+		gBlinkLEDIndex = gConfig->RegisterConfigVar("blink_led");
 	}
 
 	bool
@@ -458,7 +460,7 @@ void
 CModule::LoopAll(
 	void)
 {
-	if(gFlashLED && gConfig->GetVal(gConfig->blinkLEDIndex) == 1)
+	if(gFlashLED && gConfig->GetVal(gBlinkLEDIndex) == 1)
 	{
 		static bool	on = false;
 		static uint64_t	lastBlinkTime;

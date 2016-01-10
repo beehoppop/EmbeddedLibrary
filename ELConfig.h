@@ -62,7 +62,6 @@ public:
 		char const*	inName);
 	
 	int	nodeIDIndex;		// config index for the node ID config var
-	int	blinkLEDIndex;		// config index for blink LED config var
 	int	debugLevelIndex;	// config index for the debug level config var
 
 private:

@@ -55,7 +55,6 @@ CModule_Config::Setup(
 	gSerialCmd->RegisterCommand("config_get", this, static_cast<TSerialCmdMethod>(&CModule_Config::GetConfig));
 
 	nodeIDIndex = RegisterConfigVar("node_id");
-	blinkLEDIndex = RegisterConfigVar("blink_led");
 	debugLevelIndex = RegisterConfigVar("debug_level");
 }
 
