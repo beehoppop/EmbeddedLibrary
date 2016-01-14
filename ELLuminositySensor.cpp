@@ -42,7 +42,7 @@
 #include <EL.h>
 #include <ELModule.h>
 #include <ELUtilities.h>
-#include <ELSerial.h>
+#include <ELCommand.h>
 #include <ELLuminositySensor.h>
 #include <ELAssert.h>
 
@@ -123,18 +123,20 @@ CModule_LuminositySensor::SetMinMaxLux(
 
 bool
 CModule_LuminositySensor::SerialCmdGetLux(
-	int			inArgC,
-	char const*	inArgv[])
+	IOutputDirector*	inOutput,
+	int					inArgC,
+	char const*			inArgv[])
 {
-	DebugMsg(eDbgLevel_Basic, "lux = %f\n", GetActualLux());
+	inOutput->printf("lux = %f\n", GetActualLux());
 
 	return true;
 }
 
 bool
 CModule_LuminositySensor::SerialCmdConfig(
-	int			inArgC,
-	char const*	inArgv[])
+	IOutputDirector*	inOutput,
+	int					inArgC,
+	char const*			inArgv[])
 {
 	settings.gain = atoi(inArgv[1]);
 	settings.time = atoi(inArgv[2]);
@@ -199,8 +201,8 @@ CModule_LuminositySensor::Setup(
 		return;
 	}
 		
-	gSerialCmd->RegisterCommand("lumin_get_lux", this, static_cast<TSerialCmdMethod>(&CModule_LuminositySensor::SerialCmdGetLux));
-	gSerialCmd->RegisterCommand("lumin_config", this, static_cast<TSerialCmdMethod>(&CModule_LuminositySensor::SerialCmdConfig));
+	gCmd->RegisterCommand("lumin_get_lux", this, static_cast<TCmdHandlerMethod>(&CModule_LuminositySensor::SerialCmdGetLux));
+	gCmd->RegisterCommand("lumin_config", this, static_cast<TCmdHandlerMethod>(&CModule_LuminositySensor::SerialCmdConfig));
 
 	SetupSensor();
 }

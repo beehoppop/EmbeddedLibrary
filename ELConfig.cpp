@@ -27,7 +27,7 @@
 #include "ELAssert.h"
 #include "ELConfig.h"
 #include "ELUtilities.h"
-#include "ELSerial.h"
+#include "ELCommand.h"
 
 CModule_Config*	gConfig;
 CModule_Config	CModule_Config::module;
@@ -51,19 +51,11 @@ CModule_Config::Setup(
 		configVarUsed[i] = false;
 	}
 
-	gSerialCmd->RegisterCommand("config_set", this, static_cast<TSerialCmdMethod>(&CModule_Config::SetConfig));
-	gSerialCmd->RegisterCommand("config_get", this, static_cast<TSerialCmdMethod>(&CModule_Config::GetConfig));
+	gCmd->RegisterCommand("config_set", this, static_cast<TCmdHandlerMethod>(&CModule_Config::SetConfig));
+	gCmd->RegisterCommand("config_get", this, static_cast<TCmdHandlerMethod>(&CModule_Config::GetConfig));
 
 	nodeIDIndex = RegisterConfigVar("node_id");
 	debugLevelIndex = RegisterConfigVar("debug_level");
-}
-
-void
-CModule_Config::EEPROMInitialize(
-	void)
-{
-	memset(configVars, sizeof(configVars), 0);
-	EEPROMSave();
 }
 
 uint8_t
@@ -88,8 +80,9 @@ CModule_Config::SetVal(
 
 bool
 CModule_Config::SetConfig(
-	int			inArgC,
-	char const*	inArgv[])
+	IOutputDirector*	inOutput,
+	int					inArgC,
+	char const*			inArgv[])
 {
 	if(inArgC != 3)
 	{
@@ -111,8 +104,9 @@ CModule_Config::SetConfig(
 
 bool
 CModule_Config::GetConfig(
-	int			inArgC,
-	char const*	inArgv[])
+	IOutputDirector*	inOutput,
+	int					inArgC,
+	char const*			inArgv[])
 {
 	if(inArgC != 2)
 	{
@@ -126,7 +120,7 @@ CModule_Config::GetConfig(
 		return false;
 	}
 
-	Serial.printf("%s = %d\n", inArgv[1], GetVal((uint8_t)targetVar));
+	inOutput->printf("%s = %d\n", inArgv[1], GetVal((uint8_t)targetVar));
 
 	return true;
 }

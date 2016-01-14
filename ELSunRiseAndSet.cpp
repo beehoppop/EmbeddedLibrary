@@ -91,8 +91,8 @@ void
 CSunRiseAndSetModule::Setup(
 	void)
 {
-	gSerialCmd->RegisterCommand("lonlat_set", this, static_cast<TSerialCmdMethod>(&CSunRiseAndSetModule::SerialSetLonLat));
-	gSerialCmd->RegisterCommand("lonlat_get", this, static_cast<TSerialCmdMethod>(&CSunRiseAndSetModule::SerialGetLonLat));
+	gCmd->RegisterCommand("lonlat_set", this, static_cast<TCmdHandlerMethod>(&CSunRiseAndSetModule::SerialSetLonLat));
+	gCmd->RegisterCommand("lonlat_get", this, static_cast<TCmdHandlerMethod>(&CSunRiseAndSetModule::SerialGetLonLat));
 	gRealTime->RegisterTimeChangeHandler("ssar", this, static_cast<TRealTimeChangeMethod>(&CSunRiseAndSetModule::RealTimeChangeHandler));
 }
 
@@ -209,8 +209,9 @@ CSunRiseAndSetModule::CancelEvent(
 
 bool
 CSunRiseAndSetModule::SerialSetLonLat(
-	int			inArgC,
-	char const*	inArgv[])
+	IOutputDirector*	inOutput,
+	int					inArgC,
+	char const*			inArgv[])
 {
 	if(inArgC != 3)
 	{
@@ -227,10 +228,11 @@ CSunRiseAndSetModule::SerialSetLonLat(
 
 bool
 CSunRiseAndSetModule::SerialGetLonLat(
-	int			inArgC,
-	char const*	inArgv[])
+	IOutputDirector*	inOutput,
+	int					inArgC,
+	char const*			inArgv[])
 {
-	Serial.printf("%03.03f %03.03f\n", settings.lon, settings.lat);
+	inOutput->printf("%03.03f %03.03f\n", settings.lon, settings.lat);
 	return true;
 }
 

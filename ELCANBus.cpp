@@ -27,6 +27,7 @@
 #include <ELCANBus.h>
 #include <ELAssert.h>
 #include <ELConfig.h>
+#include <ELOutput.h>
 
 CModule_CANBus*	gCANBus;
 CModule_CANBus	CModule_CANBus::module;
@@ -83,7 +84,7 @@ void
 CModule_CANBus::Setup(
 	void)
 {
-	gSerialCmd->RegisterCommand("cb_send", this, static_cast<TSerialCmdMethod>(&CModule_CANBus::SerialCmdSend));
+	gCmd->RegisterCommand("cb_send", this, static_cast<TCmdHandlerMethod>(&CModule_CANBus::SerialCmdSend));
 }
 
 void
@@ -105,7 +106,9 @@ CModule_CANBus::RegisterMsgHandler(
 	ICANBusMsgHandler*	inHandlerObject,
 	TCANBusMsgHandler	inMethod)
 {
-
+	MReturnOnError(inMsgType >= eCANBus_MaxMsgType);
+	handlerList[inMsgType].handlerObject = inHandlerObject;
+	handlerList[inMsgType].method = inMethod;
 }
 
 void
@@ -186,6 +189,16 @@ CModule_CANBus::SendString(
 	uint8_t		inMsgType,
 	char const*	inStr)
 {
+	SendString(inDstNode, inMsgType, inStr, strlen(inStr));
+}
+
+void
+CModule_CANBus::SendString(
+	uint8_t		inDstNode,
+	uint8_t		inMsgType,
+	char const*	inStr,
+	size_t		inBytes)
+{
 	CAN_message_t	msg;
 
 	msg.id = CANIDFromComponents(gConfig->GetVal(gConfig->nodeIDIndex), inDstNode, inMsgType, 0);
@@ -194,14 +207,11 @@ CModule_CANBus::SendString(
 
 	int	msgLen = 0;
 
-	for(;;)
+	while(inBytes-- > 0)
 	{
 		char c = *inStr++;
 
 		msg.buf[msgLen++] = c;
-
-		if(c == 0)
-			break;
 
 		if(msgLen >= (int)sizeof(msg.buf))
 		{
@@ -232,14 +242,14 @@ CModule_CANBus::ProcessCANMsg(
 	//DebugMsg(eDbgLevel_Basic, "CAN: %02x RCV src=0x%x dst=0x%x typ=0x%x flg=0x%x\n", gConfig->GetVal(eConfigVar_NodeID), srcNode, dstNode, msgType, flags);
 	//DumpMsg(inMsg);
 
-	if((dstNode != 0xFF && dstNode != gConfig->GetVal(gConfig->nodeIDIndex)) || msgType >= eCANBus_MaxMsgType || handlerList[msgType].handlerObject == NULL ||  handlerList[msgType].method == NULL)
+	if(dstNode != 0xFF && dstNode != gConfig->GetVal(gConfig->nodeIDIndex))
 	{
 		return;
 	}
 
 	if(msgType == eSysMsg_SerialOutput)
 	{
-		Serial.write(inMsg.buf, inMsg.len);
+		gSerialOut->write((char*)inMsg.buf, inMsg.len);
 	}
 	else if(msgType == eSysMsg_SerialCmd)
 	{
@@ -267,7 +277,7 @@ CModule_CANBus::ProcessCANMsg(
 		if(targetState->serialCmdBuffer[targetState->serialCmdLength - 1] == 0)
 		{
 			targetNodeID = srcNode;
-			gSerialCmd->ProcessCommand(targetState->serialCmdBuffer);
+			gCmd->ProcessCommand(this, targetState->serialCmdBuffer);
 			targetNodeID = 0xFF;
 
 			targetState->srcNodeID = 0xFF;
@@ -276,7 +286,10 @@ CModule_CANBus::ProcessCANMsg(
 	}
 	else
 	{
-		(handlerList[msgType].handlerObject->*handlerList[msgType].method)(srcNode, dstNode, msgType, flags, inMsg.len, inMsg.buf);
+		if(msgType < eCANBus_MaxMsgType && handlerList[msgType].handlerObject != NULL && handlerList[msgType].method != NULL)
+		{
+			(handlerList[msgType].handlerObject->*handlerList[msgType].method)(srcNode, dstNode, msgType, flags, inMsg.len, inMsg.buf);
+		}
 	}
 }
 
@@ -302,8 +315,9 @@ CModule_CANBus::DumpMsg(
 
 bool
 CModule_CANBus::SerialCmdSend(
-	int			inArgC,
-	char const*	inArgV[])
+	IOutputDirector*	inOutput,
+	int					inArgC,
+	char const*			inArgV[])
 {
 	int	dstNodeID = atoi(inArgV[1]);
 
@@ -325,11 +339,12 @@ CModule_CANBus::SerialCmdSend(
 }
 
 void
-CModule_CANBus::OutputDebugMsg(
-	char const*	inMsg)
+CModule_CANBus::write(
+	char const*	inMsg,
+	size_t		inBytes)
 {
 	if(targetNodeID != 0xFF)
 	{
-		SendString(targetNodeID, eSysMsg_SerialOutput, inMsg);
+		SendString(targetNodeID, eSysMsg_SerialOutput, inMsg, inBytes);
 	}
 }

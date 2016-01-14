@@ -33,7 +33,8 @@
 */
 
 #include <ELModule.h>
-#include <ELSerial.h>
+#include <ELCommand.h>
+#include <ELOutput.h>
 
 enum
 {
@@ -42,7 +43,7 @@ enum
 	eConfigVar_MaxNameLength = 15,
 };
 
-class CModule_Config : public CModule, public ISerialCmdHandler
+class CModule_Config : public CModule, public ICmdHandler
 {
 public:
 	
@@ -73,19 +74,17 @@ private:
 	Setup(
 		void);
 
-	virtual void
-	EEPROMInitialize(
-		void);
-
 	bool
 	SetConfig(
-		int			inArgC,
-		char const*	inArgv[]);
+		IOutputDirector*	inOutput,
+		int					inArgC,
+		char const*			inArgv[]);
 
 	bool
 	GetConfig(
-		int			inArgC,
-		char const*	inArgv[]);
+		IOutputDirector*	inOutput,
+		int					inArgC,
+		char const*			inArgv[]);
 
 	int
 	GetVarFromStr(

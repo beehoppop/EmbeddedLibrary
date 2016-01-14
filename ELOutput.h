@@ -1,5 +1,6 @@
-#ifndef _ELASSERT_H_
-#define _ELASSERT_H_
+#ifndef _ELOUTPUT_H_
+#define _ELOUTPUT_H_
+
 /*
 	Author: Brent Pease (embeddedlibraryfeedback@gmail.com)
 
@@ -26,53 +27,56 @@
 	SOFTWARE.
 */
 
-/*
-	ABOUT
-
-	Commonly needed functionality for debugging, verifying program correctness, and handling errors gracefully
-*/
-
 #include <EL.h>
-#include <ELOutput.h>
 
-// Use this macro to assert that an expression is true - if its not the program will halt execution and repeatedly output a debug message
-#define MAssert(x) if(!(x)) AssertFailed(#x, __FILE__, __LINE__)
-
-// Use this macro to return from a function if the given condition is true and notify the user about it
-#define MReturnOnError(x, ...) do {if(x) {DebugMsg(0, "ERROR: %s %s %d", #x, __FILE__, __LINE__); return __VA_ARGS__;}} while(0)
-
-enum
+class IOutputDirector
 {
-	eMaxDebugMsgHandlers = 4,
+public:
 
-	eDbgLevel_Off = 0,
-	eDbgLevel_Basic,
-	eDbgLevel_Medium,
-	eDbgLevel_Verbose,
+	virtual void
+	printf(
+		char const*	inMsg,
+		...)
+	{
+		va_list	varArgs;
+		va_start(varArgs, inMsg);
+		char	vabuffer[256];
+		vsnprintf(vabuffer, sizeof(vabuffer) - 1, inMsg, varArgs);
+		vabuffer[sizeof(vabuffer) - 1] = 0;	// Ensure a valid string
+		va_end(varArgs);
+		
+		write(vabuffer);
+	}
+
+	virtual void
+	write(
+		char const*	inMsg)
+	{
+		write(inMsg, strlen(inMsg));
+	}
+
+	virtual void
+	write(
+		char const*	inMsg,
+		size_t		inBytes) = 0;
+
 };
 
-// Output a debug msg when inLevel <= the current debug level
+extern IOutputDirector*	gSerialOut;	// This director will save recent data to an internal buffer in addition to sending to the primary serial port
+
+// Use this if you want to write stuff out in a constructor since the above pointer will not be safely setup until all constructors have finished
 void
-DebugMsg(
-	uint8_t		inLevel,
+SerialOutEarly_printf(
 	char const*	inMsg,
 	...);
 
-// Add the given handler so that it can be called on every call to DebugMsg()
 void
-AddDebugMsgHandler(
-	IOutputDirector*	inOutputDirector);
+SerialOutEarly_write(
+	char const*	inMsg);
 
-// Add the given handler so that it can be called on every call to DebugMsg()
 void
-RemoveDebugMsgHandler(
-	IOutputDirector*	inOutputDirector);
-
-// This is used by the MAssert macro to handle a failed assertion
-void
-AssertFailed(
+SerialOutEarly_write(
 	char const*	inMsg,
-	char const*	inFile,
-	int			inLine);
-	
-#endif /* _ELASSERT_H_ */
+	size_t		inBytes);
+
+#endif /* _ELOUTPUT_H_ */

@@ -86,7 +86,7 @@
 #endif
 
 #include "ELModule.h"
-#include "ELSerial.h"
+#include "ELCommand.h"
 #include "ELAssert.h"
 
 enum
@@ -110,7 +110,7 @@ typedef void
 	uint8_t		inMsgSize,
 	void const*	inMsgData);
 
-class CModule_CANBus : public CModule, public ISerialCmdHandler, public IDebugMsgHandler
+class CModule_CANBus : public CModule, public ICmdHandler, public IOutputDirector
 {
 public:
 
@@ -141,6 +141,13 @@ public:
 		uint8_t		inMsgType,
 		char const*	inStr);
 
+	void
+	SendString(
+		uint8_t		inDstNode,
+		uint8_t		inMsgType,
+		char const*	inStr,
+		size_t		inBytes);
+
 private:
 	
 	CModule_CANBus(
@@ -170,12 +177,14 @@ private:
 
 	bool
 	SerialCmdSend(
-		int			inArgC,
-		char const*	inArgV[]);
+		IOutputDirector*	inOutput,
+		int					inArgC,
+		char const*			inArgV[]);
 
 	virtual void
-	OutputDebugMsg(
-		char const*	inMsg);
+	write(
+		char const*	inMsg,
+		size_t		inBytes);
 
 	struct SSerialCmdState
 	{
@@ -184,8 +193,8 @@ private:
 		char	serialCmdBuffer[128];
 	};
 
-	SMsgHandler	handlerList[eCANBus_MaxMsgType];
-	FlexCAN	canBus;
+	SMsgHandler		handlerList[eCANBus_MaxMsgType];
+	FlexCAN			canBus;
 	SSerialCmdState	serialCmdStates[eCANBus_MaxSerialCmdStates];
 
 	uint8_t	targetNodeID;

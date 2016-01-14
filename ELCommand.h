@@ -1,5 +1,5 @@
-#ifndef _ELSERIAL_H_
-#define _ELSERIAL_H_
+#ifndef _ELCOMMAND_H_
+#define _ELCOMMAND_H_
 /*
 	Author: Brent Pease (embeddedlibraryfeedback@gmail.com)
 
@@ -29,31 +29,33 @@
 /*
 	ABOUT
 
-	This module provides a common mechanism to register commands coming over the serial port in a similar fashion to command line programs
+	This module provides a common mechanism to register commands coming over a generalized port in a similar fashion to command line programs
 */
 
 #include "ELModule.h"
+#include "ELOutput.h"
 
 enum
 {
-	eSerial_MaxNameLen = 15,
-	eSerial_MaxCommands = 64,
-	eSerial_MaxCommandArgs = 64,
+	eCmd_MaxNameLen = 15,
+	eCmd_MaxCommands = 64,
+	eCmd_MaxCommandArgs = 64,
 };
 
 // A dummy class for the command handler method object
-class ISerialCmdHandler
+class ICmdHandler
 {
 public:
 };
 
 // The typedef for the command handler method
 typedef bool
-(ISerialCmdHandler::*TSerialCmdMethod)(
-	int			inArgC,
-	char const*	inArgv[]);
+(ICmdHandler::*TCmdHandlerMethod)(
+	IOutputDirector*	inOutput,
+	int					inArgC,
+	char const*			inArgv[]);
 
-class CModule_SerialCmd : public CModule
+class CModule_Cmd : public CModule
 {
 public:
 	
@@ -61,46 +63,40 @@ public:
 	void
 	RegisterCommand(
 		char const*			inCmdName,		// The name of the command
-		ISerialCmdHandler*	inCmdHandler,	// The object of the command handler
-		TSerialCmdMethod	inMethod);		// The method of the command handler
+		ICmdHandler*		inCmdHandler,	// The object of the command handler
+		TCmdHandlerMethod	inMethod);		// The method of the command handler
 
-	// This will process the given command args as if they came in over the serial port
+	// This will process the given command args
 	bool
 	ProcessCommand(
-		int			inArgC,
-		char const*	inArgv[]);
+		IOutputDirector*	inOutput,
+		int					inArgC,
+		char const*			inArgv[]);
 
+	// This will process the given command string
 	bool
 	ProcessCommand(
-		char*	inCmdStr);	// This input command string must be writable
+		IOutputDirector*	inOutput,
+		char*				inCmdStr);	// This input command string must be writable in order to break up into discrete arg strings
 
 private:
 	
-	CModule_SerialCmd(
+	CModule_Cmd(
 		);
-
-	virtual void
-	Update(
-		uint32_t	inDeltaTimeUS);
 	
 	struct SCommand
 	{
-		char				name[eSerial_MaxNameLen + 1];
-		ISerialCmdHandler*	handler;
-		TSerialCmdMethod	method;
+		char				name[eCmd_MaxNameLen + 1];
+		ICmdHandler*		handler;
+		TCmdHandlerMethod	method;
 	};
 
 	int			handlerCount;
-	SCommand	commandList[eSerial_MaxCommands];
+	SCommand	commandList[eCmd_MaxCommands];
 
-	char	charBuffer[256];
-	int		curIndex;
-
-	static CModule_SerialCmd	module;
+	static CModule_Cmd	module;
 };
 
-extern CModule_SerialCmd*	gSerialCmd;
+extern CModule_Cmd*	gCmd;
 
-#endif /* _ELSERIAL_H_ */
-
-
+#endif /* _ELCOMMAND_H_ */

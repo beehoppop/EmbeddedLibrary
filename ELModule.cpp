@@ -34,7 +34,7 @@ enum
 	eEEPROM_VersionOffset = 0,
 	eEEPROM_ListStart = 1,
 
-	eEEPROM_Version = 100,
+	eEEPROM_Version = 101,
 
 	eEEPROM_Size = 2048
 
@@ -50,6 +50,7 @@ struct SEEPROMEntry
 	uint16_t	offset;
 	uint16_t	size;
 	uint16_t	version;
+	bool		inUse;
 };
 
 static int			gModuleCount;
@@ -67,7 +68,7 @@ uint64_t	gCurLocalUS;
 
 char const*	gVersionStr;
 
-class CModuleManager : public CModule, public ISerialCmdHandler
+class CModuleManager : public CModule, public ICmdHandler
 {
 	CModuleManager(
 		)
@@ -80,16 +81,17 @@ class CModuleManager : public CModule, public ISerialCmdHandler
 	Setup(
 		void)
 	{
-		gSerialCmd->RegisterCommand("alive", this, static_cast<TSerialCmdMethod>(&CModuleManager::SerialCmdAlive));
+		gCmd->RegisterCommand("alive", this, static_cast<TCmdHandlerMethod>(&CModuleManager::SerialCmdAlive));
 		gBlinkLEDIndex = gConfig->RegisterConfigVar("blink_led");
 	}
 
 	bool
 	SerialCmdAlive(
-		int			inArgC,
-		char const*	inArgV[])
+		IOutputDirector*	inOutput,
+		int					inArgC,
+		char const*			inArgV[])
 	{
-		DebugMsg(eDbgLevel_Basic, "ALIVE node=%d ver=%s build date=%s %s\n", gConfig->GetVal(gConfig->nodeIDIndex), gVersionStr, __DATE__, __TIME__);
+		inOutput->printf("ALIVE node=%d ver=%s build date=%s %s\n", gConfig->GetVal(gConfig->nodeIDIndex), gVersionStr, __DATE__, __TIME__);
 		
 		return true;
 	}
@@ -177,9 +179,9 @@ void
 CModule::EEPROMInitialize(
 	void)
 {
-	for(int i = eepromOffset; i < eepromOffset + eepromSize; ++i)
+	if(eepromData != NULL && eepromSize > 0)
 	{
-		EEPROM.write(i, 0xFF);
+		memset(eepromData, 0, eepromSize);
 	}
 }
 
@@ -187,7 +189,7 @@ void
 CModule::EEPROMSave(
 	void)
 {
-	if(eepromData != NULL)
+	if(eepromData != NULL && eepromSize > 0)
 	{
 		WriteDataToEEPROM(eepromData, eepromOffset, eepromSize);
 	}
@@ -206,67 +208,6 @@ FindEEPROMEntry(
 	return NULL;
 }
 
-CModule*
-FindModule(
-	uint32_t	inUID)
-{
-	for(int i = 0; i < gModuleCount; ++i)
-	{
-		if(gModuleList[i]->uid == inUID)
-			return gModuleList[i];
-	}
-
-	return NULL;
-}
-
-int
-EEPROMCompare(
-	void const*	inA,
-	void const*	inB)
-{
-	SEEPROMEntry const*	a = (SEEPROMEntry const*)inA;
-	SEEPROMEntry const*	b = (SEEPROMEntry const*)inB;
-
-	if(a->offset < b->offset)
-	{
-		return -1;
-	}
-
-	if(a->offset > b->offset)
-	{
-		return 1;
-	}
-
-	return 0;
-}
-
-uint16_t
-FindAvailableEEPROMOffset(
-	uint16_t		inSize)
-{
-	uint16_t	offset = eEEPROM_ListStart + eMaxModuleCount * sizeof(SEEPROMEntry);
-
-	for(int i = 0; i < eMaxModuleCount; ++i)
-	{
-		if(gEEPROMEntryList[i].uid == 0xFFFFFFFF)
-		{
-			continue;
-		}
-
-		if(offset + inSize <= gEEPROMEntryList[i].offset)
-		{
-			MAssert(offset + inSize <= eEEPROM_Size);
-			return offset;
-		}
-
-		offset = gEEPROMEntryList[i].offset + gEEPROMEntryList[i].size;
-	}
-
-	MAssert(offset + inSize <= eEEPROM_Size);
-
-	return offset;
-}
-
 void
 CModule::SetupAll(
 	char const*	inVersionStr,
@@ -282,91 +223,90 @@ CModule::SetupAll(
 
 	Serial.begin(115200);
 
-	if(gTooManyModules)
-	{
-		while(true)
-		{
-			Serial.printf("Too Many Modules\n");	// This msg is too early for anything but serial
-		}
-	}
+	DebugMsg(eDbgLevel_Basic, "Module count=%d\n", gModuleCount);
 
-	uint8_t	eepromVersion = EEPROM.read(eEEPROM_VersionOffset);
-
-	if(eepromVersion != eEEPROM_Version)
-	{
-		for(int i = eEEPROM_ListStart; i < eEEPROM_ListStart + (int)sizeof(gEEPROMEntryList); ++i)
-		{
-			EEPROM.write(i, 0xFF);
-		}
-		EEPROM.write(eEEPROM_VersionOffset, eEEPROM_Version);
-	}
+	MAssert(gTooManyModules == false);	// This is reported here since we can't safely access the serial port in constructors
 
 	bool	changes = false;
-
-	LoadDataFromEEPROM(gEEPROMEntryList, eEEPROM_ListStart, sizeof(gEEPROMEntryList));
-
-	for(int i = 0; i < gModuleCount; ++i)
+	uint8_t	eepromVersion = EEPROM.read(eEEPROM_VersionOffset);
+	if(eepromVersion == eEEPROM_Version)
 	{
-		if(gModuleList[i]->eepromSize == 0)
-			continue;
-
-		SEEPROMEntry*	target = FindEEPROMEntry(gModuleList[i]->uid);
-
-		if(target != NULL && (target->size != gModuleList[i]->eepromSize || target->version != gModuleList[i]->eepromVersion))
+		LoadDataFromEEPROM(gEEPROMEntryList, eEEPROM_ListStart, sizeof(gEEPROMEntryList));
+		for(int i = 0; i < eMaxModuleCount; ++i)
 		{
-			//DebugMsg(eDbgLevel_Medium, "Module: %s changed size\n", StringizeUInt32(gModuleList[i]->uid));
-			target->uid = 0xFFFFFFFF;
-			target->offset = 0xFFFF;
-			target->size = 0xFFFF;
-			target->version = 0xFFFF;
-			target = NULL;
+			gEEPROMEntryList[i].inUse = false;
 		}
 
-		if(target == NULL)
+		int	totalEEPROMSize = eEEPROM_ListStart + sizeof(gEEPROMEntryList);
+		for(int i = 0; i < gModuleCount; ++i)
 		{
-			target = FindEEPROMEntry(0xFFFFFFFF);
-			MAssert(target != NULL);
+			CModule*	curModule = gModuleList[i];
+			if(curModule->eepromSize == 0)
+				continue;
+		
+			MAssert(curModule->eepromData != NULL);	// If the module needs eeprom storage it must provide local memory for it
 
-			target->offset = FindAvailableEEPROMOffset(gModuleList[i]->eepromSize);
-			target->uid = gModuleList[i]->uid;
-			target->size = gModuleList[i]->eepromSize;
-			target->version = gModuleList[i]->eepromVersion;
+			SEEPROMEntry*	target = FindEEPROMEntry(curModule->uid);
 
-			gModuleList[i]->eepromOffset = target->offset;
-			gModuleList[i]->EEPROMInitialize();
+			if(target == NULL)
+			{
+				DebugMsg(eDbgLevel_Medium, "Module %s: no eeprom entry\n", StringizeUInt32(curModule->uid));
+				changes = true;
+			}
+			else if(target->size != curModule->eepromSize || target->version != curModule->eepromVersion)
+			{
+				DebugMsg(eDbgLevel_Medium, "Module %s: eeprom changed version or size\n", StringizeUInt32(curModule->uid));
+				changes = true;
+			}
+			else
+			{
+				curModule->eepromOffset = target->offset;
+				LoadDataFromEEPROM(curModule->eepromData, curModule->eepromOffset, curModule->eepromSize);
+				target->inUse = true;
+			}
 
-			//DebugMsg(eDbgLevel_Medium, "Module: %s added\n", StringizeUInt32(target->uid));
-
-			changes = true;
+			totalEEPROMSize += curModule->eepromSize;
 		}
-
-		gModuleList[i]->eepromOffset = target->offset;
-		//DebugMsg(eDbgLevel_Medium, "Module: %s offset is %d\n", StringizeUInt32(target->uid), target->offset);
+		MAssert(totalEEPROMSize <= eEEPROM_Size);
 	}
-
-	for(int i = 0; i < eMaxModuleCount; ++i)
+	else
 	{
-		if(gEEPROMEntryList[i].uid == 0xFFFFFFFF)
-		{
-			continue;
-		}
+		DebugMsg(eDbgLevel_Basic, "EEPROM version mismatch old=%d new=%d\n", eepromVersion, eEEPROM_Version);
 
-		CModule*	target = FindModule(gEEPROMEntryList[i].uid);
-
-		if(target == NULL)
+		changes = true;
+		for(int i = 0; i < eMaxModuleCount; ++i)
 		{
-			DebugMsg(eDbgLevel_Medium, "Module: %s removed\n", StringizeUInt32(gEEPROMEntryList[i].uid));
-			gEEPROMEntryList[i].uid = 0xFFFFFFFF;
-			gEEPROMEntryList[i].offset = 0xFFFF;
-			gEEPROMEntryList[i].size = 0xFFFF;
-			changes = true;
+			gEEPROMEntryList[i].inUse = false;
 		}
 	}
 
 	if(changes)
 	{
-		qsort(gEEPROMEntryList, eMaxModuleCount, sizeof(SEEPROMEntry), EEPROMCompare);
+		// since changes have been made compress all module eeprom data into low eeprom space
+		uint16_t		curOffset = eEEPROM_ListStart + sizeof(gEEPROMEntryList);
+		SEEPROMEntry*	curEEPROM = gEEPROMEntryList;
+		for(int i = 0; i < gModuleCount; ++i)
+		{
+			CModule*	curModule = gModuleList[i];
+			if(curModule->eepromSize == 0)
+				continue;
+
+			curModule->eepromOffset = curOffset;
+			curEEPROM->uid = curModule->uid;
+			curEEPROM->offset = curOffset;
+			curEEPROM->size = curModule->eepromSize;
+			curEEPROM->version = curModule->eepromVersion;
+			if(!curEEPROM->inUse)
+			{
+				curModule->EEPROMInitialize();
+			}
+			WriteDataToEEPROM(curModule->eepromData, curOffset, curModule->eepromSize);
+			++curEEPROM;
+			curOffset += curModule->eepromSize;
+		}
+
 		WriteDataToEEPROM(gEEPROMEntryList, eEEPROM_ListStart, sizeof(gEEPROMEntryList));
+		EEPROM.write(eEEPROM_VersionOffset, eEEPROM_Version);
 	}
 
 	#if MDebugDelayStart
@@ -402,10 +342,6 @@ CModule::SetupAll(
 						delay(3000);
 					}
 				#endif
-				if(curModule->eepromData != NULL)
-				{
-					LoadDataFromEEPROM(curModule->eepromData, curModule->eepromOffset, curModule->eepromSize);
-				}
 				curModule->Setup();
 				curModule->lastUpdateUS = gCurLocalUS;
 				curModule->hasBeenSetup = true;
@@ -516,3 +452,22 @@ CModule::LoopAll(
 
 	gTearingDown = false;
 }
+
+/*
+
+
+CModule*
+FindModule(
+	uint32_t	inUID)
+{
+	for(int i = 0; i < gModuleCount; ++i)
+	{
+		if(gModuleList[i]->uid == inUID)
+			return gModuleList[i];
+	}
+
+	return NULL;
+}
+
+
+*/

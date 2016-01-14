@@ -55,7 +55,7 @@
 */
 
 #include <ELModule.h>
-#include <ELSerial.h>
+#include <ELCommand.h>
 
 #define MIsLeapYear(inYear) (((inYear) & 3) == 0 && (((inYear) % 25) != 0 || ((inYear) & 15) == 0))
 
@@ -135,7 +135,7 @@ typedef void
 	char const*	inName,
 	bool		inTimeZone);
 
-class CRealTime : public CModule, public ISerialCmdHandler
+class CRealTime : public CModule, public ICmdHandler
 {
 public:
 	
@@ -493,33 +493,39 @@ private:
 
 	bool
 	SerialSetTime(
-		int			inArgC,
-		char const*	inArgv[]);
+		IOutputDirector*	inOutput,
+		int					inArgC,
+		char const*			inArgv[]);
 
 	bool
 	SerialGetTime(
-		int			inArgC,
-		char const*	inArgv[]);
+		IOutputDirector*	inOutput,
+		int					inArgC,
+		char const*			inArgv[]);
 
 	bool
 	SerialSetTimeZone(
-		int			inArgC,
-		char const*	inArgv[]);
+		IOutputDirector*	inOutput,
+		int					inArgC,
+		char const*			inArgv[]);
 
 	bool
 	SerialGetTimeZone(
-		int			inArgC,
-		char const*	inArgv[]);
+		IOutputDirector*	inOutput,
+		int					inArgC,
+		char const*			inArgv[]);
 
 	bool
 	SerialDumpTable(
-		int			inArgC,
-		char const*	inArgv[]);
+		IOutputDirector*	inOutput,
+		int					inArgC,
+		char const*			inArgv[]);
 
 	bool
 	SerialSetMultiplier(
-		int			inArgC,
-		char const*	inArgv[]);
+		IOutputDirector*	inOutput,
+		int					inArgC,
+		char const*			inArgv[]);
 
 	static CRealTime	module;
 };

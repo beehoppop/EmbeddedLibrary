@@ -33,7 +33,7 @@
 
 */
 
-class CModule_LuminositySensor : public CModule, public ISerialCmdHandler
+class CModule_LuminositySensor : public CModule, public ICmdHandler
 {
 public:
 
@@ -75,13 +75,15 @@ private:
 
 	bool
 	SerialCmdGetLux(
-		int			inArgC,
-		char const*	inArgv[]);
+		IOutputDirector*	inOutput,
+		int					inArgC,
+		char const*			inArgv[]);
 
 	bool
 	SerialCmdConfig(
-		int			inArgC,
-		char const*	inArgv[]);
+		IOutputDirector*	inOutput,
+		int					inArgC,
+		char const*			inArgv[]);
 	
 	void
 	SetupSensor(

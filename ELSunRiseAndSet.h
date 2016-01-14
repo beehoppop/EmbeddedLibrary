@@ -52,7 +52,7 @@
 */
 
 #include "ELRealTime.h"
-#include "ELSerial.h"
+#include "ELCommand.h"
 
 const double	cSunOffset_SunsetSunRise		= -35.0/60.0;	// Use eSunRelativePosition_UpperLimb
 const double	cSunOffset_CivilTwilight		= -6.0;			// Use eSunRelativePosition_Center
@@ -80,7 +80,7 @@ typedef void
 	char const*	inName);
 
 
-class CSunRiseAndSetModule : public CModule, public IRealTimeHandler, public ISerialCmdHandler
+class CSunRiseAndSetModule : public CModule, public IRealTimeHandler, public ICmdHandler
 {
 public:
 
@@ -233,13 +233,15 @@ private:
 
 	bool
 	SerialSetLonLat(
-		int			inArgC,
-		char const*	inArgv[]);
+		IOutputDirector*	inOutput,
+		int					inArgC,
+		char const*			inArgv[]);
 
 	bool
 	SerialGetLonLat(
-		int			inArgC,
-		char const*	inArgv[]);
+		IOutputDirector*	inOutput,
+		int					inArgC,
+		char const*			inArgv[]);
 
 	SEvent*
 	FindEvent(

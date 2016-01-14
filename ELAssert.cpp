@@ -27,17 +27,69 @@
 #include "ELAssert.h"
 #include "ELModule.h"
 #include "ELConfig.h"
+#include "ELOutput.h"
 
 #define MBufferMsgs 1
 
-static IDebugMsgHandler*	gHandlers[eMaxDebugMsgHandlers];
-static int					gHandlerCount;
+struct SOutputEntry
+{
+	IOutputDirector*	outputDirector;
+	int					refCount;
+};
+
+static SOutputEntry	gEntries[eMaxDebugMsgHandlers];
+
+IOutputDirector*	gSerialOut;
 
 #if MBufferMsgs
-static char		gMsgBuffer[1024 * 8];
-static uint32_t	gMsgBufferIndex = 0;
+char		gMsgBuffer[1024 * 8];
+uint32_t	gMsgBufferIndex;
+#endif
 
-class CDebugSerialHanlder : public CModule, public ISerialCmdHandler
+static void
+SerialOutEarly_vprintf(
+	char const*	inMsg,
+	va_list		inVAList)
+{
+	char	vabuffer[256];
+	vsnprintf(vabuffer, sizeof(vabuffer) - 1, inMsg, inVAList);
+	vabuffer[sizeof(vabuffer) - 1] = 0;
+	SerialOutEarly_write(vabuffer);
+}
+
+void
+SerialOutEarly_write(
+	char const*	inMsg)
+{
+	SerialOutEarly_write(inMsg, strlen(inMsg));
+}
+
+void
+SerialOutEarly_write(
+	char const*	inMsg,
+	size_t		inBytes)
+{
+	Serial.write(inMsg, inBytes);
+	#if MBufferMsgs
+	for(size_t i = 0; i < inBytes; ++i)
+	{
+		gMsgBuffer[gMsgBufferIndex++ % sizeof(gMsgBuffer)] = inMsg[i];
+	}
+	#endif
+}
+
+void
+SerialOutEarly_printf(
+	char const*	inMsg,
+	...)
+{
+	va_list	varArgs;
+	va_start(varArgs, inMsg);
+	SerialOutEarly_vprintf(inMsg, varArgs);
+	va_end(varArgs);
+}
+
+class CDebugSerialHanlder : public CModule, public ICmdHandler, public IOutputDirector
 {
 public:
 	
@@ -45,49 +97,59 @@ public:
 		)
 		:
 		CModule(
-			"asrt",
+			"bdgh",
 			0,
 			0,
 			NULL,
 			0,
 			1)
 	{
+		gSerialOut = this;
 	}
 
 	virtual void
 	Setup(
 		void)
 	{
-		gSerialCmd->RegisterCommand("debug_dump", this, static_cast<TSerialCmdMethod>(&CDebugSerialHanlder::DbgLogDump));
+		AddDebugMsgHandler(this);
+		gCmd->RegisterCommand("debug_dump", this, static_cast<TCmdHandlerMethod>(&CDebugSerialHanlder::DbgLogDump));
 	}
 
 	bool
 	DbgLogDump(
-		int			inArgC,
-		char const*	inArgV[])
+		IOutputDirector*	inOutputDirector,
+		int					inArgC,
+		char const*			inArgV[])
 	{
 		#if MBufferMsgs
-		Serial.write("*****\n");
+		inOutputDirector->write("*****\n");
 		if(gMsgBufferIndex <= sizeof(gMsgBuffer))
 		{
-			Serial.write(gMsgBuffer, gMsgBufferIndex);
+			inOutputDirector->write(gMsgBuffer, gMsgBufferIndex);
 		}
 		else
 		{
-			Serial.write(gMsgBuffer + (gMsgBufferIndex % sizeof(gMsgBuffer)), sizeof(gMsgBuffer) - (gMsgBufferIndex % sizeof(gMsgBuffer)));
-			Serial.write(gMsgBuffer, (gMsgBufferIndex % sizeof(gMsgBuffer)));
+			inOutputDirector->write(gMsgBuffer + (gMsgBufferIndex % sizeof(gMsgBuffer)), sizeof(gMsgBuffer) - (gMsgBufferIndex % sizeof(gMsgBuffer)));
+			inOutputDirector->write(gMsgBuffer, (gMsgBufferIndex % sizeof(gMsgBuffer)));
 		}
-		Serial.write("\n*****\n");
+		inOutputDirector->write("\n*****\n");
 		#endif
 
 		return true;
 	}
 
+	virtual void
+	write(
+		char const*	inMsg,
+		size_t		inBytes)
+	{
+		SerialOutEarly_write(inMsg, inBytes);
+	}
+
+	static CDebugSerialHanlder	module;
 };
 
-CDebugSerialHanlder	gDebugSerialHandler;
-#endif
-
+CDebugSerialHanlder	CDebugSerialHanlder::module;
 
 void
 AssertFailed(
@@ -98,6 +160,7 @@ AssertFailed(
 	for(;;)
 	{
 		DebugMsg(0, "ASSERT: %s %d %s\n", inFile, inLine, inMsg);
+		delay(500);
 	}
 }
 
@@ -127,40 +190,81 @@ DebugMsg(
 	snprintf(timestamp, sizeof(timestamp), "%02lu:%02lu:%02lu:%03lu", hours, mins, secs, uint32_t(gCurLocalMS) % 1000);
 
 	char finalBuffer[256];
+	snprintf(finalBuffer, sizeof(finalBuffer) - 1, "[%s] %s", timestamp, vabuffer);
+	finalBuffer[sizeof(finalBuffer) - 1] = 0;	// Ensure valid string
+	size_t	strLen = strlen(finalBuffer);
 
-	snprintf(finalBuffer, sizeof(finalBuffer), "[%s] %s", timestamp, vabuffer);
-	Serial.print(finalBuffer);
-	int	strLen = strlen(finalBuffer);
-
-	#if MBufferMsgs
-	for(int i = 0; i < strLen; ++i)
+	// Ensure enough room for both a newline and a zero byte
+	if(strLen > sizeof(finalBuffer) - 2)
 	{
-		gMsgBuffer[gMsgBufferIndex++ % sizeof(gMsgBuffer)] = finalBuffer[i];
+		strLen = sizeof(finalBuffer) - 2;
 	}
-	#endif
 
+	// If the message does not end with a newline add one
 	if(finalBuffer[strLen - 1] != '\n')
 	{
-		Serial.print('\n');
-		#if MBufferMsgs
-		gMsgBuffer[gMsgBufferIndex++ % sizeof(gMsgBuffer)] = '\n';
-		#endif
+		finalBuffer[strLen] = '\n';
+		finalBuffer[strLen + 1] = '0';
 	}
 
-	for(int itr = 0; itr < gHandlerCount; ++itr)
+	// Share it with the world
+	bool	sent = false;
+	for(int itr = 0; itr < eMaxDebugMsgHandlers; ++itr)
 	{
-		gHandlers[itr]->OutputDebugMsg(finalBuffer);
+		if(gEntries[itr].outputDirector != NULL)
+		{
+			gEntries[itr].outputDirector->write(finalBuffer);
+			sent = true;
+		}
+	}
+
+	if(!sent)
+	{
+		// We must be in early init
+		SerialOutEarly_write(finalBuffer);
 	}
 }
 
 void
-RegisterDebugMsgHandler(
-	IDebugMsgHandler*	inHandler)
+AddDebugMsgHandler(
+	IOutputDirector*	inOutputDirector)
 {
-	if(gHandlerCount >= eMaxDebugMsgHandlers)
+	int	targetIndex = eMaxDebugMsgHandlers;
+
+	for(int i = 0; i < eMaxDebugMsgHandlers; ++i)
 	{
-		return;
+		if(gEntries[i].outputDirector == inOutputDirector)
+		{
+			targetIndex = i;
+			break;
+		}
+		if(targetIndex == eMaxDebugMsgHandlers && gEntries[i].outputDirector == NULL)
+		{
+			gEntries[i].refCount = 0;
+			targetIndex = i;
+		}
 	}
 
-	gHandlers[gHandlerCount++] = inHandler;
+	MReturnOnError(targetIndex == eMaxDebugMsgHandlers);
+
+	gEntries[targetIndex].outputDirector = inOutputDirector;
+	++gEntries[targetIndex].refCount;
+}
+
+void
+RemoveDebugMsgHandler(
+	IOutputDirector*	inOutputDirector)
+{
+	for(int i = 0; i < eMaxDebugMsgHandlers; ++i)
+	{
+		if(gEntries[i].outputDirector == inOutputDirector)
+		{
+			if(--gEntries[i].refCount <= 0)
+			{
+				gEntries[i].outputDirector = NULL;
+				gEntries[i].refCount = 0;
+			}
+			break;
+		}
+	}
 }
