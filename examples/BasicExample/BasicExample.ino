@@ -37,11 +37,11 @@
 
 #include <ELModule.h>
 #include <ELDigitalIO.h>
-#include <ELSerial.h>
+#include <ELCommand.h>
 #include <ELRealTime.h>
 #include <ELAssert.h>
 
-class CExampleModule : public CModule, public IDigitalIOEventHandler, public ISerialCmdHandler, public IRealTimeHandler
+class CExampleModule : public CModule, public IDigitalIOEventHandler, public ICmdHandler, public IRealTimeHandler
 {
 	CExampleModule(
 		)
@@ -63,7 +63,7 @@ class CExampleModule : public CModule, public IDigitalIOEventHandler, public ISe
 		Serial.printf("In Setup\n");
 
 		// Register a serial port command.
-		gSerialCmd->RegisterCommand("hello", this, static_cast<TSerialCmdMethod>(&CExampleModule::SerialCmdHello));
+		gCmd->RegisterCommand("hello", this, static_cast<TCmdHandlerMethod>(&CExampleModule::SerialCmdHello));
 
 		// Register a digital io event handler on pin 1
 		gDigitalIO->RegisterEventHandler(1, false, this, static_cast<TDigitalIOEventMethod>(&CExampleModule::PinActivated), NULL);
@@ -84,12 +84,13 @@ class CExampleModule : public CModule, public IDigitalIOEventHandler, public ISe
 
 	bool
 	SerialCmdHello(
-		int			inArgC,
-		char const*	inArgv[])
+		IOutputDirector*	inOutput,
+		int					inArgC,
+		char const*			inArgv[])
 	{
-		Serial.printf("Hello World\n");
+		inOutput->printf("Hello World\n");
 
-		return true;	// Returning true means command was processed successfully, returning false will print an error to serial out
+		return true;	// Returning true means command was processed successfully, returning false will print an error to the proper output
 	}
 
 	void
@@ -120,7 +121,7 @@ void
 setup(
 	void)
 {
-	CModule::SetupAll("v0.2", true);	// Passing in true blinks the led
+	CModule::SetupAll("v0.2", true);	// Passing in true blinks the led when the blink_led config var is set to one
 }
 
 void
