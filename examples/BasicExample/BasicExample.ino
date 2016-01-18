@@ -69,7 +69,7 @@ class CExampleModule : public CModule, public IDigitalIOEventHandler, public ICm
 		gDigitalIO->RegisterEventHandler(1, false, this, static_cast<TDigitalIOEventMethod>(&CExampleModule::PinActivated), NULL);
 
 		// Register an event to fire every 5 seconds
-		gRealTime->RegisterEvent("MyEvent", 5 * 1000000, false, this, static_cast<TRealTimeEventMethod>(&CExampleModule::MyPeriodicEvent), NULL);
+		//gRealTime->RegisterEvent("MyEvent", 5 * 1000000, false, this, static_cast<TRealTimeEventMethod>(&CExampleModule::MyPeriodicEvent), NULL);
 
 		updateCount = 0;
 	}

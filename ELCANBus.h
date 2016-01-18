@@ -94,7 +94,7 @@ enum
 	eCANBus_MaxMsgLength = 8,
 	eCANBus_MaxMsgType = 32,
 	eCANBus_MaxSerialCmdStates = 4,
-	eCANBus_SendBufferSize = 16,
+	eCANBus_SendBufferSize = 32,
 };
 
 class ICANBusMsgHandler
@@ -188,6 +188,7 @@ private:
 	struct SSerialCmdState
 	{
 		uint8_t	srcNodeID;
+		uint8_t	msgType;
 		uint8_t	serialCmdLength;
 		char	serialCmdBuffer[128];
 	};

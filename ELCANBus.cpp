@@ -73,6 +73,7 @@ CModule_CANBus::CModule_CANBus(
 	for(int i = 0; i < eCANBus_MaxSerialCmdStates; ++i)
 	{
 		serialCmdStates[i].srcNodeID = 0xFF;
+		serialCmdStates[i].msgType = 0xFF;
 		serialCmdStates[i].serialCmdLength = 0;
 	}
 }
@@ -132,16 +133,12 @@ CModule_CANBus::SendMsg(
 
 	msg.id = CANIDFromComponents(gConfig->GetVal(gConfig->nodeIDIndex), inDstNode, inMsgType);
 	msg.ext = 1;
-	msg.timeout = 0;
+	msg.timeout = 1;	// Specify a short timeout to ensure packets are sent in order
 	msg.len = inMsgSize;
 	if(inMsgData != NULL && inMsgSize > 0)
 		memcpy(msg.buf, inMsgData, inMsgSize);
 
-	if(canBus.write(msg) == 0)
-	{
-		// add it to our own buffer to be sent out later
-		sendFIFO[sendFIFOPendingNext++ % eCANBus_SendBufferSize] = msg;
-	}
+	sendFIFO[sendFIFOPendingNext++ % eCANBus_SendBufferSize] = msg;
 }
 
 void
@@ -157,7 +154,7 @@ CModule_CANBus::SendFormatMsg(
 	vsnprintf(vabuffer, sizeof(vabuffer), inMsg, varArgs);
 	va_end(varArgs);
 
-	SendString(inDstNode, inMsgType, vabuffer, strlen(vabuffer) + 1);
+	SendString(inDstNode, inMsgType, vabuffer, strlen(vabuffer));
 }
 
 void
@@ -166,7 +163,7 @@ CModule_CANBus::SendString(
 	uint8_t		inMsgType,
 	char const*	inStr)
 {
-	SendString(inDstNode, inMsgType, inStr, strlen(inStr) + 1);
+	SendString(inDstNode, inMsgType, inStr, strlen(inStr));
 }
 
 void
@@ -180,23 +177,27 @@ CModule_CANBus::SendString(
 
 	msg.id = CANIDFromComponents(gConfig->GetVal(gConfig->nodeIDIndex), inDstNode, inMsgType);
 	msg.ext = 1;
-	msg.timeout = 100;
+	msg.timeout = 1;	// Specify a short timeout to ensure packets are sent in order
 
 	int	msgLen = 0;
 
+	++inBytes;	// Add room for termination byte
+
 	while(inBytes-- > 0)
 	{
-		char c = *inStr++;
-
-		msg.buf[msgLen++] = c;
+		if(inBytes > 0)
+		{
+			msg.buf[msgLen++] = *inStr++;
+		}
+		else
+		{
+			msg.buf[msgLen++] = 0;
+		}
 
 		if(msgLen >= (int)sizeof(msg.buf))
 		{
 			msg.len = sizeof(msg.buf);
-			if(canBus.write(msg) == 0)
-			{
-				sendFIFO[sendFIFOPendingNext++ % eCANBus_SendBufferSize] = msg;
-			}
+			sendFIFO[sendFIFOPendingNext++ % eCANBus_SendBufferSize] = msg;
 			msgLen = 0;
 		}
 	}
@@ -204,10 +205,7 @@ CModule_CANBus::SendString(
 	if(msgLen > 0)
 	{
 		msg.len = msgLen;
-		if(canBus.write(msg) == 0)
-		{
-			sendFIFO[sendFIFOPendingNext++ % eCANBus_SendBufferSize] = msg;
-		}
+		sendFIFO[sendFIFOPendingNext++ % eCANBus_SendBufferSize] = msg;
 	}
 }
 
@@ -221,24 +219,20 @@ CModule_CANBus::ProcessCANMsg(
 
 	CANIDToComponents(inMsg.id, srcNode, dstNode, msgType);
 
-	//DebugMsg(eDbgLevel_Basic, "CAN: %02x RCV src=0x%x dst=0x%x typ=0x%x\n", gConfig->GetVal(gConfig->nodeIDIndex), srcNode, dstNode, msgType);
-
+	//Serial.printf("CAN: %02x RCV src=0x%x dst=0x%x typ=0x%x\n", gConfig->GetVal(gConfig->nodeIDIndex), srcNode, dstNode, msgType);
+	
 	if(dstNode != 0xFF && dstNode != gConfig->GetVal(gConfig->nodeIDIndex))
 	{
 		return;
 	}
 
-	if(msgType == eSysMsg_SerialOutput)
-	{
-		gSerialOut->write((char*)inMsg.buf, inMsg.len);
-	}
-	else if(msgType == eSysMsg_Command)
+	if(msgType == eSysMsg_SerialOutput || msgType == eSysMsg_Command)
 	{
 		SSerialCmdState*	targetState = NULL;
 
 		for(int i = 0; i < eCANBus_MaxSerialCmdStates; ++i)
 		{
-			if(serialCmdStates[i].srcNodeID == srcNode)
+			if(serialCmdStates[i].srcNodeID == srcNode && serialCmdStates[i].msgType == msgType)
 			{
 				targetState = serialCmdStates + i;
 				break;
@@ -251,6 +245,7 @@ CModule_CANBus::ProcessCANMsg(
 		MReturnOnError(targetState == NULL);
 
 		targetState->srcNodeID = srcNode;
+		targetState->msgType = msgType;
 
 		MReturnOnError(targetState->serialCmdLength + inMsg.len > sizeof(targetState->serialCmdBuffer));
 		memcpy(targetState->serialCmdBuffer + targetState->serialCmdLength, inMsg.buf, inMsg.len);
@@ -258,11 +253,19 @@ CModule_CANBus::ProcessCANMsg(
 
 		if(targetState->serialCmdBuffer[targetState->serialCmdLength - 1] == 0)
 		{
-			targetNodeID = srcNode;
-			gCommand->ProcessCommand(this, targetState->serialCmdBuffer);
-			targetNodeID = 0xFF;
+			if(msgType == eSysMsg_Command)
+			{
+				targetNodeID = srcNode;
+				gCommand->ProcessCommand(this, targetState->serialCmdBuffer);
+				targetNodeID = 0xFF;
+			}
+			else
+			{
+				gSerialOut->write(targetState->serialCmdBuffer);
+			}
 
 			targetState->srcNodeID = 0xFF;
+			targetState->msgType = 0xFF;
 			targetState->serialCmdLength = 0;
 		}
 	}

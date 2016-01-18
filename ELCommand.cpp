@@ -141,7 +141,8 @@ CModule_Command::ProcessCommand(
 	{
 		inOutput->printf("Could not find cmd %s\n", inArgv[0]);
 	}
-	else if(result == false)
+	
+	if(result == false)
 	{
 		inOutput->printf("%s: FAILED\n", inArgv[0]);
 	}

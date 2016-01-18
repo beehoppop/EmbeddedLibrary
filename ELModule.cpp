@@ -298,6 +298,7 @@ CModule::SetupAll(
 			curEEPROM->version = curModule->eepromVersion;
 			if(!curEEPROM->inUse)
 			{
+				DebugMsg(eDbgLevel_Medium, "Module %s: Initializing eeprom\n", StringizeUInt32(curModule->uid));
 				curModule->EEPROMInitialize();
 			}
 			WriteDataToEEPROM(curModule->eepromData, curOffset, curModule->eepromSize);
