@@ -201,8 +201,8 @@ CModule_LuminositySensor::Setup(
 		return;
 	}
 		
-	gCmd->RegisterCommand("lumin_get_lux", this, static_cast<TCmdHandlerMethod>(&CModule_LuminositySensor::SerialCmdGetLux));
-	gCmd->RegisterCommand("lumin_config", this, static_cast<TCmdHandlerMethod>(&CModule_LuminositySensor::SerialCmdConfig));
+	gCommand->RegisterCommand("lumin_get_lux", this, static_cast<TCmdHandlerMethod>(&CModule_LuminositySensor::SerialCmdGetLux));
+	gCommand->RegisterCommand("lumin_config", this, static_cast<TCmdHandlerMethod>(&CModule_LuminositySensor::SerialCmdConfig));
 
 	SetupSensor();
 }

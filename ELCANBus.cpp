@@ -34,8 +34,8 @@ CModule_CANBus	CModule_CANBus::module;
 
 enum
 {
-	eSysMsg_SerialOutput = 128,
-	eSysMsg_SerialCmd = 129,
+	eSysMsg_SerialOutput = eCANBus_MaxMsgType,
+	eSysMsg_Command = eCANBus_MaxMsgType + 1,
 };
 
 void
@@ -43,23 +43,20 @@ CANIDToComponents(
 	uint32_t	inID,
 	uint8_t&	outSrcNode,
 	uint8_t&	outDstNode,
-	uint8_t&	outMsgType,
-	uint8_t&	outMsgFlags)
+	uint8_t&	outMsgType)
 {
-	outMsgType = (inID >> 24) & 0x1F;
-	outDstNode = (inID >> 16) & 0xFF;
-	outSrcNode = (inID >> 8) & 0xFF;
-	outMsgFlags = (inID >> 0) & 0xFF;
+	outMsgType = (inID >> 16) & 0xFF;
+	outDstNode = (inID >> 8) & 0xFF;
+	outSrcNode = (inID >> 0) & 0xFF;
 }
 
 uint32_t
 CANIDFromComponents(
 	uint8_t	inSrcNode,
 	uint8_t	inDstNode,
-	uint8_t	inMsgType,
-	uint8_t	inMsgFlags)
+	uint8_t	inMsgType)
 {
-	return ((uint32_t)inMsgType << 24) | ((uint32_t)inDstNode << 16) | ((uint32_t)inSrcNode << 8) | ((uint32_t)inMsgFlags << 0);
+	return ((uint32_t)inMsgType << 16) | ((uint32_t)inDstNode << 8) | ((uint32_t)inSrcNode << 0);
 }
 
 CModule_CANBus::CModule_CANBus(
@@ -84,7 +81,7 @@ void
 CModule_CANBus::Setup(
 	void)
 {
-	gCmd->RegisterCommand("cb_send", this, static_cast<TCmdHandlerMethod>(&CModule_CANBus::SerialCmdSend));
+	gCommand->RegisterCommand("cb_send", this, static_cast<TCmdHandlerMethod>(&CModule_CANBus::SendCommand));
 }
 
 void
@@ -97,6 +94,15 @@ CModule_CANBus::Update(
 	{
 		canBus.read(msg);
 		ProcessCANMsg(msg);
+	}
+
+	while(sendFIFOPendingNext != sendFIFOOutgoingNext)
+	{
+		if(canBus.write(sendFIFO[sendFIFOOutgoingNext % eCANBus_SendBufferSize]) == 0)
+		{
+			break;
+		}
+		++sendFIFOOutgoingNext;
 	}
 }
 
@@ -115,26 +121,27 @@ void
 CModule_CANBus::SendMsg(
 	uint8_t		inDstNode,
 	uint8_t		inMsgType,
-	uint8_t		inMsgFlags,
 	uint8_t		inMsgSize,
 	void const*	inMsgData)
 {
 	CAN_message_t	msg;
 
-	//DebugMsg(eDbgLevel_Basic, "CAN: %02x TXM src=0x%x dst=0x%x typ=0x%x flg=0x%x\n", gConfig->GetVal(eConfigVar_NodeID), gConfig->GetVal(eConfigVar_NodeID), inDstNode, inMsgType, inMsgFlags);
+	//DebugMsg(eDbgLevel_Basic, "CAN: %02x TXM src=0x%x dst=0x%x typ=0x%x len=%d\n", gConfig->GetVal(gConfig->nodeIDIndex), gConfig->GetVal(gConfig->nodeIDIndex), inDstNode, inMsgType, inMsgSize);
 
-	MAssert(inMsgSize <= eCANBus_MaxMsgLength);
+	MReturnOnError(inMsgSize > eCANBus_MaxMsgLength);
 
-	msg.id = CANIDFromComponents(gConfig->GetVal(gConfig->nodeIDIndex), inDstNode, inMsgType, inMsgFlags);
+	msg.id = CANIDFromComponents(gConfig->GetVal(gConfig->nodeIDIndex), inDstNode, inMsgType);
 	msg.ext = 1;
-	msg.timeout = 100;
+	msg.timeout = 0;
 	msg.len = inMsgSize;
 	if(inMsgData != NULL && inMsgSize > 0)
 		memcpy(msg.buf, inMsgData, inMsgSize);
-	
-	//DumpMsg(msg);
 
-	canBus.write(msg);
+	if(canBus.write(msg) == 0)
+	{
+		// add it to our own buffer to be sent out later
+		sendFIFO[sendFIFOPendingNext++ % eCANBus_SendBufferSize] = msg;
+	}
 }
 
 void
@@ -144,43 +151,13 @@ CModule_CANBus::SendFormatMsg(
 	char const*	inMsg,
 	...)
 {
-	CAN_message_t	msg;
-
 	va_list	varArgs;
 	va_start(varArgs, inMsg);
 	char	vabuffer[256];
 	vsnprintf(vabuffer, sizeof(vabuffer), inMsg, varArgs);
 	va_end(varArgs);
 
-	msg.id = CANIDFromComponents(gConfig->GetVal(gConfig->nodeIDIndex), inDstNode, inMsgType, 0);
-	msg.ext = 1;
-	msg.timeout = 100;
-
-	int	msgLen = 0;
-	char*	cp = vabuffer;
-
-	for(;;)
-	{
-		char c = *cp++;
-
-		msg.buf[msgLen++] = c;
-
-		if(c == 0)
-			break;
-
-		if(msgLen >= (int)sizeof(msg.buf))
-		{
-			msg.len = sizeof(msg.buf);
-			canBus.write(msg);
-			msgLen = 0;
-		}
-	}
-
-	if(msgLen > 0)
-	{
-		msg.len = msgLen;
-		canBus.write(msg);
-	}
+	SendString(inDstNode, inMsgType, vabuffer, strlen(vabuffer) + 1);
 }
 
 void
@@ -189,7 +166,7 @@ CModule_CANBus::SendString(
 	uint8_t		inMsgType,
 	char const*	inStr)
 {
-	SendString(inDstNode, inMsgType, inStr, strlen(inStr));
+	SendString(inDstNode, inMsgType, inStr, strlen(inStr) + 1);
 }
 
 void
@@ -201,7 +178,7 @@ CModule_CANBus::SendString(
 {
 	CAN_message_t	msg;
 
-	msg.id = CANIDFromComponents(gConfig->GetVal(gConfig->nodeIDIndex), inDstNode, inMsgType, 0);
+	msg.id = CANIDFromComponents(gConfig->GetVal(gConfig->nodeIDIndex), inDstNode, inMsgType);
 	msg.ext = 1;
 	msg.timeout = 100;
 
@@ -216,7 +193,10 @@ CModule_CANBus::SendString(
 		if(msgLen >= (int)sizeof(msg.buf))
 		{
 			msg.len = sizeof(msg.buf);
-			canBus.write(msg);
+			if(canBus.write(msg) == 0)
+			{
+				sendFIFO[sendFIFOPendingNext++ % eCANBus_SendBufferSize] = msg;
+			}
 			msgLen = 0;
 		}
 	}
@@ -224,7 +204,10 @@ CModule_CANBus::SendString(
 	if(msgLen > 0)
 	{
 		msg.len = msgLen;
-		canBus.write(msg);
+		if(canBus.write(msg) == 0)
+		{
+			sendFIFO[sendFIFOPendingNext++ % eCANBus_SendBufferSize] = msg;
+		}
 	}
 }
 
@@ -235,12 +218,10 @@ CModule_CANBus::ProcessCANMsg(
 	uint8_t	srcNode;
 	uint8_t	dstNode;
 	uint8_t	msgType;
-	uint8_t	flags;
 
-	CANIDToComponents(inMsg.id, srcNode, dstNode, msgType, flags);
+	CANIDToComponents(inMsg.id, srcNode, dstNode, msgType);
 
-	//DebugMsg(eDbgLevel_Basic, "CAN: %02x RCV src=0x%x dst=0x%x typ=0x%x flg=0x%x\n", gConfig->GetVal(eConfigVar_NodeID), srcNode, dstNode, msgType, flags);
-	//DumpMsg(inMsg);
+	//DebugMsg(eDbgLevel_Basic, "CAN: %02x RCV src=0x%x dst=0x%x typ=0x%x\n", gConfig->GetVal(gConfig->nodeIDIndex), srcNode, dstNode, msgType);
 
 	if(dstNode != 0xFF && dstNode != gConfig->GetVal(gConfig->nodeIDIndex))
 	{
@@ -251,7 +232,7 @@ CModule_CANBus::ProcessCANMsg(
 	{
 		gSerialOut->write((char*)inMsg.buf, inMsg.len);
 	}
-	else if(msgType == eSysMsg_SerialCmd)
+	else if(msgType == eSysMsg_Command)
 	{
 		SSerialCmdState*	targetState = NULL;
 
@@ -271,13 +252,14 @@ CModule_CANBus::ProcessCANMsg(
 
 		targetState->srcNodeID = srcNode;
 
+		MReturnOnError(targetState->serialCmdLength + inMsg.len > sizeof(targetState->serialCmdBuffer));
 		memcpy(targetState->serialCmdBuffer + targetState->serialCmdLength, inMsg.buf, inMsg.len);
 		targetState->serialCmdLength += inMsg.len;
 
 		if(targetState->serialCmdBuffer[targetState->serialCmdLength - 1] == 0)
 		{
 			targetNodeID = srcNode;
-			gCmd->ProcessCommand(this, targetState->serialCmdBuffer);
+			gCommand->ProcessCommand(this, targetState->serialCmdBuffer);
 			targetNodeID = 0xFF;
 
 			targetState->srcNodeID = 0xFF;
@@ -288,7 +270,7 @@ CModule_CANBus::ProcessCANMsg(
 	{
 		if(msgType < eCANBus_MaxMsgType && handlerList[msgType].handlerObject != NULL && handlerList[msgType].method != NULL)
 		{
-			(handlerList[msgType].handlerObject->*handlerList[msgType].method)(srcNode, dstNode, msgType, flags, inMsg.len, inMsg.buf);
+			(handlerList[msgType].handlerObject->*handlerList[msgType].method)(srcNode, dstNode, msgType, inMsg.len, inMsg.buf);
 		}
 	}
 }
@@ -314,7 +296,7 @@ CModule_CANBus::DumpMsg(
 }
 
 bool
-CModule_CANBus::SerialCmdSend(
+CModule_CANBus::SendCommand(
 	IOutputDirector*	inOutput,
 	int					inArgC,
 	char const*			inArgV[])
@@ -322,18 +304,30 @@ CModule_CANBus::SerialCmdSend(
 	int	dstNodeID = atoi(inArgV[1]);
 
 	char	buffer[256];
-	int		bufferLen = 0;
+	size_t	bufferLen = 0;
 
 	for(int i = 2; i < inArgC; ++i)
 	{
-		int	argLen = strlen(inArgV[i]);
+		size_t	argLen = strlen(inArgV[i]);
+		MReturnOnError(bufferLen + argLen >= sizeof(buffer), false);
 		memcpy(buffer + bufferLen, inArgV[i], argLen);
 		bufferLen += argLen;
-		buffer[bufferLen++] = ' ';
+		if(i < inArgC - 1)
+		{
+			buffer[bufferLen++] = ' ';
+		}
 	}
+	MReturnOnError(bufferLen + 1 > sizeof(buffer), false);
 	buffer[bufferLen++] = 0;
 
-	SendString(dstNodeID, eSysMsg_SerialCmd, buffer);
+	if(dstNodeID == gConfig->GetVal(gConfig->nodeIDIndex))
+	{
+		gCommand->ProcessCommand(inOutput, buffer);
+	}
+	else
+	{
+		SendString(dstNodeID, eSysMsg_Command, buffer);
+	}
 
 	return true;
 }

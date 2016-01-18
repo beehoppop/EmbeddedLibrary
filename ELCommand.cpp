@@ -70,7 +70,7 @@ class CModule_SerialCmdHandler : public CModule
 				charBuffer[curIndex] = 0;
 				curIndex = 0;
 
-				if(gCmd->ProcessCommand(gSerialOut, charBuffer) == false)
+				if(gCommand->ProcessCommand(gSerialOut, charBuffer) == false)
 				{
 					Serial.write("Command Failed\n");
 				}
@@ -89,20 +89,20 @@ class CModule_SerialCmdHandler : public CModule
 };
 CModule_SerialCmdHandler	CModule_SerialCmdHandler::module;
 
-CModule_Cmd	CModule_Cmd::module;
-CModule_Cmd*	gCmd;
+CModule_Command	CModule_Command::module;
+CModule_Command*	gCommand;
 
-CModule_Cmd::CModule_Cmd(
+CModule_Command::CModule_Command(
 	)
 	:
 	CModule("cmnd", 0, 0, NULL, 0, 254)
 {
-	gCmd = this;
+	gCommand = this;
 	handlerCount = 0;
 }
 
 void
-CModule_Cmd::RegisterCommand(
+CModule_Command::RegisterCommand(
 	char const*			inCmdName, 
 	ICmdHandler*		inCmdHandler,
 	TCmdHandlerMethod	inMethod)
@@ -118,7 +118,7 @@ CModule_Cmd::RegisterCommand(
 }
 
 bool
-CModule_Cmd::ProcessCommand(
+CModule_Command::ProcessCommand(
 	IOutputDirector*	inOutput,
 	int					inArgC,
 	char const*			inArgv[])
@@ -143,16 +143,20 @@ CModule_Cmd::ProcessCommand(
 	}
 	else if(result == false)
 	{
-		inOutput->printf("command failed %s\n", inArgv[0]);
+		inOutput->printf("%s: FAILED\n", inArgv[0]);
+	}
+	else
+	{
+		inOutput->printf("%s: SUCCESS\n", inArgv[0]);
 	}
 
-	RemoveDebugMsgHandler(inOutput);	// Now that the command is done remove it
+	RemoveDebugMsgHandler(inOutput);	// Now that the command is done remove it's output handler
 
 	return result;
 }
 
 bool
-CModule_Cmd::ProcessCommand(
+CModule_Command::ProcessCommand(
 	IOutputDirector*	inOutput,
 	char*				inStr)
 {
@@ -162,7 +166,10 @@ CModule_Cmd::ProcessCommand(
 	char*	ep = inStr + strLen;
 	int		curCompIndex = 0;
 
-	DebugMsg(eDbgLevel_Verbose, "Serial: Received %s\n", inStr);
+	if(strLen == 0)
+	{
+		return false;
+	}
 
 	while(cp < ep)
 	{
@@ -180,14 +187,6 @@ CModule_Cmd::ProcessCommand(
 		*cp = 0;
 		++cp;
 	}
-
-	if(curCompIndex == 0)
-	{
-		inOutput->printf("no command found\n");
-		return false;
-	}
-
-	components[curCompIndex] = NULL;
 
 	return ProcessCommand(inOutput, curCompIndex, (char const**)components);
 }

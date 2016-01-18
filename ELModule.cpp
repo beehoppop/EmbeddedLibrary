@@ -81,7 +81,7 @@ class CModuleManager : public CModule, public ICmdHandler
 	Setup(
 		void)
 	{
-		gCmd->RegisterCommand("alive", this, static_cast<TCmdHandlerMethod>(&CModuleManager::SerialCmdAlive));
+		gCommand->RegisterCommand("alive", this, static_cast<TCmdHandlerMethod>(&CModuleManager::SerialCmdAlive));
 		gBlinkLEDIndex = gConfig->RegisterConfigVar("blink_led");
 	}
 
@@ -165,7 +165,7 @@ void
 CModule::Update(
 	uint32_t	inDeltaTimeUS)
 {
-
+	//Serial.printf("default %s %d\n", StringizeUInt32(uid), enabled);
 }
 	
 void
@@ -441,7 +441,7 @@ CModule::LoopAll(
 		uint64_t	updateDeltaUS = gCurLocalUS - gModuleList[i]->lastUpdateUS;
 		if(updateDeltaUS >= gModuleList[i]->updateTimeUS)
 		{
-			//Serial.printf("Updating %s\n", StringizeUInt32(gModuleList[i]->uid));
+			//Serial.printf("Updating %s %d\n", StringizeUInt32(gModuleList[i]->uid), gModuleList[i]->enabled);
 			if(gModuleList[i]->enabled)
 			{
 				gModuleList[i]->Update((uint32_t)updateDeltaUS);

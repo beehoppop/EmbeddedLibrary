@@ -94,6 +94,7 @@ enum
 	eCANBus_MaxMsgLength = 8,
 	eCANBus_MaxMsgType = 32,
 	eCANBus_MaxSerialCmdStates = 4,
+	eCANBus_SendBufferSize = 16,
 };
 
 class ICANBusMsgHandler
@@ -106,7 +107,6 @@ typedef void
 	uint8_t		inSrcNodeID,
 	uint8_t		inDstNodeID,
 	uint8_t		inMsgType,
-	uint8_t		inMsgFlags,
 	uint8_t		inMsgSize,
 	void const*	inMsgData);
 
@@ -124,7 +124,6 @@ public:
 	SendMsg(
 		uint8_t		inDstNode,
 		uint8_t		inMsgType,
-		uint8_t		inMsgFlags,
 		uint8_t		inMsgSize,
 		void const*	inMsgData);
 
@@ -176,7 +175,7 @@ private:
 		CAN_message_t const&	inMsg);
 
 	bool
-	SerialCmdSend(
+	SendCommand(
 		IOutputDirector*	inOutput,
 		int					inArgC,
 		char const*			inArgV[]);
@@ -196,6 +195,11 @@ private:
 	SMsgHandler		handlerList[eCANBus_MaxMsgType];
 	FlexCAN			canBus;
 	SSerialCmdState	serialCmdStates[eCANBus_MaxSerialCmdStates];
+
+	uint8_t	sendFIFOPendingNext;
+	uint8_t	sendFIFOOutgoingNext;
+
+	CAN_message_t	sendFIFO[eCANBus_SendBufferSize];
 
 	uint8_t	targetNodeID;
 

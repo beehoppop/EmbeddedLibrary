@@ -112,7 +112,7 @@ public:
 		void)
 	{
 		AddDebugMsgHandler(this);
-		gCmd->RegisterCommand("debug_dump", this, static_cast<TCmdHandlerMethod>(&CDebugSerialHanlder::DbgLogDump));
+		gCommand->RegisterCommand("debug_dump", this, static_cast<TCmdHandlerMethod>(&CDebugSerialHanlder::DbgLogDump));
 	}
 
 	bool

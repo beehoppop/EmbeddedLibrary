@@ -55,7 +55,7 @@ typedef bool
 	int					inArgC,
 	char const*			inArgv[]);
 
-class CModule_Cmd : public CModule
+class CModule_Command : public CModule
 {
 public:
 	
@@ -81,7 +81,7 @@ public:
 
 private:
 	
-	CModule_Cmd(
+	CModule_Command(
 		);
 	
 	struct SCommand
@@ -94,9 +94,9 @@ private:
 	int			handlerCount;
 	SCommand	commandList[eCmd_MaxCommands];
 
-	static CModule_Cmd	module;
+	static CModule_Command	module;
 };
 
-extern CModule_Cmd*	gCmd;
+extern CModule_Command*	gCommand;
 
 #endif /* _ELCOMMAND_H_ */

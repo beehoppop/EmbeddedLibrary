@@ -255,12 +255,12 @@ CRealTime::Setup(
 		SetTimeZone(gTimeZone, false);
 	#endif
 
-	gCmd->RegisterCommand("time_set", this, static_cast<TCmdHandlerMethod>(&CRealTime::SerialSetTime));
-	gCmd->RegisterCommand("time_get", this, static_cast<TCmdHandlerMethod>(&CRealTime::SerialGetTime));
-	gCmd->RegisterCommand("timezone_set", this, static_cast<TCmdHandlerMethod>(&CRealTime::SerialSetTimeZone));
-	gCmd->RegisterCommand("timezone_get", this, static_cast<TCmdHandlerMethod>(&CRealTime::SerialGetTimeZone));
-	gCmd->RegisterCommand("rt_dump", this, static_cast<TCmdHandlerMethod>(&CRealTime::SerialDumpTable));
-	gCmd->RegisterCommand("rt_set_mult", this, static_cast<TCmdHandlerMethod>(&CRealTime::SerialSetMultiplier));
+	gCommand->RegisterCommand("time_set", this, static_cast<TCmdHandlerMethod>(&CRealTime::SerialSetTime));
+	gCommand->RegisterCommand("time_get", this, static_cast<TCmdHandlerMethod>(&CRealTime::SerialGetTime));
+	gCommand->RegisterCommand("timezone_set", this, static_cast<TCmdHandlerMethod>(&CRealTime::SerialSetTimeZone));
+	gCommand->RegisterCommand("timezone_get", this, static_cast<TCmdHandlerMethod>(&CRealTime::SerialGetTimeZone));
+	gCommand->RegisterCommand("rt_dump", this, static_cast<TCmdHandlerMethod>(&CRealTime::SerialDumpTable));
+	gCommand->RegisterCommand("rt_set_mult", this, static_cast<TCmdHandlerMethod>(&CRealTime::SerialSetMultiplier));
 
 	timeMultiplier = 1;
 

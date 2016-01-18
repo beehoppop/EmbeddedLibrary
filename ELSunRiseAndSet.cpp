@@ -91,8 +91,8 @@ void
 CSunRiseAndSetModule::Setup(
 	void)
 {
-	gCmd->RegisterCommand("lonlat_set", this, static_cast<TCmdHandlerMethod>(&CSunRiseAndSetModule::SerialSetLonLat));
-	gCmd->RegisterCommand("lonlat_get", this, static_cast<TCmdHandlerMethod>(&CSunRiseAndSetModule::SerialGetLonLat));
+	gCommand->RegisterCommand("lonlat_set", this, static_cast<TCmdHandlerMethod>(&CSunRiseAndSetModule::SerialSetLonLat));
+	gCommand->RegisterCommand("lonlat_get", this, static_cast<TCmdHandlerMethod>(&CSunRiseAndSetModule::SerialGetLonLat));
 	gRealTime->RegisterTimeChangeHandler("ssar", this, static_cast<TRealTimeChangeMethod>(&CSunRiseAndSetModule::RealTimeChangeHandler));
 }
 

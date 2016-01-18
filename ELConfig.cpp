@@ -51,8 +51,8 @@ CModule_Config::Setup(
 		configVarUsed[i] = false;
 	}
 
-	gCmd->RegisterCommand("config_set", this, static_cast<TCmdHandlerMethod>(&CModule_Config::SetConfig));
-	gCmd->RegisterCommand("config_get", this, static_cast<TCmdHandlerMethod>(&CModule_Config::GetConfig));
+	gCommand->RegisterCommand("config_set", this, static_cast<TCmdHandlerMethod>(&CModule_Config::SetConfig));
+	gCommand->RegisterCommand("config_get", this, static_cast<TCmdHandlerMethod>(&CModule_Config::GetConfig));
 
 	nodeIDIndex = RegisterConfigVar("node_id");
 	debugLevelIndex = RegisterConfigVar("debug_level");
