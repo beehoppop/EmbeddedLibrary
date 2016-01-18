@@ -63,7 +63,7 @@ class CExampleModule : public CModule, public IDigitalIOEventHandler, public ICm
 		Serial.printf("In Setup\n");
 
 		// Register a serial port command.
-		gCmd->RegisterCommand("hello", this, static_cast<TCmdHandlerMethod>(&CExampleModule::SerialCmdHello));
+		gCommand->RegisterCommand("hello", this, static_cast<TCmdHandlerMethod>(&CExampleModule::SerialCmdHello));
 
 		// Register a digital io event handler on pin 1
 		gDigitalIO->RegisterEventHandler(1, false, this, static_cast<TDigitalIOEventMethod>(&CExampleModule::PinActivated), NULL);
@@ -121,7 +121,7 @@ void
 setup(
 	void)
 {
-	CModule::SetupAll("v0.2", true);	// Passing in true blinks the led when the blink_led config var is set to one
+	CModule::SetupAll("v0.3", true);	// Passing in true blinks the led when the blink_led config var is set to one
 }
 
 void
