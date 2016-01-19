@@ -82,15 +82,15 @@ class CExampleModule : public CModule, public IDigitalIOEventHandler, public ICm
 		++updateCount;
 	}
 
-	bool
+	uint8_t
 	SerialCmdHello(
 		IOutputDirector*	inOutput,
 		int					inArgC,
-		char const*			inArgv[])
+		char const*			inArgV[])
 	{
 		inOutput->printf("Hello World\n");
 
-		return true;	// Returning true means command was processed successfully, returning false will print an error to the proper output
+		return eCmd_Succeeded;	// Returning true means command was processed successfully, returning false will print an error to the proper output
 	}
 
 	void

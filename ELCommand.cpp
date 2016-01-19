@@ -70,10 +70,7 @@ class CModule_SerialCmdHandler : public CModule
 				charBuffer[curIndex] = 0;
 				curIndex = 0;
 
-				if(gCommand->ProcessCommand(gSerialOut, charBuffer) == false)
-				{
-					Serial.write("Command Failed\n");
-				}
+				gCommand->ProcessCommand(gSerialOut, charBuffer);
 			}
 			else
 			{
@@ -117,38 +114,38 @@ CModule_Command::RegisterCommand(
 	strncpy(newCommand->name, inCmdName, sizeof(newCommand->name));
 }
 
-bool
+uint8_t
 CModule_Command::ProcessCommand(
 	IOutputDirector*	inOutput,
 	int					inArgC,
-	char const*			inArgv[])
+	char const*			inArgV[])
 {
 	AddDebugMsgHandler(inOutput);	// Add the output source to the list of debug msg handlers so it will get all output
 
-	bool	result = false;
+	uint8_t	result = eCmd_Failed;
 	bool	cmdFound = false;
 	for(int itr = 0; itr < handlerCount; ++itr)
 	{
-		if(strcmp(commandList[itr].name, inArgv[0]) == 0)
+		if(strcmp(commandList[itr].name, inArgV[0]) == 0)
 		{
 			cmdFound = true;
-			result = (commandList[itr].handler->*commandList[itr].method)(inOutput, inArgC, inArgv);
+			result = (commandList[itr].handler->*commandList[itr].method)(inOutput, inArgC, inArgV);
 			break;
 		}
 	}
 
 	if(cmdFound == false)
 	{
-		inOutput->printf("Could not find cmd %s\n", inArgv[0]);
+		inOutput->printf("Could not find cmd %s\n", inArgV[0]);
 	}
 	
-	if(result == false)
+	if(result == eCmd_Failed)
 	{
-		inOutput->printf("%s: FAILED\n", inArgv[0]);
+		inOutput->printf("CC: %s FAILED\n", inArgV[0]);
 	}
-	else
+	else if(result == eCmd_Succeeded)
 	{
-		inOutput->printf("%s: SUCCESS\n", inArgv[0]);
+		inOutput->printf("CC: %s SUCCEEDED\n", inArgV[0]);
 	}
 
 	RemoveDebugMsgHandler(inOutput);	// Now that the command is done remove it's output handler
@@ -156,7 +153,7 @@ CModule_Command::ProcessCommand(
 	return result;
 }
 
-bool
+uint8_t
 CModule_Command::ProcessCommand(
 	IOutputDirector*	inOutput,
 	char*				inStr)

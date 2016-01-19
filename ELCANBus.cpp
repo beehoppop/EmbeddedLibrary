@@ -298,7 +298,7 @@ CModule_CANBus::DumpMsg(
 		);
 }
 
-bool
+uint8_t
 CModule_CANBus::SendCommand(
 	IOutputDirector*	inOutput,
 	int					inArgC,
@@ -312,7 +312,7 @@ CModule_CANBus::SendCommand(
 	for(int i = 2; i < inArgC; ++i)
 	{
 		size_t	argLen = strlen(inArgV[i]);
-		MReturnOnError(bufferLen + argLen >= sizeof(buffer), false);
+		MReturnOnError(bufferLen + argLen >= sizeof(buffer), eCmd_Failed);
 		memcpy(buffer + bufferLen, inArgV[i], argLen);
 		bufferLen += argLen;
 		if(i < inArgC - 1)
@@ -320,7 +320,7 @@ CModule_CANBus::SendCommand(
 			buffer[bufferLen++] = ' ';
 		}
 	}
-	MReturnOnError(bufferLen + 1 > sizeof(buffer), false);
+	MReturnOnError(bufferLen + 1 > sizeof(buffer), eCmd_Failed);
 	buffer[bufferLen++] = 0;
 
 	if(dstNodeID == gConfig->GetVal(gConfig->nodeIDIndex))
@@ -332,7 +332,7 @@ CModule_CANBus::SendCommand(
 		SendString(dstNodeID, eSysMsg_Command, buffer);
 	}
 
-	return true;
+	return eCmd_Pending;
 }
 
 void

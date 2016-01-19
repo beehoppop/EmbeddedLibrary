@@ -207,33 +207,33 @@ CSunRiseAndSetModule::CancelEvent(
 	targetEvent->name[0] = 0;
 }
 
-bool
+uint8_t
 CSunRiseAndSetModule::SerialSetLonLat(
 	IOutputDirector*	inOutput,
 	int					inArgC,
-	char const*			inArgv[])
+	char const*			inArgV[])
 {
 	if(inArgC != 3)
 	{
-		return false;
+		return eCmd_Failed;
 	}
 
-	double lon = atof(inArgv[1]);
-	double lat = atof(inArgv[2]);
+	double lon = atof(inArgV[1]);
+	double lat = atof(inArgV[2]);
 
 	SetLongitudeAndLatitude(lon, lat, true);
 
-	return true;
+	return eCmd_Succeeded;
 }
 
-bool
+uint8_t
 CSunRiseAndSetModule::SerialGetLonLat(
 	IOutputDirector*	inOutput,
 	int					inArgC,
-	char const*			inArgv[])
+	char const*			inArgV[])
 {
 	inOutput->printf("%03.03f %03.03f\n", settings.lon, settings.lat);
-	return true;
+	return eCmd_Succeeded;
 }
 
 CSunRiseAndSetModule::SEvent*

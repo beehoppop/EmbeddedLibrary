@@ -85,7 +85,7 @@ class CModuleManager : public CModule, public ICmdHandler
 		gBlinkLEDIndex = gConfig->RegisterConfigVar("blink_led");
 	}
 
-	bool
+	uint8_t
 	SerialCmdAlive(
 		IOutputDirector*	inOutput,
 		int					inArgC,
@@ -93,7 +93,7 @@ class CModuleManager : public CModule, public ICmdHandler
 	{
 		inOutput->printf("ALIVE node=%d ver=%s build date=%s %s\n", gConfig->GetVal(gConfig->nodeIDIndex), gVersionStr, __DATE__, __TIME__);
 		
-		return true;
+		return eCmd_Succeeded;
 	}
 
 	static CModuleManager	module;

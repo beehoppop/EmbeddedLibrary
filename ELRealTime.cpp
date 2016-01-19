@@ -1150,63 +1150,63 @@ CRealTime::ScheduleAlarm(
 	}
 }
 
-bool
+uint8_t
 CRealTime::SerialSetTime(
 	IOutputDirector*	inOutput,
 	int					inArgC,
-	char const*			inArgv[])
+	char const*			inArgV[])
 {
 	// year month day hour min sec in UTC
 
 	if(inArgC != 8)
 	{
 		inOutput->printf("Wrong number of arguments got %d expected 6\n", inArgC - 1);
-		return false;
+		return eCmd_Failed;
 	}
 
-	int	year = atoi(inArgv[1]);
+	int	year = atoi(inArgV[1]);
 	if(year < 1970 || year > 2099)
 	{
 		inOutput->printf("year out of range");
-		return false;
+		return eCmd_Failed;
 	}
 
-	int	month = atoi(inArgv[2]);
+	int	month = atoi(inArgV[2]);
 	if(month < 1 || month > 12)
 	{
 		inOutput->printf("month out of range");
-		return false;
+		return eCmd_Failed;
 	}
 
-	int	day = atoi(inArgv[3]);
+	int	day = atoi(inArgV[3]);
 	if(day < 1 || day > 31)
 	{
 		inOutput->printf("day of month out of range");
-		return false;
+		return eCmd_Failed;
 	}
 
-	int	hour = atoi(inArgv[4]);
+	int	hour = atoi(inArgV[4]);
 	if(hour < 0 || hour > 23)
 	{
 		inOutput->printf("hour out of range");
-		return false;
+		return eCmd_Failed;
 	}
 
-	int	min = atoi(inArgv[5]);
+	int	min = atoi(inArgV[5]);
 	if(min < 0 || min > 59)
 	{
 		inOutput->printf("minutes out of range");
-		return false;
+		return eCmd_Failed;
 	}
 
-	int	sec = atoi(inArgv[6]);
+	int	sec = atoi(inArgV[6]);
 	if(min < 0 || min > 59)
 	{
 		inOutput->printf("seconds out of range");
-		return false;
+		return eCmd_Failed;
 	}
 	
-	bool	utc = strcmp(inArgv[7], "utc") == 0;
+	bool	utc = strcmp(inArgV[7], "utc") == 0;
 
 	if(!utc)
 	{
@@ -1220,14 +1220,14 @@ CRealTime::SerialSetTime(
 
 	SetDateAndTime(year, month, day, hour, min, sec, true);
 
-	return true;
+	return eCmd_Succeeded;
 }
 
-bool
+uint8_t
 CRealTime::SerialGetTime(
 	IOutputDirector*	inOutput,
 	int					inArgC,
-	char const*			inArgv[])
+	char const*			inArgV[])
 {
 	int	year;
 	int	month;
@@ -1237,7 +1237,7 @@ CRealTime::SerialGetTime(
 	int	sec;
 	int	dow;
 
-	bool	utc = inArgC == 2 && strcmp(inArgv[1], "utc") == 0;
+	bool	utc = inArgC == 2 && strcmp(inArgV[1], "utc") == 0;
 
 	if(timeMultiplier == 1 && provider != NULL)
 	{
@@ -1248,14 +1248,14 @@ CRealTime::SerialGetTime(
 
 	inOutput->printf("%02d/%02d/%04d %02d:%02d:%02d %s\n", month, day, year, hour, min, sec, utc ? "utc" : "local");
 
-	return true;
+	return eCmd_Succeeded;
 }
 
-bool
+uint8_t
 CRealTime::SerialSetTimeZone(
 	IOutputDirector*	inOutput,
 	int					inArgC,
-	char const*			inArgv[])
+	char const*			inArgV[])
 {
 	STimeZoneRule	newTimeZone;
 	
@@ -1264,96 +1264,96 @@ CRealTime::SerialSetTimeZone(
 	if(inArgC != 12)
 	{
 		inOutput->printf("Wrong number of arguments got %d expected 11\n", inArgC - 1);
-		return false;
+		return eCmd_Failed;
 	}
 
-	if(strlen(inArgv[1]) > eRealTime_MaxNameLength)
+	if(strlen(inArgV[1]) > eRealTime_MaxNameLength)
 	{
-		inOutput->printf("max name length is 15, got %d\n", strlen(inArgv[1]));
-		return false;
+		inOutput->printf("max name length is 15, got %d\n", strlen(inArgV[1]));
+		return eCmd_Failed;
 	}
-	strncpy(newTimeZone.abbrev, inArgv[1], sizeof(newTimeZone.abbrev));
+	strncpy(newTimeZone.abbrev, inArgV[1], sizeof(newTimeZone.abbrev));
 		
-	newTimeZone.dstStart.week = atoi(inArgv[2]);
+	newTimeZone.dstStart.week = atoi(inArgV[2]);
 	if(newTimeZone.dstStart.week < 0 || newTimeZone.dstStart.week > 4)
 	{
 		inOutput->printf("dst start week out of range");
-		return false;
+		return eCmd_Failed;
 	}
 
-	newTimeZone.dstStart.dayOfWeek = atoi(inArgv[3]);
+	newTimeZone.dstStart.dayOfWeek = atoi(inArgV[3]);
 	if(newTimeZone.dstStart.dayOfWeek < 1 || newTimeZone.dstStart.dayOfWeek > 7)
 	{
 		inOutput->printf("dst start day of week out of range");
-		return false;
+		return eCmd_Failed;
 	}
 
-	newTimeZone.dstStart.month = atoi(inArgv[4]);
+	newTimeZone.dstStart.month = atoi(inArgV[4]);
 	if(newTimeZone.dstStart.month < 1 || newTimeZone.dstStart.month > 12)
 	{
 		inOutput->printf("dst start month out of range");
-		return false;
+		return eCmd_Failed;
 	}
 
-	newTimeZone.dstStart.hour = atoi(inArgv[5]);
+	newTimeZone.dstStart.hour = atoi(inArgV[5]);
 	if(newTimeZone.dstStart.hour < 0 || newTimeZone.dstStart.hour > 23)
 	{
 		inOutput->printf("dst start hour out of range");
-		return false;
+		return eCmd_Failed;
 	}
 
-	newTimeZone.dstStart.offsetMins = atoi(inArgv[6]);
+	newTimeZone.dstStart.offsetMins = atoi(inArgV[6]);
 	if(newTimeZone.dstStart.offsetMins < -12 * 60 || newTimeZone.dstStart.offsetMins > 14 * 60)
 	{
 		inOutput->printf("dst start offset out of range");
-		return false;
+		return eCmd_Failed;
 	}
 		
-	newTimeZone.stdStart.week = atoi(inArgv[7]);
+	newTimeZone.stdStart.week = atoi(inArgV[7]);
 	if(newTimeZone.stdStart.week < 0 || newTimeZone.stdStart.week > 4)
 	{
 		inOutput->printf("std start week out of range");
-		return false;
+		return eCmd_Failed;
 	}
 
-	newTimeZone.stdStart.dayOfWeek = atoi(inArgv[8]);
+	newTimeZone.stdStart.dayOfWeek = atoi(inArgV[8]);
 	if(newTimeZone.stdStart.dayOfWeek < 1 || newTimeZone.stdStart.dayOfWeek > 7)
 	{
 		inOutput->printf("std start day of week out of range");
-		return false;
+		return eCmd_Failed;
 	}
 
-	newTimeZone.stdStart.month = atoi(inArgv[9]);
+	newTimeZone.stdStart.month = atoi(inArgV[9]);
 	if(newTimeZone.stdStart.month < 1 || newTimeZone.stdStart.month > 12)
 	{
 		inOutput->printf("std start month out of range");
-		return false;
+		return eCmd_Failed;
 	}
 
-	newTimeZone.stdStart.hour = atoi(inArgv[10]);
+	newTimeZone.stdStart.hour = atoi(inArgV[10]);
 	if(newTimeZone.stdStart.hour < 0 || newTimeZone.stdStart.hour > 23)
 	{
 		inOutput->printf("std start hour out of range");
-		return false;
+		return eCmd_Failed;
 	}
 
-	newTimeZone.stdStart.offsetMins = atoi(inArgv[11]);
+	newTimeZone.stdStart.offsetMins = atoi(inArgV[11]);
 	if(newTimeZone.stdStart.offsetMins < -12 * 60 || newTimeZone.stdStart.offsetMins > 14 * 60)
 	{
 		inOutput->printf("std start offset out of range");
-		return false;
+		return eCmd_Failed;
 	}
 
 	SetTimeZone(newTimeZone, true);
 
-	return true;
+	return eCmd_Succeeded;
 }
 
-bool
+uint8_t
 CRealTime::SerialGetTimeZone(
 	IOutputDirector*	inOutput,
 	int					inArgC,
-	char const*			inArgv[])
+	char const*			inArgV[])
 {
 	inOutput->printf("%s %d %d %d %d %d %d %d %d %d %d\n", 
 		timeZoneInfo.abbrev, 
@@ -1361,14 +1361,14 @@ CRealTime::SerialGetTimeZone(
 		timeZoneInfo.stdStart.week, timeZoneInfo.stdStart.dayOfWeek, timeZoneInfo.stdStart.month, timeZoneInfo.stdStart.hour, timeZoneInfo.stdStart.offsetMins
 		);
 
-	return true;
+	return eCmd_Succeeded;
 }
 
-bool
+uint8_t
 CRealTime::SerialDumpTable(
 	IOutputDirector*	inOutput,
 	int					inArgC,
-	char const*			inArgv[])
+	char const*			inArgV[])
 {
 	SAlarm* curAlarm = alarmArray;
 	for(int alarmItr = 0; alarmItr < eAlarm_MaxActive; ++alarmItr, ++curAlarm)
@@ -1385,14 +1385,14 @@ CRealTime::SerialDumpTable(
 		inOutput->printf("%s will alarm at %02d/%02d/%02d %02d:%02d:%02d UTC", curAlarm->name, month, day, year, hour, min, sec);
 	}
 
-	return true;
+	return eCmd_Succeeded;
 }
 
-bool
+uint8_t
 CRealTime::SerialSetMultiplier(
 	IOutputDirector*	inOutput,
 	int					inArgC,
-	char const*			inArgv[])
+	char const*			inArgV[])
 {
 	if(inArgC != 2)
 	{
@@ -1402,9 +1402,9 @@ CRealTime::SerialSetMultiplier(
 	// Reset the internal state variables
 	SetEpochTime(GetEpochTime(true), true);
 
-	timeMultiplier = atoi(inArgv[1]);
+	timeMultiplier = atoi(inArgV[1]);
 
-	return true;
+	return eCmd_Succeeded;
 }
 
 enum

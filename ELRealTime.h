@@ -491,41 +491,41 @@ private:
 	ScheduleAlarm(
 		SAlarm*	inAlarm);
 
-	bool
+	uint8_t
 	SerialSetTime(
 		IOutputDirector*	inOutput,
 		int					inArgC,
-		char const*			inArgv[]);
+		char const*			inArgV[]);
 
-	bool
+	uint8_t
 	SerialGetTime(
 		IOutputDirector*	inOutput,
 		int					inArgC,
-		char const*			inArgv[]);
+		char const*			inArgV[]);
 
-	bool
+	uint8_t
 	SerialSetTimeZone(
 		IOutputDirector*	inOutput,
 		int					inArgC,
-		char const*			inArgv[]);
+		char const*			inArgV[]);
 
-	bool
+	uint8_t
 	SerialGetTimeZone(
 		IOutputDirector*	inOutput,
 		int					inArgC,
-		char const*			inArgv[]);
+		char const*			inArgV[]);
 
-	bool
+	uint8_t
 	SerialDumpTable(
 		IOutputDirector*	inOutput,
 		int					inArgC,
-		char const*			inArgv[]);
+		char const*			inArgV[]);
 
-	bool
+	uint8_t
 	SerialSetMultiplier(
 		IOutputDirector*	inOutput,
 		int					inArgC,
-		char const*			inArgv[]);
+		char const*			inArgV[]);
 
 	static CRealTime	module;
 };

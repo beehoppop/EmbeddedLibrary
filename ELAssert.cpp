@@ -115,7 +115,7 @@ public:
 		gCommand->RegisterCommand("debug_dump", this, static_cast<TCmdHandlerMethod>(&CDebugSerialHanlder::DbgLogDump));
 	}
 
-	bool
+	uint8_t
 	DbgLogDump(
 		IOutputDirector*	inOutputDirector,
 		int					inArgC,
@@ -135,7 +135,7 @@ public:
 		inOutputDirector->write("\n*****\n");
 		#endif
 
-		return true;
+		return eCmd_Succeeded;
 	}
 
 	virtual void

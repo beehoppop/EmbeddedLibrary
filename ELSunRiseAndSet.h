@@ -231,17 +231,17 @@ private:
 		TSunRiseAndSetEventMethod	method;
 	};
 
-	bool
+	uint8_t
 	SerialSetLonLat(
 		IOutputDirector*	inOutput,
 		int					inArgC,
-		char const*			inArgv[]);
+		char const*			inArgV[]);
 
-	bool
+	uint8_t
 	SerialGetLonLat(
 		IOutputDirector*	inOutput,
 		int					inArgC,
-		char const*			inArgv[]);
+		char const*			inArgV[]);
 
 	SEvent*
 	FindEvent(

@@ -121,30 +121,30 @@ CModule_LuminositySensor::SetMinMaxLux(
 	}
 }
 
-bool
+uint8_t
 CModule_LuminositySensor::SerialCmdGetLux(
 	IOutputDirector*	inOutput,
 	int					inArgC,
-	char const*			inArgv[])
+	char const*			inArgV[])
 {
 	inOutput->printf("lux = %f\n", GetActualLux());
 
-	return true;
+	return eCmd_Succeeded;
 }
 
-bool
+uint8_t
 CModule_LuminositySensor::SerialCmdConfig(
 	IOutputDirector*	inOutput,
 	int					inArgC,
-	char const*			inArgv[])
+	char const*			inArgV[])
 {
-	settings.gain = atoi(inArgv[1]);
-	settings.time = atoi(inArgv[2]);
+	settings.gain = atoi(inArgV[1]);
+	settings.time = atoi(inArgV[2]);
 	EEPROMSave();
 
 	SetupSensor();
 
-	return true;
+	return eCmd_Succeeded;
 }
 	
 void

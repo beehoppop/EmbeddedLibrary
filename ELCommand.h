@@ -37,6 +37,10 @@
 
 enum
 {
+	eCmd_Failed = 0,
+	eCmd_Succeeded,
+	eCmd_Pending,
+
 	eCmd_MaxNameLen = 15,
 	eCmd_MaxCommands = 64,
 	eCmd_MaxCommandArgs = 64,
@@ -49,11 +53,11 @@ public:
 };
 
 // The typedef for the command handler method
-typedef bool
+typedef uint8_t
 (ICmdHandler::*TCmdHandlerMethod)(
 	IOutputDirector*	inOutput,
 	int					inArgC,
-	char const*			inArgv[]);
+	char const*			inArgV[]);
 
 class CModule_Command : public CModule
 {
@@ -67,14 +71,14 @@ public:
 		TCmdHandlerMethod	inMethod);		// The method of the command handler
 
 	// This will process the given command args
-	bool
+	uint8_t
 	ProcessCommand(
 		IOutputDirector*	inOutput,
 		int					inArgC,
-		char const*			inArgv[]);
+		char const*			inArgV[]);
 
 	// This will process the given command string
-	bool
+	uint8_t
 	ProcessCommand(
 		IOutputDirector*	inOutput,
 		char*				inCmdStr);	// This input command string must be writable in order to break up into discrete arg strings

@@ -78,51 +78,51 @@ CModule_Config::SetVal(
 	EEPROMSave();
 }
 
-bool
+uint8_t
 CModule_Config::SetConfig(
 	IOutputDirector*	inOutput,
 	int					inArgC,
-	char const*			inArgv[])
+	char const*			inArgV[])
 {
 	if(inArgC != 3)
 	{
-		return false;
+		return eCmd_Failed;
 	}
 
-	int	targetVar = GetVarFromStr(inArgv[1]);
-	int	targetVal = atoi(inArgv[2]);
+	int	targetVar = GetVarFromStr(inArgV[1]);
+	int	targetVal = atoi(inArgV[2]);
 
 	if(targetVar < 0)
 	{
-		return false;
+		return eCmd_Failed;
 	}
 
 	SetVal((uint8_t)targetVar, (uint8_t)targetVal);
 
-	return true;
+	return eCmd_Succeeded;
 }
 
-bool
+uint8_t
 CModule_Config::GetConfig(
 	IOutputDirector*	inOutput,
 	int					inArgC,
-	char const*			inArgv[])
+	char const*			inArgV[])
 {
 	if(inArgC != 2)
 	{
-		return false;
+		return eCmd_Failed;
 	}
 	
-	int	targetVar = GetVarFromStr(inArgv[1]);
+	int	targetVar = GetVarFromStr(inArgV[1]);
 
 	if(targetVar < 0)
 	{
-		return false;
+		return eCmd_Failed;
 	}
 
-	inOutput->printf("%s = %d\n", inArgv[1], GetVal((uint8_t)targetVar));
+	inOutput->printf("%s = %d\n", inArgV[1], GetVal((uint8_t)targetVar));
 
-	return true;
+	return eCmd_Succeeded;
 }
 
 int

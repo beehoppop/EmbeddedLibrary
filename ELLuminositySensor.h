@@ -73,17 +73,17 @@ private:
 	Update(
 		uint32_t inDeltaTimeUS);
 
-	bool
+	uint8_t
 	SerialCmdGetLux(
 		IOutputDirector*	inOutput,
 		int					inArgC,
-		char const*			inArgv[]);
+		char const*			inArgV[]);
 
-	bool
+	uint8_t
 	SerialCmdConfig(
 		IOutputDirector*	inOutput,
 		int					inArgC,
-		char const*			inArgv[]);
+		char const*			inArgV[]);
 	
 	void
 	SetupSensor(

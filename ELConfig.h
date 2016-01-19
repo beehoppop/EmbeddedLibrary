@@ -74,17 +74,17 @@ private:
 	Setup(
 		void);
 
-	bool
+	uint8_t
 	SetConfig(
 		IOutputDirector*	inOutput,
 		int					inArgC,
-		char const*			inArgv[]);
+		char const*			inArgV[]);
 
-	bool
+	uint8_t
 	GetConfig(
 		IOutputDirector*	inOutput,
 		int					inArgC,
-		char const*			inArgv[]);
+		char const*			inArgV[]);
 
 	int
 	GetVarFromStr(

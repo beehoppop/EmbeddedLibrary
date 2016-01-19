@@ -174,7 +174,7 @@ private:
 	DumpMsg(
 		CAN_message_t const&	inMsg);
 
-	bool
+	uint8_t
 	SendCommand(
 		IOutputDirector*	inOutput,
 		int					inArgC,
