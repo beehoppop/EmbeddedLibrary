@@ -8,7 +8,7 @@ Release Notes
   - The module system now does most of the heavy lifting for saving and restoring settings from EEPROM
   - Improved time change handling by providing a mechanism to register when the time has been changed
   - Config vars can now be registered to leverage the existing mechanisms to set and get persistent global config settings
-  - Improvements to the debug output system so debug messages generating during command execution will go to the output of that command source
+  - Improvements to the debug output system so debug messages generating during command execution will go to the output of the command source
   - Bug fixes
 
 12/28/15/ - 0.1.0 - First pre-release
