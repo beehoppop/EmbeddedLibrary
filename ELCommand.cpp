@@ -26,10 +26,11 @@
 
 #include <string.h>
 
-#include "ELModule.h"
-#include "ELCommand.h"
-#include "ELAssert.h"
-#include "ELOutput.h"
+#include <ELModule.h>
+#include <ELCommand.h>
+#include <ELAssert.h>
+#include <ELOutput.h>
+#include <ELConfig.h>
 
 class CModule_SerialCmdHandler : public CModule
 {
@@ -141,11 +142,11 @@ CModule_Command::ProcessCommand(
 	
 	if(result == eCmd_Failed)
 	{
-		inOutput->printf("CC: %s FAILED\n", inArgV[0]);
+		inOutput->printf("CC:[%03d] %s FAILED\n", gConfig->GetVal(gConfig->nodeIDIndex), inArgV[0]);
 	}
 	else if(result == eCmd_Succeeded)
 	{
-		inOutput->printf("CC: %s SUCCEEDED\n", inArgV[0]);
+		inOutput->printf("CC:[%03d] %s SUCCEEDED\n", gConfig->GetVal(gConfig->nodeIDIndex), inArgV[0]);
 	}
 
 	RemoveDebugMsgHandler(inOutput);	// Now that the command is done remove it's output handler

@@ -317,6 +317,7 @@ CModule_CANBus::SendCommand(
 		bufferLen += argLen;
 		if(i < inArgC - 1)
 		{
+			MReturnOnError(bufferLen + 1 > sizeof(buffer), eCmd_Failed);
 			buffer[bufferLen++] = ' ';
 		}
 	}
