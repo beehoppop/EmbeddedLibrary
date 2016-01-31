@@ -46,6 +46,8 @@ enum
 	eMaxDebugMsgHandlers = 4,
 
 	eDbgLevel_Off = 0,
+
+	eDbgLevel_Always = 0,
 	eDbgLevel_Basic,
 	eDbgLevel_Medium,
 	eDbgLevel_Verbose,

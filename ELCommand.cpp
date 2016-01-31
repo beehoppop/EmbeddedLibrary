@@ -52,7 +52,7 @@ class CModule_SerialCmdHandler : public CModule
 	Update(
 		uint32_t	inDeltaTimeUS)
 	{
-		int	bytesAvailable = Serial.available();
+		size_t	bytesAvailable = Serial.available();
 		char	tmpBuffer[256];
 
 		if(bytesAvailable == 0)
@@ -60,22 +60,33 @@ class CModule_SerialCmdHandler : public CModule
 			return;
 		}
 
+		if(bytesAvailable > sizeof(tmpBuffer))
+		{
+			bytesAvailable = sizeof(tmpBuffer);
+		}
+
 		Serial.readBytes(tmpBuffer, bytesAvailable);
 
-		for(int i = 0; i < bytesAvailable; ++i)
+		for(size_t i = 0; i < bytesAvailable; ++i)
 		{
 			char c = tmpBuffer[i];
 
-			if(c == '\n')
+			if(c == '\n' || c == '\r')
 			{
-				charBuffer[curIndex] = 0;
-				curIndex = 0;
+				if(curIndex > 0)
+				{
+					charBuffer[curIndex] = 0;
+					curIndex = 0;
 
-				gCommand->ProcessCommand(gSerialOut, charBuffer);
+					gCommand->ProcessCommand(gSerialOut, charBuffer);
+				}
 			}
 			else
 			{
-				charBuffer[curIndex++] = c;
+				if(curIndex < (int)sizeof(charBuffer) - 1)
+				{
+					charBuffer[curIndex++] = c;
+				}
 			}
 		}
 	}

@@ -159,7 +159,7 @@ AssertFailed(
 {
 	for(;;)
 	{
-		DebugMsg(0, "ASSERT: %s %d %s\n", inFile, inLine, inMsg);
+		DebugMsg(eDbgLevel_Always, "ASSERT: %s %d %s\n", inFile, inLine, inMsg);
 		delay(500);
 	}
 }
@@ -204,7 +204,7 @@ DebugMsg(
 	if(finalBuffer[strLen - 1] != '\n')
 	{
 		finalBuffer[strLen] = '\n';
-		finalBuffer[strLen + 1] = '0';
+		finalBuffer[strLen + 1] = 0;
 	}
 
 	// Share it with the world

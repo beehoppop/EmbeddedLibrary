@@ -37,7 +37,7 @@
 
 enum
 {
-	eMaxModuleCount = 16,
+	eMaxModuleCount = 32,
 };
 
 class CModule

@@ -32,9 +32,10 @@
 enum
 {
 	eEEPROM_VersionOffset = 0,
-	eEEPROM_ListStart = 1,
+	eEEPROM_ModuleCountOffset = 1,
+	eEEPROM_ListStart = 2,
 
-	eEEPROM_Version = 101,
+	eEEPROM_Version = 102,
 
 	eEEPROM_Size = 2048
 
@@ -115,7 +116,8 @@ CModule::CModule(
 	eepromData(inEEPROMData),
 	updateTimeUS(inUpdateTimeUS),
 	priority(inPriority),
-	enabled(inEnabled)
+	enabled(inEnabled),
+	hasBeenSetup(false)
 {
 	if(gModuleCount >= eMaxModuleCount)
 	{
@@ -229,7 +231,8 @@ CModule::SetupAll(
 
 	bool	changes = false;
 	uint8_t	eepromVersion = EEPROM.read(eEEPROM_VersionOffset);
-	if(eepromVersion == eEEPROM_Version)
+	uint8_t	eepromModuleCount = EEPROM.read(eEEPROM_ModuleCountOffset);
+	if(eepromVersion == eEEPROM_Version && eMaxModuleCount == eepromModuleCount)
 	{
 		LoadDataFromEEPROM(gEEPROMEntryList, eEEPROM_ListStart, sizeof(gEEPROMEntryList));
 		for(int i = 0; i < eMaxModuleCount; ++i)
@@ -308,6 +311,7 @@ CModule::SetupAll(
 
 		WriteDataToEEPROM(gEEPROMEntryList, eEEPROM_ListStart, sizeof(gEEPROMEntryList));
 		EEPROM.write(eEEPROM_VersionOffset, eEEPROM_Version);
+		EEPROM.write(eEEPROM_ModuleCountOffset, eMaxModuleCount);
 	}
 
 	#if MDebugDelayStart
@@ -334,7 +338,7 @@ CModule::SetupAll(
 				}
 
 				#if MDebugDelayEachModule || MDebugDelayStart
-					DebugMsg(eDbgLevel_Medium, "Module: Setup %s\n", StringizeUInt32(curModule->uid));
+					DebugMsg(eDbgLevel_Always, "Module: Setup %s\n", StringizeUInt32(curModule->uid));
 				#endif
 				#if MDebugDelayEachModule
 					//Need to fix this code to not reference gConfig since it has not been initialized yet
@@ -353,7 +357,7 @@ CModule::SetupAll(
 	gConfig->SetupFinished();
 
 	#if MDebugDelayEachModule || MDebugDelayStart
-		DebugMsg(eDbgLevel_Medium, "Module: Setup Complete\n");
+		DebugMsg(eDbgLevel_Always, "Module: Setup Complete\n");
 	#endif
 }
 
@@ -442,9 +446,9 @@ CModule::LoopAll(
 		uint64_t	updateDeltaUS = gCurLocalUS - gModuleList[i]->lastUpdateUS;
 		if(updateDeltaUS >= gModuleList[i]->updateTimeUS)
 		{
-			//Serial.printf("Updating %s %d\n", StringizeUInt32(gModuleList[i]->uid), gModuleList[i]->enabled);
 			if(gModuleList[i]->enabled)
 			{
+				//Serial.printf("Updating %s %d\n", StringizeUInt32(gModuleList[i]->uid), gModuleList[i]->enabled);
 				gModuleList[i]->Update((uint32_t)updateDeltaUS);
 				gModuleList[i]->lastUpdateUS = gCurLocalUS;
 			}
