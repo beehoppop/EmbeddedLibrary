@@ -4,6 +4,7 @@
 #include <ELModule.h>
 #include <ELAssert.h>
 #include <ELInternet.h>
+#include <ELUtilities.h>
 #include <ELInternetDevice_ESP8266.h>
 
 class CModule_ESP8266 : public CModule, public IInternetDevice
@@ -21,8 +22,6 @@ public:
 	Setup(
 		void)
 	{
-		DebugMsg(eDbgLevel_Always, "HERE");
-
 		MReturnOnError(serialPort == NULL);
 		serialPort->begin(115200);
 
@@ -71,29 +70,24 @@ public:
 			return;
 		}
 
-		if(bytesAvailable > sizeof(tmpBuffer))
-		{
-			bytesAvailable = sizeof(tmpBuffer);
-		}
+		bytesAvailable = MMin(bytesAvailable, sizeof(tmpBuffer));
 		serialPort->readBytes(tmpBuffer, bytesAvailable);
-		tmpBuffer[bytesAvailable] = 0;
 
 		for(size_t i = 0; i < bytesAvailable; ++i)
 		{
 			char c = tmpBuffer[i];
 
-			if(ipdBytes > 0)
+			SIPDBuffer*	targetIPDBuffer = ipdBuffer + ipdIndex;
+			if(targetIPDBuffer->totalBytes > 0)
 			{
-				ipdBuffer[ipdBufferIndex++] = c;
-				if(ipdBufferIndex >= ipdBytes)
+				targetIPDBuffer->buffer[targetIPDBuffer->bufferIndex++] = c;
+				if(targetIPDBuffer->bufferIndex >= targetIPDBuffer->totalBytes)
 				{
-					ipdBuffer[ipdBufferIndex++] = 0;
 					// we have all the ipd data now
-					
+					ipdIndex = !ipdIndex;
+					ipdBuffer[ipdIndex].bufferIndex = 0;
+					ipdBuffer[ipdIndex].totalBytes = 0;
 
-
-					ipdBufferIndex = 0;
-					ipdBytes = 0;
 					commandResultLength = 0;
 				}
 				continue;
@@ -106,10 +100,13 @@ public:
 					commandResultBuffer[commandResultLength++] = 0;
 					int	channel, intPDBBytes;
 					sscanf(commandResultBuffer, "%d,%d", &channel, &intPDBBytes);
-					ipdBytes = (size_t)intPDBBytes;
+
+					ipdBuffer[ipdIndex].bufferIndex = 0;
+					ipdBuffer[ipdIndex].totalBytes = (size_t)intPDBBytes;
+					ipdBuffer[ipdIndex].channel = channel;
+
 					ipdParsing = false;
 					commandResultLength = 0;
-					ipdBufferIndex = 0;
 				}
 				else
 				{
@@ -149,9 +146,9 @@ public:
 	ProcessInputResponse(
 		char*	inCmd)
 	{
-		DebugMsg(eDbgLevel_Always, "Response: %s", inCmd);
+		//DebugMsgLocal(eDbgLevel_Always, "Response: %s", inCmd);
 
-		if(strcmp(inCmd, "OK") == 0)
+		if(strcmp(inCmd, "OK") == 0 || strcmp(inCmd, "SEND OK") == 0)
 		{
 			commandSucceeded = true;
 			commandPending = false;
@@ -222,20 +219,48 @@ public:
 	Server_GetData(
 		uint16_t	inServerPort,	
 		uint16_t&	outTransactionPort,	
-		int&		ioBufferSize,		
+		size_t&		ioBufferSize,		
 		char*		outBuffer)
 	{
+		SIPDBuffer*	targetIPDBuffer = ipdBuffer + !ipdIndex;
 
+		if(targetIPDBuffer->totalBytes > 0 && targetIPDBuffer->totalBytes == targetIPDBuffer->bufferIndex)
+		{
+			ioBufferSize = MMin(ioBufferSize, targetIPDBuffer->totalBytes);
+			memcpy(outBuffer, targetIPDBuffer->buffer, ioBufferSize);
+			outTransactionPort = targetIPDBuffer->channel;
+			targetIPDBuffer->totalBytes = 0;
+			targetIPDBuffer->bufferIndex = 0;
+		}
+		else
+		{
+			ioBufferSize = 0;
+		}
 	}
 
 	virtual void
 	Server_SendData(
 		uint16_t	inServerPort,	
 		uint16_t	inTransactionPort,	
-		int			inBufferSize,
-		char*		inBuffer)
+		size_t		inBufferSize,
+		char const*	inBuffer)
 	{
+		IssueCommand("AT+CIPSEND=%d,%d", 5000, inTransactionPort, inBufferSize);
+		while(serialPort->available() == 0 || serialPort->read() != '>')
+		{
+			delay(1);
+		}
+		serialPort->write((uint8_t*)inBuffer, inBufferSize);
+		WaitCommandCompleted();
+	}
 
+	virtual void
+	Server_CloseConnection(
+		uint16_t	inServerPort,
+		uint16_t	inTransactionPort)
+	{
+		IssueCommand("AT+CIPCLOSE=%d", 5000, inTransactionPort);
+		WaitCommandCompleted();
 	}
 
 	virtual bool
@@ -257,7 +282,7 @@ public:
 	virtual void
 	Connection_InitiateRequest(
 		uint16_t	inLocalPort,
-		int			inDataSize,
+		size_t		inDataSize,
 		char const*	inData)
 	{
 
@@ -266,7 +291,7 @@ public:
 	virtual void
 	Connection_GetData(
 		uint16_t	inPort,
-		int&		ioBufferSize,
+		size_t&		ioBufferSize,
 		char*		outBuffer)
 	{
 
@@ -301,7 +326,7 @@ public:
 		vabuffer[sizeof(vabuffer) - 1] = 0;	// Ensure a valid string
 		va_end(varArgs);
 
-		DebugMsg(eDbgLevel_Always, "Command: %s\n", vabuffer);
+		//DebugMsgLocal(eDbgLevel_Always, "Command: %s\n", vabuffer);
 		serialPort->write(vabuffer);
 		serialPort->write("\r\n");
 		commandPending = true;
@@ -325,16 +350,23 @@ public:
 		}
 	}
 
+	struct SIPDBuffer
+	{
+		char	buffer[1024];
+		int		channel;
+		size_t	bufferIndex;
+		size_t	totalBytes;
+	};
+
 	HardwareSerial*	serialPort;
 	uint8_t	rstPin;
 	uint8_t	chPDPin;
 	uint8_t	gpio0Pin;
 	uint8_t	gpio2Pin;
 
-	char	ipdBuffer[1024];
-	size_t	ipdBufferIndex;
-	size_t	ipdBytes;
-	bool	ipdParsing;
+	int			ipdIndex;
+	SIPDBuffer	ipdBuffer[2];
+	bool		ipdParsing;
 
 	bool		ready;
 

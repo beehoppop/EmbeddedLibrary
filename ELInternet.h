@@ -100,7 +100,7 @@ public:
 	Server_GetData(
 		uint16_t	inServerPort,		// The opened server port
 		uint16_t&	outTransactionPort,	// The port to send response data with
-		int&		ioBufferSize,		// The size of the provided buffer in bytes
+		size_t&		ioBufferSize,		// The size of the provided buffer in bytes
 		char*		outBuffer) = 0;		// The buffer to store data
 
 	// Send the response to the client
@@ -108,8 +108,14 @@ public:
 	Server_SendData(
 		uint16_t	inServerPort,		// The opened server port
 		uint16_t	inTransactionPort,	// The transaction port returned from GetData
-		int			inBufferSize,		// The number of bytes on the buffer
-		char*		inBuffer) = 0;		// The data to send
+		size_t		inBufferSize,		// The number of bytes on the buffer
+		char const*	inBuffer) = 0;		// The data to send
+
+	// End the transaction
+	virtual void
+	Server_CloseConnection(
+		uint16_t	inServerPort,
+		uint16_t	inTransactionPort) = 0;
 
 	// Open a connection to a remote server
 	virtual bool
@@ -127,14 +133,14 @@ public:
 	virtual void
 	Connection_InitiateRequest(
 		uint16_t	inLocalPort,
-		int			inDataSize,
+		size_t		inDataSize,
 		char const*	inData) = 0;
 
 	// Do a non blocking check for reply data arriving from the server
 	virtual void
 	Connection_GetData(
 		uint16_t	inPort,
-		int&		ioBufferSize,
+		size_t&		ioBufferSize,
 		char*		outBuffer) = 0;
 };
 
@@ -173,7 +179,7 @@ public:
 	void
 	InitiateRequest(
 		uint16_t						inLocalPort,
-		int								inDataSize,
+		size_t							inDataSize,
 		char const*						inData,
 		IInternetHandler*				inInternetHandler,	// The object of the handler
 		TInternetResponseHandlerMethod	inMethod);			// The method of the handler
@@ -207,7 +213,7 @@ private:
 	virtual void
 	write(
 		char const* inMsg,
-		size_t inBytes);
+		size_t		inBytes);
 
 	struct SServer
 	{
@@ -240,12 +246,14 @@ private:
 	SServer		serverList[eMaxServersCount];
 	SConnection	connectionList[eMaxConnectionsCount];
 
-	size_t	returnBufferLen;
-	char	returnBuffer[1024];
-
 	SSettings	settings;
 
 	uint16_t	commandServerPort;
+
+	bool		respondingServer;
+	uint16_t	respondingServerPort;
+	uint16_t	respondingTransactionPort;
+	
 
 	static CModule_Internet	module;
 

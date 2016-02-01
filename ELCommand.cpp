@@ -31,6 +31,7 @@
 #include <ELAssert.h>
 #include <ELOutput.h>
 #include <ELConfig.h>
+#include <ELUtilities.h>
 
 class CModule_SerialCmdHandler : public CModule
 {
@@ -60,11 +61,7 @@ class CModule_SerialCmdHandler : public CModule
 			return;
 		}
 
-		if(bytesAvailable > sizeof(tmpBuffer))
-		{
-			bytesAvailable = sizeof(tmpBuffer);
-		}
-
+		bytesAvailable = MMin(bytesAvailable, sizeof(tmpBuffer));
 		Serial.readBytes(tmpBuffer, bytesAvailable);
 
 		for(size_t i = 0; i < bytesAvailable; ++i)

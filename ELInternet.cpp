@@ -1,11 +1,17 @@
 
 #include <ELInternet.h>
 #include <ELAssert.h>
+#include <ELUtilities.h>
+#include <ELCommand.h>
 
 CModule_Internet	CModule_Internet::module;
 CModule_Internet*	gInternet;
 
-	
+static char const*	gCmdHomePageGet = "GET / HTTP";
+static char const*	gCmdProcessPageGet = "GET /cmd_data.asp?Command=";
+static char const*	gReplyStringPreOutput = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE html><html><body><form action=\"cmd_data.asp\">Command: <input type=\"text\" name=\"Command\"<br><input type=\"submit\" value=\"Submit\"></form><p>Click the \"Submit\" button and the command will be sent to the server.</p><code>";
+static char const*	gReplyStringPostOutput = "</code></body></html>";
+
 CModule_Internet::CModule_Internet(
 	)
 	:
@@ -137,7 +143,7 @@ CModule_Internet::CloseConnection(
 void
 CModule_Internet::InitiateRequest(
 	uint16_t						inLocalPort,
-	int								inDataSize,
+	size_t							inDataSize,
 	char const*						inData,
 	IInternetHandler*				inInternetHandler,
 	TInternetResponseHandlerMethod	inMethod)
@@ -185,8 +191,13 @@ void
 CModule_Internet::Update(
 	uint32_t	inDeltaTimeUS)
 {
-	int		bufferSize;
+	size_t	bufferSize;
 	char	buffer[1024];
+
+	if(internetDevice == NULL)
+	{
+		return;
+	}
 
 	SServer*	curServer = serverList;
 	for(int i = 0; i < eMaxServersCount; ++i, ++curServer)
@@ -199,9 +210,11 @@ CModule_Internet::Update(
 			if(bufferSize > 0)
 			{
 				// we got data, now call the handler
-				returnBufferLen = 0;
+				respondingServer = 0;
+				respondingServerPort = curServer->port;
+				respondingTransactionPort = transactionPort;
 				(curServer->handlerObject->*curServer->handlerMethod)(this, bufferSize, buffer);
-				internetDevice->Server_SendData(curServer->port, transactionPort, returnBufferLen, returnBuffer);
+				internetDevice->Server_CloseConnection(curServer->port, transactionPort);
 			}
 		}
 	}
@@ -222,21 +235,120 @@ CModule_Internet::Update(
 
 	if(commandServerPort > 0)
 	{
+		uint16_t	transactionPort;
+		char		buffer[1024];
+		size_t		bufferSize = sizeof(buffer) - 1;
+		internetDevice->Server_GetData(commandServerPort, transactionPort, bufferSize, buffer);
 
+		if(bufferSize > 0)
+		{
+			buffer[bufferSize] = 0;
+			//DebugMsg(eDbgLevel_Always, "SERVER DATA: %s", buffer);
+
+			if(strncmp(buffer, gCmdHomePageGet, strlen(gCmdHomePageGet)) == 0)
+			{
+				internetDevice->Server_SendData(commandServerPort, transactionPort, strlen(gReplyStringPreOutput), gReplyStringPreOutput);
+				internetDevice->Server_SendData(commandServerPort, transactionPort, strlen(gReplyStringPostOutput), gReplyStringPostOutput);
+				internetDevice->Server_CloseConnection(commandServerPort, transactionPort);
+			}
+			else if(strncmp(buffer, gCmdProcessPageGet, strlen(gCmdProcessPageGet)) == 0)
+			{
+				char*	httpStr = strrstr(buffer, "HTTP/1.1");
+				MReturnOnError(httpStr == NULL);
+				--httpStr;
+				*httpStr = 0;
+
+				char*	csp = buffer + strlen(gCmdProcessPageGet);
+				//DebugMsg(eDbgLevel_Always, "Parsing Command: %s", csp);
+
+				char		argBuffer[1024];
+				char*		cdp = argBuffer;
+				char const*	argList[64];
+				int			argIndex = 0;
+
+				argList[argIndex++] = cdp;
+				while(csp < httpStr)
+				{
+					char c = *csp++;
+
+					if(c == '+')
+					{
+						*cdp++ = 0;
+						argList[argIndex++] = cdp;
+					}
+					else if(c == '%')
+					{
+						char numBuffer[3];
+						numBuffer[0] = csp[0];
+						numBuffer[1] = csp[1];
+						numBuffer[2] = 0;
+						*cdp++ = (char)strtol(numBuffer, NULL, 16);
+						csp += 2;
+					}
+					else
+					{
+						*cdp++ = c;
+					}
+				}
+				*cdp++ = 0;
+
+				internetDevice->Server_SendData(commandServerPort, transactionPort, strlen(gReplyStringPreOutput), gReplyStringPreOutput);
+
+				respondingServer = true;
+				respondingServerPort = commandServerPort;
+				respondingTransactionPort = transactionPort;
+
+				// Call command
+				gCommand->ProcessCommand(this, argIndex, argList);
+
+				internetDevice->Server_SendData(commandServerPort, transactionPort, strlen(gReplyStringPostOutput), gReplyStringPostOutput);
+				internetDevice->Server_CloseConnection(commandServerPort, transactionPort);
+			}
+		}
 	}
 }
 
 void
 CModule_Internet::write(
 	char const* inMsg,
-	size_t inBytes)
+	size_t		inBytes)
 {
-	if(returnBufferLen + inBytes > sizeof(returnBuffer))
+	char const*	csp = inMsg;
+	char const*	cep = inMsg + inBytes;
+	char const*	lineStart = csp;
+
+	while(csp < cep)
 	{
-		inBytes = sizeof(returnBuffer) - returnBufferLen;
+		char c = *csp++;
+
+		if(c == '\n' || c == '\r')
+		{
+			char const*	lineEnd = csp;
+			char c2 = *csp;
+
+			if((c == '\n' && c2 == '\r') || (c == '\r' && c2 == '\n'))
+			{
+				++csp;
+			}
+
+			if(respondingServer)
+			{
+				internetDevice->Server_SendData(respondingServerPort, respondingTransactionPort, lineEnd - lineStart, lineStart);
+				internetDevice->Server_SendData(respondingServerPort, respondingTransactionPort, 5, "</br>");
+			}
+
+			lineStart = csp;
+		}
 	}
-	memcpy(returnBuffer + returnBufferLen, inMsg, inBytes);
-	returnBufferLen += inBytes;
+
+	if(lineStart < cep)
+	{
+		if(respondingServer)
+		{
+			internetDevice->Server_SendData(respondingServerPort, respondingTransactionPort, cep - lineStart, lineStart);
+			internetDevice->Server_SendData(respondingServerPort, respondingTransactionPort, 5, "</br>");
+		}
+	}
 }
 
 uint8_t

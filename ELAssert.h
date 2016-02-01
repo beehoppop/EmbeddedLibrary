@@ -60,6 +60,12 @@ DebugMsg(
 	char const*	inMsg,
 	...);
 
+void
+DebugMsgLocal(
+	uint8_t		inLevel,
+	char const*	inMsg,
+	...);
+
 // Add the given handler so that it can be called on every call to DebugMsg()
 void
 AddDebugMsgHandler(

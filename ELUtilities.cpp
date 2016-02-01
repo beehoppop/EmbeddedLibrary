@@ -127,3 +127,28 @@ StringizeUInt32(
 	buffer[4] = 0;
 	return buffer;
 }
+
+char*
+strrstr(
+	char const*	inStr, 
+	char const* inSubStr)
+{
+	size_t		strLen = strlen(inStr);
+	size_t		subLen = strlen(inSubStr);
+	char const*	s;
+
+	if (subLen > strLen)
+	{
+		return NULL;
+	}
+
+	for (s = inStr + strLen - subLen; s >= inStr; --s)
+	{
+		if (strncmp(s, inSubStr, subLen) == 0)
+		{
+			return (char*)s;
+		}
+	}
+
+	return NULL;
+}

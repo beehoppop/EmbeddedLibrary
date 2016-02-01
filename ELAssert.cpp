@@ -226,6 +226,52 @@ DebugMsg(
 }
 
 void
+DebugMsgLocal(
+	uint8_t		inLevel,
+	char const*	inMsg,
+	...)
+{
+	if(gConfig != NULL && inLevel > gConfig->GetVal(gConfig->debugLevelIndex))
+		return;
+
+	va_list	varArgs;
+	va_start(varArgs, inMsg);
+	char	vabuffer[256];
+	vsnprintf(vabuffer, sizeof(vabuffer), inMsg, varArgs);
+	va_end(varArgs);
+
+	char	timestamp[32];
+	uint32_t	remaining = uint32_t(gCurLocalMS / 1000);
+	uint32_t	hours = remaining / (60 * 60);
+	remaining -= hours * 60 * 60;
+	uint32_t	mins = remaining / 60;
+	remaining -= mins * 60;
+	uint32_t	secs = remaining;
+
+	snprintf(timestamp, sizeof(timestamp), "%02lu:%02lu:%02lu:%03lu", hours, mins, secs, uint32_t(gCurLocalMS) % 1000);
+
+	char finalBuffer[256];
+	snprintf(finalBuffer, sizeof(finalBuffer) - 1, "[%s] %s", timestamp, vabuffer);
+	finalBuffer[sizeof(finalBuffer) - 1] = 0;	// Ensure valid string
+	size_t	strLen = strlen(finalBuffer);
+
+	// Ensure enough room for both a newline and a zero byte
+	if(strLen > sizeof(finalBuffer) - 2)
+	{
+		strLen = sizeof(finalBuffer) - 2;
+	}
+
+	// If the message does not end with a newline add one
+	if(finalBuffer[strLen - 1] != '\n')
+	{
+		finalBuffer[strLen] = '\n';
+		finalBuffer[strLen + 1] = 0;
+	}
+
+	SerialOutEarly_write(finalBuffer);
+}
+
+void
 AddDebugMsgHandler(
 	IOutputDirector*	inOutputDirector)
 {

@@ -28,6 +28,9 @@
 
 #include "EL.h"
 
+#define MMax(x, y) (((x) > (y)) ? (x) : (y))
+#define MMin(x, y) (((x) < (y)) ? (x) : (y))
+
 bool
 IsStrDigit(
 	char const*	inStr);
@@ -51,5 +54,10 @@ WriteDataToEEPROM(
 char const*
 StringizeUInt32(
 	uint32_t	inValue);
+
+char*
+strrstr(
+	char const*	inStr, 
+	char const* inSubStr);
 
 #endif /* _ELUTILITIES_H_ */
