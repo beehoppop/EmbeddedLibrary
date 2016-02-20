@@ -152,3 +152,50 @@ strrstr(
 
 	return NULL;
 }
+
+void
+ComputeQuadradicCoefficients(
+	float	outCoefficients[3],
+	float	inSamples[6])
+{
+	float	x0 = inSamples[0];
+	float	x1 = inSamples[2];
+	float	x2 = inSamples[4];
+	float	sumX = x0 + x1 + x2;
+	float	sumXY = x0 * inSamples[1] + x1 * inSamples[3] + x2 * inSamples[5];
+	x0 *= x0;
+	x1 *= x1;
+	x2 *= x2;
+	float	sumX2 = x0 + x1 + x2;
+	float	sumX2Y = x0 * inSamples[1] + x1 * inSamples[3] + x2 * inSamples[5];
+	x0 *= inSamples[0];
+	x1 *= inSamples[2];
+	x2 *= inSamples[4];
+	float	sumX3 = x0 + x1 + x2;
+	x0 *= inSamples[0];
+	x1 *= inSamples[2];
+	x2 *= inSamples[4];
+	float	sumX4 = x0 + x1 + x2;
+	float	sumY = inSamples[1] + inSamples[3] + inSamples[5];
+
+	float	oneThird = 1.0f / 3.0f;
+	float	sum2_XX = sumX2 - sumX * sumX * oneThird;
+	float	sum2_XY = sumXY - sumX * sumY * oneThird;
+	float	sum2_XX2 = sumX3 - sumX2 * sumX * oneThird;
+	float	sum2_X2Y = sumX2Y - sumX2 * sumY * oneThird;
+	float	sum2_X2X2 = sumX4 - sumX2 * sumX2 * oneThird;
+
+	float	abDenom = 1.0f / (sum2_XX * sum2_X2X2 - sum2_XX2 * sum2_XX2);
+	outCoefficients[0] = (sum2_X2Y * sum2_XX - sum2_XY * sum2_XX2) * abDenom;
+	outCoefficients[1] = (sum2_XY * sum2_X2X2 - sum2_X2Y * sum2_XX2) * abDenom;
+	outCoefficients[2] = sumY * oneThird - outCoefficients[1] * sumX * oneThird - outCoefficients[0] * sumX2 * oneThird;
+}
+
+float
+ComputeQuadradicValue(
+	float	inX,
+	float	inCoefficients[3])
+{
+	return inX * inX * inCoefficients[0] + inX * inCoefficients[1] + inCoefficients[2];
+}
+

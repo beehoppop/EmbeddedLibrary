@@ -60,4 +60,16 @@ strrstr(
 	char const*	inStr, 
 	char const* inSubStr);
 
+// Compute the coefficients of y = a * x ^ 2 + b * x + c
+void
+ComputeQuadradicCoefficients(
+	float	outCoefficients[3],	// 0 = a, 1 = b, 2 = c
+	float	inSamples[6]);		// 3 samples of x, y (x0, y0, x1, y1, x2, y2)
+
+// Compute the dependent variable y given x and the 3 coefficients
+float
+ComputeQuadradicValue(
+	float	inX,
+	float	inCoefficients[3]);
+
 #endif /* _ELUTILITIES_H_ */
