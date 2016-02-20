@@ -183,8 +183,9 @@ CModule_Internet::Setup(
 	void)
 {
 	gCommand->RegisterCommand("wireless_set", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_WirelessSet));
+	gCommand->RegisterCommand("wireless_get", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_WirelessGet));
 	gCommand->RegisterCommand("ipaddr_set", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_IPAddrSet));
-
+	gCommand->RegisterCommand("ipaddr_get", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_IPAddrGet));
 }
 
 void
@@ -210,7 +211,7 @@ CModule_Internet::Update(
 			if(bufferSize > 0)
 			{
 				// we got data, now call the handler
-				respondingServer = 0;
+				respondingServer = true;
 				respondingServerPort = curServer->port;
 				respondingTransactionPort = transactionPort;
 				(curServer->handlerObject->*curServer->handlerMethod)(this, bufferSize, buffer);
@@ -393,31 +394,49 @@ CModule_Internet::SerialCmd_WirelessSet(
 }
 	
 uint8_t
+CModule_Internet::SerialCmd_WirelessGet(
+	IOutputDirector*	inOutput,
+	int					inArgC,
+	char const*			inArgV[])
+{
+	static char const*	gEncList[] = {"open", "wep", "wpa2personal"};
+
+	inOutput->printf("ssid: %s\n", settings.ssid);
+	inOutput->printf("pw: %s\n", settings.pw);
+	if(settings.securityType <= eWirelessPWEnc_WPA2Personal)
+	{
+		inOutput->printf("enc: %s\n", gEncList[settings.securityType]);
+	}
+	else
+	{
+		inOutput->printf("enc: NA\n");
+	}
+
+	return eCmd_Succeeded;
+}
+
+uint8_t
 CModule_Internet::SerialCmd_IPAddrSet(
 	IOutputDirector*	inOutput,
 	int					inArgC,
 	char const*			inArgV[])
 {
-	MReturnOnError(inArgC != 13, eCmd_Failed);
+	MReturnOnError(inArgC != 4, eCmd_Failed);
 
-	uint8_t	addrByte3 = (uint8_t)atoi(inArgV[1]);
-	uint8_t	addrByte2 = (uint8_t)atoi(inArgV[2]);
-	uint8_t	addrByte1 = (uint8_t)atoi(inArgV[3]);
-	uint8_t	addrByte0 = (uint8_t)atoi(inArgV[4]);
+	int	addrByte3;
+	int	addrByte2;
+	int	addrByte1;
+	int	addrByte0;
+
+	sscanf(inArgV[1], "%d.%d.%d.%d", &addrByte3, &addrByte2, &addrByte1, &addrByte0);
 
 	settings.ipAddr = (addrByte3 << 24) | (addrByte2 << 16) | (addrByte1 << 8) | addrByte0;
 
-	addrByte3 = (uint8_t)atoi(inArgV[5]);
-	addrByte2 = (uint8_t)atoi(inArgV[6]);
-	addrByte1 = (uint8_t)atoi(inArgV[7]);
-	addrByte0 = (uint8_t)atoi(inArgV[8]);
+	sscanf(inArgV[2], "%d.%d.%d.%d", &addrByte3, &addrByte2, &addrByte1, &addrByte0);
 
 	settings.gatewayAddr = (addrByte3 << 24) | (addrByte2 << 16) | (addrByte1 << 8) | addrByte0;
 
-	addrByte3 = (uint8_t)atoi(inArgV[5]);
-	addrByte2 = (uint8_t)atoi(inArgV[6]);
-	addrByte1 = (uint8_t)atoi(inArgV[7]);
-	addrByte0 = (uint8_t)atoi(inArgV[8]);
+	sscanf(inArgV[3], "%d.%d.%d.%d", &addrByte3, &addrByte2, &addrByte1, &addrByte0);
 
 	settings.subnetAddr = (addrByte3 << 24) | (addrByte2 << 16) | (addrByte1 << 8) | addrByte0;
 
@@ -427,6 +446,19 @@ CModule_Internet::SerialCmd_IPAddrSet(
 	{
 		internetDevice->SetIPAddr(settings.ipAddr, settings.subnetAddr, settings.gatewayAddr);
 	}
+
+	return eCmd_Succeeded;
+}
+	
+uint8_t
+CModule_Internet::SerialCmd_IPAddrGet(
+	IOutputDirector*	inOutput,
+	int					inArgC,
+	char const*			inArgV[])
+{
+	inOutput->printf("ip: %d.%d.%d.%d\n", ((settings.ipAddr >> 24) & 0xFF), ((settings.ipAddr >> 16) & 0xFF), ((settings.ipAddr >> 8) & 0xFF), ((settings.ipAddr >> 0) & 0xFF));
+	inOutput->printf("gateway: %d.%d.%d.%d\n", ((settings.gatewayAddr >> 24) & 0xFF), ((settings.gatewayAddr >> 16) & 0xFF), ((settings.gatewayAddr >> 8) & 0xFF), ((settings.gatewayAddr >> 0) & 0xFF));
+	inOutput->printf("subnet: %d.%d.%d.%d\n", ((settings.subnetAddr >> 24) & 0xFF), ((settings.subnetAddr >> 16) & 0xFF), ((settings.subnetAddr >> 8) & 0xFF), ((settings.subnetAddr >> 0) & 0xFF));
 
 	return eCmd_Succeeded;
 }

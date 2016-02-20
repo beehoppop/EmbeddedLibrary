@@ -209,6 +209,18 @@ private:
 		IOutputDirector*	inOutput,
 		int					inArgC,
 		char const*			inArgV[]);
+	
+	uint8_t
+	SerialCmd_WirelessGet(
+		IOutputDirector*	inOutput,
+		int					inArgC,
+		char const*			inArgV[]);
+	
+	uint8_t
+	SerialCmd_IPAddrGet(
+		IOutputDirector*	inOutput,
+		int					inArgC,
+		char const*			inArgV[]);
 
 	virtual void
 	write(
