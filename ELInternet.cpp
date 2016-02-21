@@ -66,9 +66,9 @@ CModule_Internet::RegisterServer(
 	bool success = internetDevice->Server_Open(inPort);
 	MReturnOnError(success == false);
 
-	cur->port = inPort;
-	cur->handlerObject = inInternetHandler;
-	cur->handlerMethod = inMethod;
+	target->port = inPort;
+	target->handlerObject = inInternetHandler;
+	target->handlerMethod = inMethod;
 }
 
 void
@@ -199,13 +199,14 @@ CModule_Internet::Update(
 	{
 		return;
 	}
+	
 
 	SServer*	curServer = serverList;
 	for(int i = 0; i < eMaxServersCount; ++i, ++curServer)
 	{
 		if(curServer->handlerObject != NULL)
 		{
-			bufferSize = 0;
+			bufferSize = sizeof(buffer) - 1;
 			uint16_t	transactionPort;
 			internetDevice->Server_GetData(curServer->port, transactionPort, bufferSize, buffer);
 			if(bufferSize > 0)
@@ -237,8 +238,7 @@ CModule_Internet::Update(
 	if(commandServerPort > 0)
 	{
 		uint16_t	transactionPort;
-		char		buffer[1024];
-		size_t		bufferSize = sizeof(buffer) - 1;
+		bufferSize = sizeof(buffer) - 1;
 		internetDevice->Server_GetData(commandServerPort, transactionPort, bufferSize, buffer);
 
 		if(bufferSize > 0)
@@ -347,7 +347,7 @@ CModule_Internet::write(
 		if(respondingServer)
 		{
 			internetDevice->Server_SendData(respondingServerPort, respondingTransactionPort, cep - lineStart, lineStart);
-			internetDevice->Server_SendData(respondingServerPort, respondingTransactionPort, 5, "</br>");
+			//internetDevice->Server_SendData(respondingServerPort, respondingTransactionPort, 5, "</br>");
 		}
 	}
 }
