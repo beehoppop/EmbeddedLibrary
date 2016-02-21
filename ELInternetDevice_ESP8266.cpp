@@ -28,13 +28,16 @@ public:
 		if(rstPin != 0xFF)
 		{
 			pinMode(rstPin, OUTPUT);
+			delay(10);	// This is a bit of a mystery but 4 hours of experimentation says that the device will not work without this delay right exactly here
 			digitalWriteFast(rstPin, 1);
 		}
+
 		if(chPDPin != 0xFF)
 		{
 			pinMode(chPDPin, OUTPUT);
 			digitalWriteFast(chPDPin, 1);
 		}
+
 		if(gpio0Pin != 0xFF)
 		{
 			pinMode(gpio0Pin, OUTPUT);
@@ -245,13 +248,21 @@ public:
 		size_t		inBufferSize,
 		char const*	inBuffer)
 	{
-		IssueCommand("AT+CIPSEND=%d,%d", 5000, inTransactionPort, inBufferSize);
-		while(serialPort->available() == 0 || serialPort->read() != '>')
+		SSendBuffer*	targetBuffer = channelSendBuffers + inTransactionPort;
+		
+		while(inBufferSize > 0)
 		{
-			delay(1);
+			int	bytesToCopy = MMin(inBufferSize, sizeof(targetBuffer->sendBuffer) - targetBuffer->sendBufferLength);
+			memcpy(targetBuffer->sendBuffer + targetBuffer->sendBufferLength, inBuffer, bytesToCopy);
+			targetBuffer->sendBufferLength += bytesToCopy;
+			if(targetBuffer->sendBufferLength >= (int)sizeof(targetBuffer->sendBuffer))
+			{
+				TransmitPendingData(inTransactionPort);
+			}
+			inBufferSize -= bytesToCopy;
+			inBuffer += bytesToCopy;
 		}
-		serialPort->write((uint8_t*)inBuffer, inBufferSize);
-		WaitCommandCompleted();
+				
 	}
 
 	virtual void
@@ -259,8 +270,29 @@ public:
 		uint16_t	inServerPort,
 		uint16_t	inTransactionPort)
 	{
+		TransmitPendingData(inTransactionPort);
 		IssueCommand("AT+CIPCLOSE=%d", 5000, inTransactionPort);
 		WaitCommandCompleted();
+	}
+
+	void
+	TransmitPendingData(
+		uint16_t	inTransactionPort)
+	{
+		SSendBuffer*	targetBuffer = channelSendBuffers + inTransactionPort;
+		if(targetBuffer->sendBufferLength == 0)
+		{
+			return;
+		}
+
+		IssueCommand("AT+CIPSEND=%d,%d", 5000, inTransactionPort, targetBuffer->sendBufferLength);
+		while(serialPort->available() == 0 || serialPort->read() != '>')
+		{
+			delay(1);
+		}
+		serialPort->write((uint8_t*)targetBuffer->sendBuffer, targetBuffer->sendBufferLength);
+		WaitCommandCompleted();
+		targetBuffer->sendBufferLength = 0;
 	}
 
 	virtual bool
@@ -358,6 +390,12 @@ public:
 		size_t	totalBytes;
 	};
 
+	struct SSendBuffer
+	{
+		int		sendBufferLength;
+		char	sendBuffer[512];
+	};
+
 	HardwareSerial*	serialPort;
 	uint8_t	rstPin;
 	uint8_t	chPDPin;
@@ -375,6 +413,8 @@ public:
 	uint64_t	commandTimeoutMS;
 	size_t		commandResultLength;
 	char		commandResultBuffer[256];
+
+	SSendBuffer	channelSendBuffers[4];
 
 	static CModule_ESP8266	module;
 };
