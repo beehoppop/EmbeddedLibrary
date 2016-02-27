@@ -42,6 +42,7 @@ enum
 	eMaxConnectionsCount = 4,
 	eServerMaxAddressLength = 63,
 
+	eMaxPacketSize = 1500,
 };
 	
 enum EWirelessPWEnc
@@ -65,6 +66,7 @@ typedef void
 
 typedef void
 (IInternetHandler::*TInternetResponseHandlerMethod)(
+	uint16_t	inLocalPort,
 	int					inDataSize,
 	char const*			inData);
 

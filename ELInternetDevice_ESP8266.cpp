@@ -7,6 +7,11 @@
 #include <ELUtilities.h>
 #include <ELInternetDevice_ESP8266.h>
 
+enum
+{
+	eMaxLinks = 5
+};
+
 class CModule_ESP8266 : public CModule, public IInternetDevice
 {
 public:
@@ -54,10 +59,15 @@ public:
 			Update(0);
 		}
 
+		memset(links, 0, sizeof(links));
+
 		IssueCommand("ATE0", 5000);
 		WaitCommandCompleted();
 
 		IssueCommand("AT+CWMODE=3", 5000);
+		WaitCommandCompleted();
+
+		IssueCommand("AT+CIPMUX=1", 5000);
 		WaitCommandCompleted();
 	}
 
@@ -67,6 +77,7 @@ public:
 	{
 		size_t	bytesAvailable = serialPort->available();
 		char	tmpBuffer[256];
+		SLink*	targetLink;
 
 		if(bytesAvailable == 0)
 		{
@@ -80,18 +91,15 @@ public:
 		{
 			char c = tmpBuffer[i];
 
-			SIPDBuffer*	targetIPDBuffer = ipdBuffer + ipdIndex;
-			if(targetIPDBuffer->totalBytes > 0)
+			if(curIDPLink >= 0)
 			{
-				targetIPDBuffer->buffer[targetIPDBuffer->bufferIndex++] = c;
-				if(targetIPDBuffer->bufferIndex >= targetIPDBuffer->totalBytes)
+				targetLink = links + curIDPLink;
+				targetLink->buffer[targetLink->bufferIndex++] = c;
+				if(targetLink->bufferIndex >= targetLink->totalBytes)
 				{
+					//DebugMsg(eDbgLevel_Always, "got all data %d %d", curIDPLink, targetLink->totalBytes);
 					// we have all the ipd data now
-					ipdIndex = !ipdIndex;
-					ipdBuffer[ipdIndex].bufferIndex = 0;
-					ipdBuffer[ipdIndex].totalBytes = 0;
-
-					commandResultLength = 0;
+					curIDPLink = -1;
 				}
 				continue;
 			}
@@ -101,12 +109,26 @@ public:
 				if(c == ':')
 				{
 					commandResultBuffer[commandResultLength++] = 0;
-					int	channel, intPDBBytes;
-					sscanf(commandResultBuffer, "%d,%d", &channel, &intPDBBytes);
+					int	intPDBBytes;
+					sscanf(commandResultBuffer, "%d,%d", &curIDPLink, &intPDBBytes);
 
-					ipdBuffer[ipdIndex].bufferIndex = 0;
-					ipdBuffer[ipdIndex].totalBytes = (size_t)intPDBBytes;
-					ipdBuffer[ipdIndex].channel = channel;
+					//DebugMsg(eDbgLevel_Always, "IPD %d %d", curIDPLink, intPDBBytes);
+
+					targetLink = links + curIDPLink;
+					targetLink->bufferIndex = 0;
+					targetLink->totalBytes = (size_t)intPDBBytes;
+
+					if(targetLink->inUse)
+					{
+						// This must be a client connection
+						MAssert(targetLink->isServer == false);
+					}
+					else
+					{
+						// this is a new packet coming in for the server
+						targetLink->isServer = true;
+						targetLink->inUse = true;
+					}
 
 					ipdParsing = false;
 					commandResultLength = 0;
@@ -204,8 +226,6 @@ public:
 	Server_Open(
 		uint16_t	inServerPort)
 	{
-		IssueCommand("AT+CIPMUX=1", 5000);
-		WaitCommandCompleted();
 		IssueCommand("AT+CIPSERVER=1,%d", 10000, inServerPort);
 		WaitCommandCompleted();
 		return true;
@@ -215,7 +235,8 @@ public:
 	Server_Close(
 		uint16_t	inServerPort)
 	{
-
+		IssueCommand("AT+CIPSERVER=0,%d", 10000, inServerPort);
+		WaitCommandCompleted();
 	}
 
 	virtual void
@@ -225,20 +246,28 @@ public:
 		size_t&		ioBufferSize,		
 		char*		outBuffer)
 	{
-		SIPDBuffer*	targetIPDBuffer = ipdBuffer + !ipdIndex;
+		SLink*	curLink = links;
 
-		if(targetIPDBuffer->totalBytes > 0 && targetIPDBuffer->totalBytes == targetIPDBuffer->bufferIndex)
+		for(int i = 0; i < eMaxLinks; ++i, ++curLink)
 		{
-			ioBufferSize = MMin(ioBufferSize, targetIPDBuffer->totalBytes);
-			memcpy(outBuffer, targetIPDBuffer->buffer, ioBufferSize);
-			outTransactionPort = targetIPDBuffer->channel;
-			targetIPDBuffer->totalBytes = 0;
-			targetIPDBuffer->bufferIndex = 0;
+			if(!curLink->inUse || !curLink->isServer || curLink->totalBytes == 0 || curLink->bufferIndex < curLink->totalBytes)
+			{
+				continue;
+			}
+
+			//DebugMsg(eDbgLevel_Always, "GetData %d %d", i, curLink->totalBytes);
+
+			ioBufferSize = MMin(ioBufferSize, curLink->totalBytes);
+			memcpy(outBuffer, curLink->buffer, ioBufferSize);
+			outTransactionPort = i;
+			curLink->totalBytes = 0;
+			curLink->bufferIndex = 0;
+			curLink->inUse = false;
+			curLink->isServer = false;
+			return;
 		}
-		else
-		{
-			ioBufferSize = 0;
-		}
+
+		ioBufferSize = 0;
 	}
 
 	virtual void
@@ -248,21 +277,20 @@ public:
 		size_t		inBufferSize,
 		char const*	inBuffer)
 	{
-		SSendBuffer*	targetBuffer = channelSendBuffers + inTransactionPort;
+		SLink*	targetLink = links + inTransactionPort;
 		
 		while(inBufferSize > 0)
 		{
-			int	bytesToCopy = MMin(inBufferSize, sizeof(targetBuffer->sendBuffer) - targetBuffer->sendBufferLength);
-			memcpy(targetBuffer->sendBuffer + targetBuffer->sendBufferLength, inBuffer, bytesToCopy);
-			targetBuffer->sendBufferLength += bytesToCopy;
-			if(targetBuffer->sendBufferLength >= (int)sizeof(targetBuffer->sendBuffer))
+			int	bytesToCopy = MMin(inBufferSize, sizeof(targetLink->buffer) - targetLink->bufferIndex);
+			memcpy(targetLink->buffer + targetLink->bufferIndex, inBuffer, bytesToCopy);
+			targetLink->bufferIndex += bytesToCopy;
+			if(targetLink->bufferIndex >= (int)sizeof(targetLink->buffer))
 			{
 				TransmitPendingData(inTransactionPort);
 			}
 			inBufferSize -= bytesToCopy;
 			inBuffer += bytesToCopy;
 		}
-				
 	}
 
 	virtual void
@@ -270,6 +298,9 @@ public:
 		uint16_t	inServerPort,
 		uint16_t	inTransactionPort)
 	{
+		SLink*	targetLink = links + inTransactionPort;
+		targetLink->inUse = false;
+
 		TransmitPendingData(inTransactionPort);
 		IssueCommand("AT+CIPCLOSE=%d", 5000, inTransactionPort);
 		WaitCommandCompleted();
@@ -279,20 +310,20 @@ public:
 	TransmitPendingData(
 		uint16_t	inTransactionPort)
 	{
-		SSendBuffer*	targetBuffer = channelSendBuffers + inTransactionPort;
-		if(targetBuffer->sendBufferLength == 0)
+		SLink*	targetLink = links + inTransactionPort;
+		if(targetLink->bufferIndex == 0)
 		{
 			return;
 		}
 
-		IssueCommand("AT+CIPSEND=%d,%d", 5000, inTransactionPort, targetBuffer->sendBufferLength);
+		IssueCommand("AT+CIPSEND=%d,%d", 5000, inTransactionPort, targetLink->bufferIndex);
 		while(serialPort->available() == 0 || serialPort->read() != '>')
 		{
 			delay(1);
 		}
-		serialPort->write((uint8_t*)targetBuffer->sendBuffer, targetBuffer->sendBufferLength);
+		serialPort->write((uint8_t*)targetLink->buffer, targetLink->bufferIndex);
 		WaitCommandCompleted();
-		targetBuffer->sendBufferLength = 0;
+		targetLink->bufferIndex = 0;
 	}
 
 	virtual bool
@@ -301,6 +332,26 @@ public:
 		uint16_t	inRemoteServerPort,	
 		char const*	inRemoteServerAddress)
 	{
+		SLink*	curLink = links;
+
+		for(int i = 0; i < eMaxLinks; ++i, ++curLink)
+		{
+			if(curLink->inUse)
+			{
+				continue;
+			}
+
+			outLocalPort = i;
+
+			IssueCommand("AT+CIPSTART=%d,\"TCP\",\"%s\",%d", 10000, i, inRemoteServerAddress, inRemoteServerPort);
+			WaitCommandCompleted();
+
+			curLink->inUse = true;
+			curLink->isServer = false;
+
+			return true;
+		}
+
 		return false;
 	}
 
@@ -308,6 +359,11 @@ public:
 	Connection_Close(
 		uint16_t	inLocalPort)
 	{
+		SLink*	targetLink = links + inLocalPort;
+
+		targetLink->inUse = false;
+		IssueCommand("AT+CIPCLOSE=%d", 5000, inLocalPort);
+		WaitCommandCompleted();
 
 	}
 	
@@ -317,7 +373,13 @@ public:
 		size_t		inDataSize,
 		char const*	inData)
 	{
-
+		IssueCommand("AT+CIPSEND=%d,%d", 5000, inLocalPort, inDataSize);
+		while(serialPort->available() == 0 || serialPort->read() != '>')
+		{
+			delay(1);
+		}
+		serialPort->write((uint8_t*)inData, inDataSize);
+		WaitCommandCompleted();
 	}
 
 	virtual void
@@ -326,7 +388,18 @@ public:
 		size_t&		ioBufferSize,
 		char*		outBuffer)
 	{
+		SLink*	targetLink = links + inPort;
 
+		if(targetLink->inUse && !targetLink->isServer && targetLink->totalBytes > 0 && targetLink->bufferIndex >= targetLink->totalBytes)
+		{
+			ioBufferSize = MMin(ioBufferSize, targetLink->totalBytes);
+			memcpy(outBuffer, targetLink->buffer, ioBufferSize);
+			targetLink->totalBytes = 0;
+			targetLink->bufferIndex = 0;
+			return;
+		}
+
+		ioBufferSize = 0;
 	}
 	
 	void
@@ -371,29 +444,26 @@ public:
 	{
 		while(commandPending && millis() < commandTimeoutMS)
 		{
+			delay(1);
 			Update(0);
 		}
 
 		if(commandPending)
 		{
+			DebugMsg(eDbgLevel_Always, "Cmd FAIL");
 			commandPending = false;
 			commandSucceeded = false;
 			commandResultBuffer[0] = 0;
 		}
 	}
 
-	struct SIPDBuffer
+	struct SLink
 	{
-		char	buffer[1024];
-		int		channel;
+		bool	inUse;
+		bool	isServer;
+		char	buffer[eMaxPacketSize];
 		size_t	bufferIndex;
 		size_t	totalBytes;
-	};
-
-	struct SSendBuffer
-	{
-		int		sendBufferLength;
-		char	sendBuffer[512];
 	};
 
 	HardwareSerial*	serialPort;
@@ -402,8 +472,7 @@ public:
 	uint8_t	gpio0Pin;
 	uint8_t	gpio2Pin;
 
-	int			ipdIndex;
-	SIPDBuffer	ipdBuffer[2];
+	int			curIDPLink;
 	bool		ipdParsing;
 
 	bool		ready;
@@ -414,7 +483,7 @@ public:
 	size_t		commandResultLength;
 	char		commandResultBuffer[256];
 
-	SSendBuffer	channelSendBuffers[4];
+	SLink	links[eMaxLinks];
 
 	static CModule_ESP8266	module;
 };

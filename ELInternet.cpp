@@ -118,8 +118,9 @@ CModule_Internet::OpenConnection(
 	bool success = internetDevice->Connection_Open(target->localPort, inServerPort, inServerAddress);
 	MReturnOnError(success == false);
 
-	cur->serverPort = inServerPort;
-	strcpy(cur->serverAddress, inServerAddress);
+	outLocalPort = target->localPort;
+	target->serverPort = inServerPort;
+	strcpy(target->serverAddress, inServerAddress);
 }
 
 void
@@ -134,6 +135,8 @@ CModule_Internet::CloseConnection(
 			cur->localPort = 0;
 			cur->serverPort = 0;
 			cur->serverAddress[0] = 0;
+			cur->handlerMethod = NULL;
+			cur->handlerObject = NULL;
 			internetDevice->Connection_Close(inLocalPort);
 			return;
 		}
@@ -160,6 +163,9 @@ CModule_Internet::InitiateRequest(
 	}
 
 	MReturnOnError(target == NULL);
+
+	target->handlerObject = inInternetHandler;
+	target->handlerMethod = inMethod;
 
 	internetDevice->Connection_InitiateRequest(inLocalPort, inDataSize, inData);
 }
@@ -193,14 +199,13 @@ CModule_Internet::Update(
 	uint32_t	inDeltaTimeUS)
 {
 	size_t	bufferSize;
-	char	buffer[1024];
+	char	buffer[eMaxPacketSize];
 
 	if(internetDevice == NULL)
 	{
 		return;
 	}
 	
-
 	SServer*	curServer = serverList;
 	for(int i = 0; i < eMaxServersCount; ++i, ++curServer)
 	{
@@ -211,6 +216,7 @@ CModule_Internet::Update(
 			internetDevice->Server_GetData(curServer->port, transactionPort, bufferSize, buffer);
 			if(bufferSize > 0)
 			{
+				buffer[bufferSize] = 0;
 				// we got data, now call the handler
 				respondingServer = true;
 				respondingServerPort = curServer->port;
@@ -226,11 +232,12 @@ CModule_Internet::Update(
 	{
 		if(curConnection->handlerObject != NULL)
 		{
-			bufferSize = 0;
+			bufferSize = sizeof(buffer) - 1;
 			internetDevice->Connection_GetData(curConnection->localPort, bufferSize, buffer);
 			if(bufferSize > 0)
 			{
-				(curConnection->handlerObject->*curConnection->handlerMethod)(bufferSize, buffer);
+				buffer[bufferSize] = 0;
+				(curConnection->handlerObject->*curConnection->handlerMethod)(curConnection->localPort, bufferSize, buffer);
 			}
 		}
 	}
@@ -244,7 +251,6 @@ CModule_Internet::Update(
 		if(bufferSize > 0)
 		{
 			buffer[bufferSize] = 0;
-			//DebugMsg(eDbgLevel_Always, "SERVER DATA: %s", buffer);
 
 			if(strncmp(buffer, gCmdHomePageGet, strlen(gCmdHomePageGet)) == 0)
 			{
@@ -262,8 +268,7 @@ CModule_Internet::Update(
 				char*	csp = buffer + strlen(gCmdProcessPageGet);
 				//DebugMsg(eDbgLevel_Always, "Parsing Command: %s", csp);
 
-				char		argBuffer[1024];
-				char*		cdp = argBuffer;
+				char*		cdp = buffer;
 				char const*	argList[64];
 				int			argIndex = 0;
 
