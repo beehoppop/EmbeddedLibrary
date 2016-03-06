@@ -42,7 +42,14 @@ enum
 	eMaxConnectionsCount = 4,
 	eServerMaxAddressLength = 63,
 
-	eMaxPacketSize = 1500,
+	eMaxIncomingPacketSize = 1500,
+	eMaxOutgoingPacketSize = 1400,
+
+	ePortState_IsOpen			= 1 << 0,
+	ePortState_CanSendData		= 1 << 1,
+	ePortState_HasIncommingData	= 1 << 2,
+	ePortState_Failure			= 1 << 3,
+
 };
 	
 enum EWirelessPWEnc
@@ -58,17 +65,25 @@ class IInternetHandler
 public:
 };
 
+// This will be called when data arrives to a opened server
 typedef void
 (IInternetHandler::*TInternetServerHandlerMethod)(
 	IOutputDirector*	inOutput,
 	int					inDataSize,
 	char const*			inData);
 
+// This will be called when a client connection receives response data from a server, if this is called with inDataSize of 0 and inDat is NULL that means an error occured
 typedef void
 (IInternetHandler::*TInternetResponseHandlerMethod)(
-	uint16_t	inLocalPort,
+	uint16_t			inLocalPort,
 	int					inDataSize,
 	char const*			inData);
+
+// This will be called when an open connection request has completed (either successfully or not)
+typedef void
+(IInternetHandler::*TInternetOpenConnectionHandlerMethod)(
+	bool				inSuccess,
+	uint16_t			inLocalPort);
 
 class IInternetDevice
 {
@@ -97,53 +112,43 @@ public:
 	Server_Close(
 		uint16_t	inServerPort) = 0;
 
-	// Do a non blocking check for data arriving on the server port, must be opened
-	virtual void
-	Server_GetData(
-		uint16_t	inServerPort,		// The opened server port
-		uint16_t&	outTransactionPort,	// The port to send response data with
-		size_t&		ioBufferSize,		// The size of the provided buffer in bytes
-		char*		outBuffer) = 0;		// The buffer to store data
-
-	// Send the response to the client
-	virtual void
-	Server_SendData(
-		uint16_t	inServerPort,		// The opened server port
-		uint16_t	inTransactionPort,	// The transaction port returned from GetData
-		size_t		inBufferSize,		// The number of bytes on the buffer
-		char const*	inBuffer) = 0;		// The data to send
-
-	// End the transaction
-	virtual void
-	Server_CloseConnection(
-		uint16_t	inServerPort,
-		uint16_t	inTransactionPort) = 0;
-
-	// Open a connection to a remote server
-	virtual bool
-	Connection_Open(
-		uint16_t&	outLocalPort,				// The local port on which to receive a reply
+	// Open a connection to a remote server, the return value can be passed into Connection_OpenCompleted to check if the open request has completed, return -1 on error
+	virtual int
+	Client_RequestOpen(
 		uint16_t	inRemoteServerPort,			// The port on the remote server expecting a connection attempt
 		char const*	inRemoteServerAddress) = 0;	// The remote server address
 
-	// Close a previously opened connection
-	virtual void
-	Connection_Close(
-		uint16_t	inLocalPort) = 0;
-	
-	// Start a request using the port provided by connection open
-	virtual void
-	Connection_InitiateRequest(
-		uint16_t	inLocalPort,
-		size_t		inDataSize,
-		char const*	inData) = 0;
+	// Check if a open connection request has completed
+	virtual bool
+	Client_OpenCompleted(
+		int			inOpenRef,
+		bool&		outSuccess,
+		uint16_t&	outPort) = 0;
 
-	// Do a non blocking check for reply data arriving from the server
+	// Do a non blocking check for data arriving on a previously opened port
 	virtual void
-	Connection_GetData(
-		uint16_t	inPort,
-		size_t&		ioBufferSize,
-		char*		outBuffer) = 0;
+	GetData(
+		uint16_t&	outPort,			// The previously open port that data was found on
+		uint16_t&	outReplyPort,		// The port to send response data with
+		size_t&		ioBufferSize,		// The size of the provided buffer in bytes
+		char*		outBuffer) = 0;		// The buffer to store data
+
+	// Send data on the previously opened port
+	virtual bool
+	SendData(
+		uint16_t	inPort,				// The open port
+		size_t		inBufferSize,		// The number of bytes on the buffer
+		char const*	inBuffer) = 0;		// The data to send
+	
+	// Check if the given port is ready to send data
+	virtual uint32_t
+	GetPortState(
+		uint16_t	inPort) = 0;		// The open port
+
+	// End the transaction
+	virtual void
+	CloseConnection(
+		uint16_t	inPort) = 0;	// The open port
 };
 
 class CModule_Internet : public CModule, public IOutputDirector, public ICmdHandler
@@ -170,15 +175,17 @@ public:
 
 	void
 	OpenConnection(
-		uint16_t&	outLocalPort,
-		uint16_t	inServerPort,
-		char const*	inServerAddress);
+		uint16_t								inServerPort,
+		char const*								inServerAddress,
+		IInternetHandler*						inInternetHandler,	// The object of the handler
+		TInternetOpenConnectionHandlerMethod	inMethod);			// The method of the handler
 
 	void
 	CloseConnection(
 		uint16_t	inLocalPort);
-
-	void
+	
+	// The OpenConnection completion method must have been called before calling InitiateRequest
+	bool
 	InitiateRequest(
 		uint16_t						inLocalPort,
 		size_t							inDataSize,
@@ -186,6 +193,7 @@ public:
 		IInternetHandler*				inInternetHandler,	// The object of the handler
 		TInternetResponseHandlerMethod	inMethod);			// The method of the handler
 
+	// Configure the internet connection to serve commands on the given port
 	void
 	ServeCommands(
 		uint16_t	inPort);
@@ -238,12 +246,16 @@ private:
 
 	struct SConnection
 	{
+		bool		inUse;
+		bool		waitingOnOpen;
+		int			openRef;
 		uint16_t	localPort;
 		uint16_t	serverPort;
 		char		serverAddress[eServerMaxAddressLength + 1];
 
-		IInternetHandler*				handlerObject;
-		TInternetResponseHandlerMethod	handlerMethod;
+		IInternetHandler*						handlerObject;
+		TInternetResponseHandlerMethod			handlerResponseMethod;
+		TInternetOpenConnectionHandlerMethod	handlerConnectionMethod;
 	};
 
 	struct SSettings
@@ -266,7 +278,7 @@ private:
 
 	bool		respondingServer;
 	uint16_t	respondingServerPort;
-	uint16_t	respondingTransactionPort;
+	uint16_t	respondingReplyPort;
 	
 
 	static CModule_Internet	module;

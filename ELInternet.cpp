@@ -18,6 +18,12 @@ CModule_Internet::CModule_Internet(
 	CModule("intn", sizeof(settings), 0, &settings, 10000)
 {
 	gInternet = this;
+
+	SConnection*	cur = connectionList;
+	for(int i = 0; i < eMaxConnectionsCount; ++i, ++cur)
+	{
+		cur->openRef = -1;
+	}
 }
 
 void
@@ -91,9 +97,10 @@ CModule_Internet::RemoveServer(
 
 void
 CModule_Internet::OpenConnection(
-	uint16_t&	outLocalPort,
-	uint16_t	inServerPort,
-	char const*	inServerAddress)
+	uint16_t								inServerPort,
+	char const*								inServerAddress,
+	IInternetHandler*						inInternetHandler,
+	TInternetOpenConnectionHandlerMethod	inMethod)
 {
 	MReturnOnError(internetDevice == NULL);
 	MReturnOnError(strlen(inServerAddress) > eServerMaxAddressLength);
@@ -115,12 +122,14 @@ CModule_Internet::OpenConnection(
 
 	MReturnOnError(target == NULL);
 
-	bool success = internetDevice->Connection_Open(target->localPort, inServerPort, inServerAddress);
-	MReturnOnError(success == false);
-
-	outLocalPort = target->localPort;
-	target->serverPort = inServerPort;
-	strcpy(target->serverAddress, inServerAddress);
+	target->openRef = internetDevice->Client_RequestOpen(inServerPort, inServerAddress);
+	if(target->openRef >= 0)
+	{
+		target->handlerObject = inInternetHandler;
+		target->handlerConnectionMethod = inMethod;
+		target->serverPort = inServerPort;
+		strcpy(target->serverAddress, inServerAddress);
+	}
 }
 
 void
@@ -135,15 +144,17 @@ CModule_Internet::CloseConnection(
 			cur->localPort = 0;
 			cur->serverPort = 0;
 			cur->serverAddress[0] = 0;
-			cur->handlerMethod = NULL;
+			cur->handlerConnectionMethod = NULL;
+			cur->handlerResponseMethod = NULL;
 			cur->handlerObject = NULL;
-			internetDevice->Connection_Close(inLocalPort);
+			cur->openRef = -1;
+			internetDevice->CloseConnection(inLocalPort);
 			return;
 		}
 	}
 }
 
-void
+bool
 CModule_Internet::InitiateRequest(
 	uint16_t						inLocalPort,
 	size_t							inDataSize,
@@ -162,25 +173,26 @@ CModule_Internet::InitiateRequest(
 		}
 	}
 
-	MReturnOnError(target == NULL);
+	MReturnOnError(target == NULL || target->openRef < 0, false);
 
 	target->handlerObject = inInternetHandler;
-	target->handlerMethod = inMethod;
+	target->handlerResponseMethod = inMethod;
 
-	internetDevice->Connection_InitiateRequest(inLocalPort, inDataSize, inData);
+	if(internetDevice->SendData(inLocalPort, inDataSize, inData) == false)
+	{
+		CloseConnection(inLocalPort);
+		return false;
+	}
+
+	return true;
 }
 
 void
 CModule_Internet::ServeCommands(
 	uint16_t	inPort)
 {
-	if(internetDevice == NULL)
-	{
-		return;
-	}
-	
+	MReturnOnError(internetDevice == NULL);
 	commandServerPort = inPort;
-
 	internetDevice->Server_Open(inPort);
 }
 
@@ -199,64 +211,44 @@ CModule_Internet::Update(
 	uint32_t	inDeltaTimeUS)
 {
 	size_t	bufferSize;
-	char	buffer[eMaxPacketSize];
+	char	buffer[eMaxIncomingPacketSize];
 
 	if(internetDevice == NULL)
 	{
 		return;
 	}
-	
-	SServer*	curServer = serverList;
-	for(int i = 0; i < eMaxServersCount; ++i, ++curServer)
-	{
-		if(curServer->handlerObject != NULL)
-		{
-			bufferSize = sizeof(buffer) - 1;
-			uint16_t	transactionPort;
-			internetDevice->Server_GetData(curServer->port, transactionPort, bufferSize, buffer);
-			if(bufferSize > 0)
-			{
-				buffer[bufferSize] = 0;
-				// we got data, now call the handler
-				respondingServer = true;
-				respondingServerPort = curServer->port;
-				respondingTransactionPort = transactionPort;
-				(curServer->handlerObject->*curServer->handlerMethod)(this, bufferSize, buffer);
-				internetDevice->Server_CloseConnection(curServer->port, transactionPort);
-			}
-		}
-	}
 
+	// Check for connections that are waiting for an open completion
 	SConnection*	curConnection = connectionList;
 	for(int i = 0; i < eMaxConnectionsCount; ++i, ++curConnection)
 	{
-		if(curConnection->handlerObject != NULL)
+		if(curConnection->openRef >= 0)
 		{
-			bufferSize = sizeof(buffer) - 1;
-			internetDevice->Connection_GetData(curConnection->localPort, bufferSize, buffer);
-			if(bufferSize > 0)
+			bool	successfulyOpened;
+			if(internetDevice->Client_OpenCompleted(curConnection->openRef, successfulyOpened, curConnection->localPort))
 			{
-				buffer[bufferSize] = 0;
-				(curConnection->handlerObject->*curConnection->handlerMethod)(curConnection->localPort, bufferSize, buffer);
+				// call completion
+				(curConnection->handlerObject->*curConnection->handlerConnectionMethod)(successfulyOpened, curConnection->localPort);
+				curConnection->openRef = -1;
 			}
 		}
 	}
 
-	if(commandServerPort > 0)
+	bufferSize = sizeof(buffer) - 1;
+	uint16_t	localPort;
+	uint16_t	replyPort;
+	internetDevice->GetData(localPort, replyPort, bufferSize, buffer);
+	buffer[bufferSize] = 0;
+	
+	if(bufferSize > 0)
 	{
-		uint16_t	transactionPort;
-		bufferSize = sizeof(buffer) - 1;
-		internetDevice->Server_GetData(commandServerPort, transactionPort, bufferSize, buffer);
-
-		if(bufferSize > 0)
+		if(localPort == commandServerPort)
 		{
-			buffer[bufferSize] = 0;
-
 			if(strncmp(buffer, gCmdHomePageGet, strlen(gCmdHomePageGet)) == 0)
 			{
-				internetDevice->Server_SendData(commandServerPort, transactionPort, strlen(gReplyStringPreOutput), gReplyStringPreOutput);
-				internetDevice->Server_SendData(commandServerPort, transactionPort, strlen(gReplyStringPostOutput), gReplyStringPostOutput);
-				internetDevice->Server_CloseConnection(commandServerPort, transactionPort);
+				internetDevice->SendData(replyPort, strlen(gReplyStringPreOutput), gReplyStringPreOutput);
+				internetDevice->SendData(replyPort, strlen(gReplyStringPostOutput), gReplyStringPostOutput);
+				internetDevice->CloseConnection(replyPort);
 			}
 			else if(strncmp(buffer, gCmdProcessPageGet, strlen(gCmdProcessPageGet)) == 0)
 			{
@@ -298,17 +290,55 @@ CModule_Internet::Update(
 				}
 				*cdp++ = 0;
 
-				internetDevice->Server_SendData(commandServerPort, transactionPort, strlen(gReplyStringPreOutput), gReplyStringPreOutput);
+				internetDevice->SendData(replyPort, strlen(gReplyStringPreOutput), gReplyStringPreOutput);
 
 				respondingServer = true;
 				respondingServerPort = commandServerPort;
-				respondingTransactionPort = transactionPort;
+				respondingReplyPort = replyPort;
 
 				// Call command
 				gCommand->ProcessCommand(this, argIndex, argList);
 
-				internetDevice->Server_SendData(commandServerPort, transactionPort, strlen(gReplyStringPostOutput), gReplyStringPostOutput);
-				internetDevice->Server_CloseConnection(commandServerPort, transactionPort);
+				internetDevice->SendData(replyPort, strlen(gReplyStringPostOutput), gReplyStringPostOutput);
+				internetDevice->CloseConnection(replyPort);
+			}
+		}
+		else
+		{
+			// look for the server or client connection the data came back on
+			SServer*	curServer = serverList;
+			for(int i = 0; i < eMaxServersCount; ++i, ++curServer)
+			{
+				if(curServer->handlerObject != NULL && curServer->port == localPort)
+				{
+					// we got data, now call the handler
+					respondingServer = true;
+					respondingServerPort = curServer->port;
+					respondingReplyPort = replyPort;
+					(curServer->handlerObject->*curServer->handlerMethod)(this, bufferSize, buffer);
+					internetDevice->CloseConnection(replyPort);
+					break;
+				}
+			}
+		}
+	}
+
+	curConnection = connectionList;
+	for(int i = 0; i < eMaxConnectionsCount; ++i, ++curConnection)
+	{
+		if(curConnection->handlerObject != NULL)
+		{
+			uint32_t	portState = internetDevice->GetPortState(curConnection->localPort);
+
+			if((portState & ePortState_Failure) || !(portState & ePortState_IsOpen))
+			{
+				(curConnection->handlerObject->*curConnection->handlerResponseMethod)(curConnection->localPort, 0, NULL);
+				internetDevice->CloseConnection(curConnection->localPort);
+				curConnection->handlerObject = NULL;
+			}
+			else if(curConnection->localPort == localPort && bufferSize > 0)
+			{
+				(curConnection->handlerObject->*curConnection->handlerResponseMethod)(curConnection->localPort, bufferSize, buffer);
 			}
 		}
 	}
@@ -339,8 +369,17 @@ CModule_Internet::write(
 
 			if(respondingServer)
 			{
-				internetDevice->Server_SendData(respondingServerPort, respondingTransactionPort, lineEnd - lineStart, lineStart);
-				internetDevice->Server_SendData(respondingServerPort, respondingTransactionPort, 5, "</br>");
+				if(internetDevice->SendData(respondingReplyPort, lineEnd - lineStart, lineStart) == false)
+				{
+					internetDevice->CloseConnection(respondingReplyPort);
+					return;
+				}
+
+				if(internetDevice->SendData(respondingReplyPort, 5, "</br>") == false)
+				{
+					internetDevice->CloseConnection(respondingReplyPort);
+					return;
+				}
 			}
 
 			lineStart = csp;
@@ -351,7 +390,11 @@ CModule_Internet::write(
 	{
 		if(respondingServer)
 		{
-			internetDevice->Server_SendData(respondingServerPort, respondingTransactionPort, cep - lineStart, lineStart);
+			if(internetDevice->SendData(respondingReplyPort, cep - lineStart, lineStart) == false)
+			{
+				internetDevice->CloseConnection(respondingReplyPort);
+				return;
+			}
 			//internetDevice->Server_SendData(respondingServerPort, respondingTransactionPort, 5, "</br>");
 		}
 	}
@@ -454,7 +497,7 @@ CModule_Internet::SerialCmd_IPAddrSet(
 
 	return eCmd_Succeeded;
 }
-	
+
 uint8_t
 CModule_Internet::SerialCmd_IPAddrGet(
 	IOutputDirector*	inOutput,
