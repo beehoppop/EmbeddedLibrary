@@ -39,7 +39,7 @@
 #define MAssert(x) if(!(x)) AssertFailed(#x, __FILE__, __LINE__)
 
 // Use this macro to return from a function if the given condition is true and notify the user about it
-#define MReturnOnError(x, ...) do {if(x) {DebugMsg(0, "ERROR: %s %s %d", #x, __FILE__, __LINE__); return __VA_ARGS__;}} while(0)
+#define MReturnOnError(x, ...) do {if(x) {DebugMsgLocal("ERROR: %s %s %d", #x, __FILE__, __LINE__); return __VA_ARGS__;}} while(0)
 
 enum
 {
@@ -61,8 +61,18 @@ DebugMsg(
 	...);
 
 void
+DebugMsg(
+	char const*	inMsg,
+	...);
+
+void
 DebugMsgLocal(
 	uint8_t		inLevel,
+	char const*	inMsg,
+	...);
+
+void
+DebugMsgLocal(
 	char const*	inMsg,
 	...);
 
