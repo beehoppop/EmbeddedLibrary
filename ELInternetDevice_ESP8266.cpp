@@ -8,7 +8,7 @@
 #include <ELRealTime.h>
 #include <ELInternetDevice_ESP8266.h>
 
-#if 1
+#if 0
 #define MESPDebugMsg(...) DebugMsgLocal(__VA_ARGS__)
 #else
 #define MESPDebugMsg(...)
@@ -39,6 +39,7 @@ public:
 			connectionValid = inConnectionValid;
 			connectionFailed = false;
 			serverPort = false;
+			sendPending = false;
 
 			linkIndex = inLinkIndex;
 			incomingBufferIndex = 0;
@@ -57,6 +58,7 @@ public:
 		bool	serverPort;
 		bool	connectionValid;
 		bool	connectionFailed;
+		bool	sendPending;
 	};
 
 	struct SPendingCommand
@@ -155,7 +157,7 @@ public:
 					{
 						targetChannel->linkIndex = linkIndex;
 						curCommand->command[12] = '0' + linkIndex;
-						MESPDebugMsg("Sending Start %d", linkIndex);
+						MESPDebugMsg("Sending Start %s", curCommand->command);
 						serialPort->write(curCommand->command);
 						serialPort->write("\r\n");
 					}
@@ -179,7 +181,7 @@ public:
 					}
 					else
 					{
-						MESPDebugMsg("Not issuing send data cmd link=%d inuse=%d cv=%d cf=%d", targetChannel->linkIndex, targetChannel->inUse, targetChannel->connectionValid, targetChannel->connectionFailed);
+						MESPDebugMsg("Not issuing send data cmd lnk=%d inuse=%d cv=%d cf=%d", targetChannel->linkIndex, targetChannel->inUse, targetChannel->connectionValid, targetChannel->connectionFailed);
 						targetChannel->outgoingTotalBytes = 0;
 						++commandTail;
 					}
@@ -195,7 +197,7 @@ public:
 					}
 					else
 					{
-						MESPDebugMsg("Not closing link=%d inuse=%d cv=%d cf=%d", targetChannel->linkIndex, targetChannel->inUse, targetChannel->connectionValid, targetChannel->connectionFailed);
+						MESPDebugMsg("Not closing lnk=%d inuse=%d cv=%d cf=%d", targetChannel->linkIndex, targetChannel->inUse, targetChannel->connectionValid, targetChannel->connectionFailed);
 						++commandTail;
 					}
 				}
@@ -237,7 +239,7 @@ public:
 				if(curIPDChannel->incomingBufferIndex >= curIPDChannel->incomingTotalBytes)
 				{
 					// we have all the ipd data now so stop collecting, hold on to the data until it is collected
-					MESPDebugMsg("Finished ipd %d %d", curIPDChannel->linkIndex, curIPDChannel->incomingBufferIndex);
+					MESPDebugMsg("Finished ipd lnk=%d bytes=%d", curIPDChannel->linkIndex, curIPDChannel->incomingBufferIndex);
 					curIPDChannel->lastUseTimeMS = millis();
 					curIPDChannel = NULL;
 				}
@@ -252,7 +254,7 @@ public:
 					commandResultBuffer[commandResultLength++] = 0;
 					int	curIPDLinkIndex, intPDBBytes;
 					sscanf(commandResultBuffer, "%d,%d", &curIPDLinkIndex, &intPDBBytes);
-					MESPDebugMsg("Collecting ipd %d %d", curIPDLinkIndex, intPDBBytes);
+					MESPDebugMsg("Collecting ipd lnk=%d bytes=%d", curIPDLinkIndex, intPDBBytes);
 					curIPDChannel = FindChannel(curIPDLinkIndex);
 					if(curIPDChannel != NULL)
 					{
@@ -262,7 +264,7 @@ public:
 					else
 					{
 						// We should have received a CONNECT msg from the chip
-						MESPDebugMsg("WARNING: IPD link %d not in use", curIPDLinkIndex);
+						MESPDebugMsg("WARNING: IPD lnk=%d not in use", curIPDLinkIndex);
 					}
 
 					ipdParsing = false;
@@ -301,8 +303,16 @@ public:
 						SPendingCommand*	curCommand = commandQueue + (commandTail % eMaxPendingCommands);
 						SChannel*			targetChannel = curCommand->targetChannel;
 						MAssert(targetChannel != NULL);
-						MESPDebugMsg("Sending data %d %d", targetChannel->linkIndex, targetChannel->outgoingTotalBytes);
-						serialPort->write((uint8_t*)targetChannel->outgoingBuffer, targetChannel->outgoingTotalBytes);
+						MESPDebugMsg("Sending data lnk=%d bytes=%d", targetChannel->linkIndex, targetChannel->outgoingTotalBytes);
+						if(targetChannel->linkIndex >= 0)
+						{
+							serialPort->write((uint8_t*)targetChannel->outgoingBuffer, targetChannel->outgoingTotalBytes);
+						}
+						else
+						{
+							// the connection was closed so just send a 0 to terminate the send
+							serialPort->write(0);
+						}
 						// Tail is advanced after SEND OK has been received
 						commandResultLength = 0;
 						targetChannel->lastUseTimeMS = millis();
@@ -320,9 +330,9 @@ public:
 		SChannel*	curChannel = channelArray;
 		for(int i = 0; i < eMaxLinks; ++i, ++curChannel)
 		{
-			if(curChannel->linkIndex >= 0 && curChannel->serverPort && millis() - curChannel->lastUseTimeMS > eConnectionTimeoutMS)
+			if((curChannel->linkIndex >= 0 || curChannel->inUse) && curChannel->serverPort && millis() - curChannel->lastUseTimeMS > eConnectionTimeoutMS)
 			{
-				MESPDebugMsg("chn %d timedout link=%d", i, curChannel->linkIndex);
+				MESPDebugMsg("chn=%d timedout lnk=%d", i, curChannel->linkIndex);
 				CloseConnection(i);
 				linkArray[curChannel->linkIndex] = NULL;
 				break;
@@ -346,6 +356,7 @@ public:
 				{
 					targetChannel->connectionFailed = true;
 					targetChannel->outgoingTotalBytes = 0;
+					targetChannel->sendPending = false;
 				}
 
 				++commandTail;
@@ -391,20 +402,23 @@ public:
 				SChannel*			targetChannel = curCommand->targetChannel;
 				MAssert(targetChannel != NULL);
 				targetChannel->outgoingTotalBytes = 0;
+				targetChannel->sendPending = false;
 				++commandTail;
 			}
 		}
 		else if(strcmp(inCmd + 1, ",CONNECT") == 0 && isdigit(inCmd[0]))
 		{
 			int	linkIndex = inCmd[0] - '0';
-			MESPDebugMsg("Incoming Connect %d", linkIndex);
+			MESPDebugMsg("Incoming Connect lnk=%d", linkIndex);
 			SChannel*	targetChannel = FindChannel(linkIndex);
 			if(targetChannel != NULL)
 			{
+				MESPDebugMsg("  Client Channel");
 				targetChannel->connectionValid = true;
 			}
 			else
 			{
+				MESPDebugMsg("  Server Channel");
 				targetChannel = FindAvailableChannel();
 				MReturnOnError(targetChannel == NULL);
 				targetChannel->Initialize(true, linkIndex);
@@ -412,11 +426,12 @@ public:
 			}
 			targetChannel->lastUseTimeMS = millis();
 			linkArray[linkIndex] = targetChannel;
+			DumpState();
 		}
 		else if(strcmp(inCmd + 1, ",CONNECT FAIL") == 0 && isdigit(inCmd[0]))
 		{
 			int	linkIndex = inCmd[0] - '0';
-			MESPDebugMsg("Incoming CONNECT FAIL %d", linkIndex);
+			MESPDebugMsg("Incoming CONNECT FAIL lnk=%d", linkIndex);
 			SChannel*	targetChannel = FindChannel(linkIndex);
 			if(targetChannel != NULL)
 			{
@@ -430,18 +445,21 @@ public:
 		else if(strcmp(inCmd + 1, ",CLOSED") == 0 && isdigit(inCmd[0]))
 		{
 			int	linkIndex = inCmd[0] - '0';
-			MESPDebugMsg("Incoming Close %d", linkIndex);
+			MESPDebugMsg("Incoming Close lnk=%d", linkIndex);
 			SChannel*	targetChannel = FindChannel(linkIndex);
 			if(targetChannel)
 			{
+				MESPDebugMsg("  %s", targetChannel->serverPort ? "server" : "client");
 				targetChannel->connectionValid = false;
 				targetChannel->linkIndex = -1;
+				targetChannel->inUse = false;
 			}
 			else
 			{
 				MESPDebugMsg("WARNING unknown channel");
 			}
 			linkArray[linkIndex] = NULL;
+			DumpState();
 		}
 		else
 		{
@@ -505,9 +523,13 @@ public:
 		uint16_t	inRemoteServerPort,	
 		char const*	inRemoteServerAddress)
 	{
+		MESPDebugMsg("Client_RequestOpen");
+
 		SChannel*	targetChannel = FindAvailableChannel();
 
 		MReturnOnError(targetChannel == NULL, -1);
+
+		MESPDebugMsg("  chn=%d", targetChannel - channelArray);
 
 		targetChannel->Initialize();
 
@@ -533,6 +555,9 @@ public:
 
 		if(targetChannel->connectionValid)
 		{
+			MESPDebugMsg("Client_OpenCompleted success chn=%d", inOpenRef);
+			DumpState();
+
 			outLocalPort = inOpenRef;
 			outSuccess = true;
 			return true;
@@ -540,6 +565,9 @@ public:
 
 		if(targetChannel->connectionFailed)
 		{
+			MESPDebugMsg("Client_OpenCompleted failed chn=%d", inOpenRef);
+			DumpState();
+
 			return true;
 		}
 
@@ -557,10 +585,10 @@ public:
 
 		for(int i = 0; i < eMaxLinks; ++i, ++curChannel)
 		{
-			//MESPDebugMsg("chn=%d inuse=%d cv=%d link=%d size=%d", i, curChannel->inUse, curChannel->connectionValid, curChannel->linkIndex, curChannel->incomingTotalBytes);
+			//MESPDebugMsg("chn=%d inuse=%d cv=%d lnk=%d bytes=%d", i, curChannel->inUse, curChannel->connectionValid, curChannel->linkIndex, curChannel->incomingTotalBytes);
 			if(curChannel->inUse && curChannel->connectionValid && curChannel->incomingTotalBytes > 0 && curChannel->incomingBufferIndex >= curChannel->incomingTotalBytes)
 			{
-				MESPDebugMsg("Got data chn=%d link=%d size=%d bi=%d", i, curChannel->linkIndex, curChannel->incomingTotalBytes, curChannel->incomingBufferIndex);
+				MESPDebugMsg("Got data chn=%d lnk=%d srp=%d bytes=%d bi=%d", i, curChannel->linkIndex, curChannel->serverPort, curChannel->incomingTotalBytes, curChannel->incomingBufferIndex);
 
 				ioBufferSize = MMin(ioBufferSize, curChannel->incomingTotalBytes);
 				memcpy(outBuffer, curChannel->incomingBuffer, ioBufferSize);
@@ -579,7 +607,8 @@ public:
 	SendData(
 		uint16_t	inPort,	
 		size_t		inBufferSize,
-		char const*	inBuffer)
+		char const*	inBuffer,
+		bool		inFlush)
 	{
 		MReturnOnError(inPort >= eMaxLinks, false);
 
@@ -593,7 +622,7 @@ public:
 
 			bool	waitingOn = false;
 
-			while(targetChannel->outgoingTotalBytes > 0)
+			while(targetChannel->sendPending)
 			{
 				MReturnOnError(targetChannel->connectionFailed || !targetChannel->connectionValid, false);
 
@@ -621,6 +650,12 @@ public:
 			inBufferSize -= bytesToCopy;
 			inBuffer += bytesToCopy;
 		}
+
+		if(inFlush)
+		{
+			TransmitPendingData(targetChannel);
+		}
+
 		return true;
 	}
 
@@ -666,6 +701,7 @@ public:
 	CloseConnection(
 		uint16_t	inPort)
 	{
+		MESPDebugMsg("CloseConnection chn=%d", inPort);
 		MReturnOnError(inPort >= eMaxLinks);
 
 		SChannel*	targetChannel = channelArray + inPort;
@@ -676,17 +712,26 @@ public:
 		{
 			TransmitPendingData(targetChannel);
 			targetChannel->inUse = false;
+			targetChannel->sendPending = false;
 		}
 
 		IssueCommand("AT+CIPCLOSE=%d", targetChannel, 5, targetChannel->linkIndex);
+
+		DumpState();
 	}
 
 	void
 	TransmitPendingData(
 		SChannel*	inChannel)
 	{
-		MReturnOnError(inChannel->outgoingTotalBytes == 0 || inChannel->connectionFailed || !inChannel->connectionValid || inChannel->linkIndex < 0);
+		if(inChannel->outgoingTotalBytes == 0)
+		{
+			return;
+		}
 
+		MReturnOnError(inChannel->connectionFailed || !inChannel->connectionValid || inChannel->linkIndex < 0);
+
+		inChannel->sendPending = true;
 		IssueCommand("AT+CIPSENDEX=%d,%d", inChannel, 5, inChannel->linkIndex, inChannel->outgoingTotalBytes);
 	}
 	
@@ -736,7 +781,7 @@ public:
 	FindHighestAvailableLink(
 		void)
 	{
-		for(int i = eMaxLinks; i-- > 0;)
+		for(int i = eMaxLinks - 1; i >= 0; --i)
 		{
 			if(linkArray[i] == NULL)
 			{
@@ -775,6 +820,28 @@ public:
 		}
 
 		return NULL;
+	}
+
+	void
+	DumpState(
+		void)
+	{
+		MESPDebugMsg("***");
+
+		SChannel*	curChannel = channelArray;
+		for(int i = 0; i < eMaxLinks; ++i, ++curChannel)
+		{
+			MESPDebugMsg("chn=%d lnk=%d inu=%d srp=%d cnv=%d cnf=%d sdp=%d", 
+				i,
+				curChannel->linkIndex,
+				curChannel->inUse,
+				curChannel->serverPort,
+				curChannel->connectionValid,
+				curChannel->connectionFailed,
+				curChannel->sendPending);
+		}
+
+		MESPDebugMsg("***");
 	}
 
 	HardwareSerial*	serialPort;

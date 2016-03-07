@@ -178,7 +178,7 @@ CModule_Internet::InitiateRequest(
 	target->handlerObject = inInternetHandler;
 	target->handlerResponseMethod = inMethod;
 
-	if(internetDevice->SendData(inLocalPort, inDataSize, inData) == false)
+	if(internetDevice->SendData(inLocalPort, inDataSize, inData, true) == false)
 	{
 		CloseConnection(inLocalPort);
 		return false;
@@ -244,6 +244,7 @@ CModule_Internet::Update(
 	{
 		if(localPort == commandServerPort)
 		{
+			//DebugMsgLocal("Got cmd server data chn=%d", replyPort);
 			if(strncmp(buffer, gCmdHomePageGet, strlen(gCmdHomePageGet)) == 0)
 			{
 				internetDevice->SendData(replyPort, strlen(gReplyStringPreOutput), gReplyStringPreOutput);
@@ -302,6 +303,11 @@ CModule_Internet::Update(
 				internetDevice->SendData(replyPort, strlen(gReplyStringPostOutput), gReplyStringPostOutput);
 				internetDevice->CloseConnection(replyPort);
 			}
+			else
+			{
+				//DebugMsgLocal("  unknown cmd request");
+				internetDevice->CloseConnection(replyPort);
+			}
 		}
 		else
 		{
@@ -330,7 +336,7 @@ CModule_Internet::Update(
 		{
 			uint32_t	portState = internetDevice->GetPortState(curConnection->localPort);
 
-			if((portState & ePortState_Failure) || !(portState & ePortState_IsOpen))
+			if((portState & ePortState_Failure))
 			{
 				(curConnection->handlerObject->*curConnection->handlerResponseMethod)(curConnection->localPort, 0, NULL);
 				internetDevice->CloseConnection(curConnection->localPort);
@@ -353,6 +359,12 @@ CModule_Internet::write(
 	char const*	cep = inMsg + inBytes;
 	char const*	lineStart = csp;
 
+	uint32_t	portState = internetDevice->GetPortState(respondingReplyPort);
+	if(!(portState & ePortState_IsOpen) || (portState & ePortState_Failure))
+	{
+		return;
+	}
+
 	while(csp < cep)
 	{
 		char c = *csp++;
@@ -371,13 +383,11 @@ CModule_Internet::write(
 			{
 				if(internetDevice->SendData(respondingReplyPort, lineEnd - lineStart, lineStart) == false)
 				{
-					internetDevice->CloseConnection(respondingReplyPort);
 					return;
 				}
 
 				if(internetDevice->SendData(respondingReplyPort, 5, "</br>") == false)
 				{
-					internetDevice->CloseConnection(respondingReplyPort);
 					return;
 				}
 			}
@@ -392,7 +402,6 @@ CModule_Internet::write(
 		{
 			if(internetDevice->SendData(respondingReplyPort, cep - lineStart, lineStart) == false)
 			{
-				internetDevice->CloseConnection(respondingReplyPort);
 				return;
 			}
 			//internetDevice->Server_SendData(respondingServerPort, respondingTransactionPort, 5, "</br>");

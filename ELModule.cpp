@@ -317,7 +317,20 @@ CModule::SetupAll(
 	#if MDebugDelayStart
 		if(MDebugTargetNode == 0xFF /*|| MDebugTargetNode == gConfig->GetVal(eConfigVar_NodeID)*/)	// 		Need to fix this code to not reference gConfig since it has not been initialized yet
 		{
-			delay(6000);
+			for(;;)
+			{
+				Serial.printf("waiting for s\n");
+				int ab = Serial.available();
+				if(ab > 0)
+				{
+					char r = Serial.read();
+					if(r == 's')
+					{
+						break;
+					}
+				}
+				delay(1000);
+			}
 		}
 	#endif
 
@@ -411,6 +424,7 @@ CModule::ResetAllState(
 	#endif
 }
 
+bool gFlag;
 void
 CModule::LoopAll(
 	void)
@@ -448,7 +462,7 @@ CModule::LoopAll(
 		{
 			if(gModuleList[i]->enabled)
 			{
-				//Serial.printf("Updating %s %d\n", StringizeUInt32(gModuleList[i]->uid), gModuleList[i]->enabled);
+				//if(gFlag) Serial.printf("Updating %s %d\n", StringizeUInt32(gModuleList[i]->uid), gModuleList[i]->enabled);
 				gModuleList[i]->Update((uint32_t)updateDeltaUS);
 				gModuleList[i]->lastUpdateUS = gCurLocalUS;
 			}

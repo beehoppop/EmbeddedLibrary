@@ -138,7 +138,8 @@ public:
 	SendData(
 		uint16_t	inPort,				// The open port
 		size_t		inBufferSize,		// The number of bytes on the buffer
-		char const*	inBuffer) = 0;		// The data to send
+		char const*	inBuffer,			// The data to send
+		bool		inFlush = false) = 0;
 	
 	// Check if the given port is ready to send data
 	virtual uint32_t
