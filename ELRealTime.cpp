@@ -81,21 +81,39 @@ class CRealTimeDataProvider_DS3234 : public IRealTimeDataProvider
 public:
 	
 	CRealTimeDataProvider_DS3234(
-		int	inChipSelect)
+		int		inChipSelect,
+		bool	inUseAltSPI)
+		:
+		spiSettings(SPI_CLOCK_DIV128, MSBFIRST, SPI_MODE3),
+		useAltSPI(inUseAltSPI)
 	{
 		chipselect = inChipSelect;
 
 		pinMode(chipselect, OUTPUT);
 
+		if(useAltSPI)
+		{
+			SPI.setMISO(8);
+			SPI.setMOSI(7);
+			SPI.setSCK(14);
+		}
+
 		SPI.begin();
-		SPI.beginTransaction(SPISettings(SPI_CLOCK_DIV128, MSBFIRST, SPI_MODE3));
+		SPI.beginTransaction(spiSettings);
 		digitalWrite(chipselect, LOW);  
 		//set control register 
 		SPI.transfer(0x8E);
-		SPI.transfer(0x60); //60= disable Osciallator and Battery SQ wave @1hz, temp compensation, Alarms disabled
+		SPI.transfer(0x60); //60= disable Oscillator and Battery SQ wave @1hz, temp compensation, Alarms disabled
 		digitalWrite(chipselect, HIGH);
 		SPI.endTransaction();
 		SPI.end();
+
+		if(useAltSPI)
+		{
+			SPI.setMISO(12);
+			SPI.setMOSI(11);
+			SPI.setSCK(13);
+		}
 
 		delay(10);
 	}
@@ -132,18 +150,24 @@ public:
 		else
 		{
 			// This is an invalid year so bail
-			DebugMsg(eDbgLevel_Basic, "SetUTCDateAndTime: Invalid year");
+			DebugMsg("SetUTCDateAndTime: Invalid year");
 			return;
 		}
 
 		if(inMonth < 1 || inMonth > 12 || inDayOfMonth < 1 || inDayOfMonth > 31 || inHour < 0 || inHour > 23 || inMin < 0 || inMin > 59 || inSec < 0 || inSec > 59)
 		{
-			DebugMsg(eDbgLevel_Basic, "SetUTCDateAndTime: Invalid date");
+			DebugMsg("SetUTCDateAndTime: Invalid date");
 			return;
 		}
 
 		int TimeDate [7] = {inSec, inMin, inHour, 0, inDayOfMonth, inMonth, inYear};
 
+		if(useAltSPI)
+		{
+			SPI.setMISO(8);
+			SPI.setMOSI(7);
+			SPI.setSCK(14);
+		}
 		SPI.begin();
 		for(int i = 0; i < 7; ++i)
 		{
@@ -160,7 +184,7 @@ public:
 				TimeDate[i] |= 0x80;
 			}
 			
-			SPI.beginTransaction(SPISettings(SPI_CLOCK_DIV128, MSBFIRST, SPI_MODE3));
+			SPI.beginTransaction(spiSettings);
 			digitalWrite(chipselect, LOW);
 			SPI.transfer(i + 0x80); 
 			SPI.transfer(TimeDate[i]);        
@@ -168,6 +192,12 @@ public:
 			SPI.endTransaction();
 		}
 		SPI.end();
+		if(useAltSPI)
+		{
+			SPI.setMISO(12);
+			SPI.setMOSI(11);
+			SPI.setSCK(13);
+		}
 	}
 
 	virtual void
@@ -176,13 +206,21 @@ public:
 	{
 		int TimeDate [7]; //second,minute,hour,null,day,month,year
 
+		DebugMsg("cs=%d", chipselect);
+
+		if(useAltSPI)
+		{
+			SPI.setMISO(8);
+			SPI.setMOSI(7);
+			SPI.setSCK(14);
+		}
 		SPI.begin();
 		for(int i = 0; i < 7; ++i)
 		{
 			if(i == 3)
 				continue;
 
-			SPI.beginTransaction(SPISettings(SPI_CLOCK_DIV128, MSBFIRST, SPI_MODE3));
+			SPI.beginTransaction(spiSettings);
 			digitalWrite(chipselect, LOW);
 			SPI.transfer(i + 0x00); 
 			unsigned int n = SPI.transfer(0x00);        
@@ -201,6 +239,12 @@ public:
 			}
 		}
 		SPI.end();
+		if(useAltSPI)
+		{
+			SPI.setMISO(12);
+			SPI.setMOSI(11);
+			SPI.setSCK(13);
+		}
 
 		if(TimeDate[6] >= 70 && TimeDate[6] <= 99)
 		{
@@ -211,7 +255,7 @@ public:
 			TimeDate[6] += 2000;
 		}
 
-		//DebugMsg(eDbgLevel_Basic, "got %d %d %d %d %d %d\n", TimeDate[6], TimeDate[5], TimeDate[4], TimeDate[2], TimeDate[1], TimeDate[0]);
+		DebugMsg("got %d %d %d %d %d %d\n", TimeDate[6], TimeDate[5], TimeDate[4], TimeDate[2], TimeDate[1], TimeDate[0]);
 
 		if(TimeDate[5] < 1 || TimeDate[5] > 12 || TimeDate[4] < 1 || TimeDate[4] > 31 || TimeDate[2] < 0 || TimeDate[2] > 23 || TimeDate[1] < 0 || TimeDate[1] > 59 || TimeDate[0] < 0 || TimeDate[0] > 59)
 		{
@@ -222,7 +266,9 @@ public:
 		gRealTime->SetDateAndTime(TimeDate[6], TimeDate[5], TimeDate[4], TimeDate[2], TimeDate[1], TimeDate[0], true);
 	}
 
-	int chipselect;
+	int			chipselect;
+	SPISettings	spiSettings;
+	bool		useAltSPI;
 };
 #endif
 
@@ -972,13 +1018,14 @@ CRealTime::CancelTimeChangeHandler(
 
 IRealTimeDataProvider*
 CRealTime::CreateDS3234Provider(
-	uint8_t	inChipSelectPin)
+	uint8_t	inChipSelectPin,
+	bool	inUseAltSPI)
 {
 	static CRealTimeDataProvider_DS3234*	ds3234Provider = NULL;
 
 	if(ds3234Provider == NULL)
 	{
-		ds3234Provider = new CRealTimeDataProvider_DS3234(inChipSelectPin);
+		ds3234Provider = new CRealTimeDataProvider_DS3234(inChipSelectPin, inUseAltSPI);
 	}
 
 	return ds3234Provider;

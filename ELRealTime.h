@@ -347,7 +347,8 @@ public:
 	// Create a provider for the DS3234 dead-on RTC clock on main SPI bus with the given chipselect pin
 	IRealTimeDataProvider*
 	CreateDS3234Provider(
-		uint8_t	inChipSelectPin);
+		uint8_t	inChipSelectPin,
+		bool	inUseAltSPI = false);
 
 	// Given the date and time (of which components may be eAlarm_Any) return the next date time past the current time, return false if there is not a valid date and time past the current time
 	bool
