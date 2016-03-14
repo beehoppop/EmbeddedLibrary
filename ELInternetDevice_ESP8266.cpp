@@ -8,7 +8,7 @@
 #include <ELRealTime.h>
 #include <ELInternetDevice_ESP8266.h>
 
-#if 0
+#if 1
 #define MESPDebugMsg(...) DebugMsgLocal(__VA_ARGS__)
 #else
 #define MESPDebugMsg(...)
@@ -76,7 +76,6 @@ public:
 			sendPending = false;
 			isConnected = false;
 			outgoingTotalBytes = 0;
-			incomingTotalBytes = 0;
 		}
 
 		void
@@ -563,9 +562,9 @@ public:
 	{
 		SChannel*	targetChannel = FindAvailableChannel();
 
-		MESPDebugMsg("Client_RequestOpen chn=%d", targetChannel - channelArray);
-
 		MReturnOnError(targetChannel == NULL, -1);
+
+		MESPDebugMsg("Client_RequestOpen chn=%d", targetChannel - channelArray);
 
 		targetChannel->Initialize(false);
 
@@ -583,7 +582,11 @@ public:
 		outSuccess = false;
 		outLocalPort = 0;
 
-		MReturnOnError(inOpenRef < 0 || inOpenRef >= eMaxLinks, false);
+		if(inOpenRef < 0 || inOpenRef >= eMaxLinks)
+		{
+			DebugMsg("Client_OpenCompleted %d is not valid", inOpenRef);
+			return true;
+		}
 
 		SChannel*	targetChannel = channelArray + inOpenRef;
 
@@ -621,7 +624,7 @@ public:
 		for(int i = 0; i < eMaxLinks; ++i, ++curChannel)
 		{
 			//MESPDebugMsg("chn=%d inuse=%d lnk=%d bytes=%d", i, curChannel->inUse, curChannel->linkIndex, curChannel->incomingTotalBytes);
-			if(curChannel->inUse && curChannel->linkIndex >= 0 && curChannel->incomingTotalBytes > 0 && curChannel->incomingBufferIndex >= curChannel->incomingTotalBytes)
+			if(curChannel->inUse && curChannel->incomingTotalBytes > 0 && curChannel->incomingBufferIndex >= curChannel->incomingTotalBytes)
 			{
 				MESPDebugMsg("Got data chn=%d lnk=%d srp=%d bytes=%d bi=%d", i, curChannel->linkIndex, curChannel->serverPort, curChannel->incomingTotalBytes, curChannel->incomingBufferIndex);
 
@@ -730,15 +733,19 @@ public:
 
 		SChannel*	targetChannel = channelArray + inPort;
 
-		MReturnOnError(targetChannel->linkIndex < 0);
-
-		if(targetChannel->inUse)
+		// Sometimes the channel can be closed before the client closes it so handle that case
+		if(targetChannel->linkIndex >= 0)
 		{
-			TransmitPendingData(targetChannel);
+			if(targetChannel->inUse)
+			{
+				TransmitPendingData(targetChannel);
+			}
+
+			// inUse will be marked false when this command is processed
+			IssueCommand("AT+CIPCLOSE=%d", targetChannel, 5, targetChannel->linkIndex);
 		}
 
-		// inUse will be marked false when this command is processed
-		IssueCommand("AT+CIPCLOSE=%d", targetChannel, 5, targetChannel->linkIndex);
+		targetChannel->inUse = false;
 
 		DumpState();
 	}

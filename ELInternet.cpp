@@ -123,13 +123,16 @@ CModule_Internet::OpenConnection(
 	MReturnOnError(target == NULL);
 
 	target->openRef = internetDevice->Client_RequestOpen(inServerPort, inServerAddress);
-	if(target->openRef >= 0)
+	if(target->openRef < 0)
 	{
-		target->handlerObject = inInternetHandler;
-		target->handlerConnectionMethod = inMethod;
-		target->serverPort = inServerPort;
-		strcpy(target->serverAddress, inServerAddress);
+		(inInternetHandler->*inMethod)(false, -1);
+		return;
 	}
+
+	target->handlerObject = inInternetHandler;
+	target->handlerConnectionMethod = inMethod;
+	target->serverPort = inServerPort;
+	strcpy(target->serverAddress, inServerAddress);
 }
 
 void
@@ -336,15 +339,15 @@ CModule_Internet::Update(
 		{
 			uint32_t	portState = internetDevice->GetPortState(curConnection->localPort);
 
-			if((portState & ePortState_Failure))
+			if(curConnection->localPort == localPort && bufferSize > 0)
+			{
+				(curConnection->handlerObject->*curConnection->handlerResponseMethod)(curConnection->localPort, bufferSize, buffer);
+			}
+			else if(curConnection->localPort > 0 && ((portState & ePortState_Failure) || !(portState & ePortState_IsOpen)))
 			{
 				(curConnection->handlerObject->*curConnection->handlerResponseMethod)(curConnection->localPort, 0, NULL);
 				internetDevice->CloseConnection(curConnection->localPort);
 				curConnection->handlerObject = NULL;
-			}
-			else if(curConnection->localPort == localPort && bufferSize > 0)
-			{
-				(curConnection->handlerObject->*curConnection->handlerResponseMethod)(curConnection->localPort, bufferSize, buffer);
 			}
 		}
 	}

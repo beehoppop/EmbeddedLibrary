@@ -247,7 +247,6 @@ private:
 
 	struct SConnection
 	{
-		bool		inUse;
 		bool		waitingOnOpen;
 		int			openRef;
 		uint16_t	localPort;
