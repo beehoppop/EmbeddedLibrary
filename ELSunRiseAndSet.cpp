@@ -76,7 +76,6 @@
 
 #define INV360    ( 1.0 / 360.0 )
 
-CSunRiseAndSetModule	CSunRiseAndSetModule::module;
 CSunRiseAndSetModule*	gSunRiseAndSet;
 
 CSunRiseAndSetModule::CSunRiseAndSetModule(
@@ -85,12 +84,15 @@ CSunRiseAndSetModule::CSunRiseAndSetModule(
 	CModule("SRAS", sizeof(SSettings), 1, &settings, 0, 1)
 {
 	gSunRiseAndSet = this;
+	memset(eventList, 0, sizeof(eventList));
 }
 	
 void
 CSunRiseAndSetModule::Setup(
 	void)
 {
+	MAssert(gRealTime != NULL);
+
 	gCommand->RegisterCommand("lonlat_set", this, static_cast<TCmdHandlerMethod>(&CSunRiseAndSetModule::SerialSetLonLat));
 	gCommand->RegisterCommand("lonlat_get", this, static_cast<TCmdHandlerMethod>(&CSunRiseAndSetModule::SerialGetLonLat));
 	gRealTime->RegisterTimeChangeHandler("ssar", this, static_cast<TRealTimeChangeMethod>(&CSunRiseAndSetModule::RealTimeChangeHandler));
@@ -282,7 +284,7 @@ CSunRiseAndSetModule::ScheduleNextEvent(
 	if(gRealTime->GetNextDateTime(targetYear, targetMonth, targetDay, targetDOW, targetHour, targetMin, targetSec, inEvent->utc) == false)
 	{
 		// there is not a next time so just don't schedule
-		DebugMsg(eDbgLevel_Basic, "Could not schedule %s 1", inEvent->name);
+		SystemMsg(eMsgLevel_Basic, "Could not schedule %s 1", inEvent->name);
 		gRealTime->CancelAlarm(inEvent->name);
 		return;
 	}
@@ -303,7 +305,7 @@ CSunRiseAndSetModule::ScheduleNextEvent(
 	// if this event was in the past and any component is eAlarm_Any then reschedule given the computed hour, min, sec of the event
 	if(eventEpochTime <= gRealTime->GetEpochTime(inEvent->utc))
 	{
-		DebugMsg(eDbgLevel_Basic, "%s scheduling for next day because it has passed", inEvent->name);
+		SystemMsg(eMsgLevel_Basic, "%s scheduling for next day because it has passed", inEvent->name);
 		if(inEvent->year == eAlarm_Any || inEvent->month == eAlarm_Any || inEvent->day == eAlarm_Any || inEvent->dow == eAlarm_Any)
 		{
 			targetYear = inEvent->year;
@@ -315,7 +317,7 @@ CSunRiseAndSetModule::ScheduleNextEvent(
 			if(gRealTime->GetNextDateTime(targetYear, targetMonth, targetDay, targetDOW, targetHour, targetMin, targetSec, inEvent->utc) == false)
 			{
 				// only in extreme corner cases should this fail...
-				DebugMsg(eDbgLevel_Basic, "Could not schedule %s 2", inEvent->name);
+				SystemMsg(eMsgLevel_Basic, "Could not schedule %s 2", inEvent->name);
 				gRealTime->CancelAlarm(inEvent->name);
 				return;
 			}
@@ -335,7 +337,7 @@ CSunRiseAndSetModule::ScheduleNextEvent(
 		else
 		{
 			// don't try to schedule something in the past
-			DebugMsg(eDbgLevel_Basic, "Could not schedule %s 3", inEvent->name);
+			SystemMsg(eMsgLevel_Basic, "Could not schedule %s 3", inEvent->name);
 			gRealTime->CancelAlarm(inEvent->name);
 			return;
 		}

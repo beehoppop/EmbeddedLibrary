@@ -47,6 +47,9 @@ class CModule_Config : public CModule, public ICmdHandler
 {
 public:
 	
+	CModule_Config(
+		);
+	
 	// Return the value given the config var
 	uint8_t
 	GetVal(
@@ -66,9 +69,6 @@ public:
 	int	debugLevelIndex;	// config index for the debug level config var
 
 private:
-	
-	CModule_Config(
-		);
 
 	virtual void
 	Setup(
@@ -102,8 +102,6 @@ private:
 
 	SConfigVar	configVars[eConfigVar_Max];
 	bool		configVarUsed[eConfigVar_Max];
-
-	static CModule_Config	module;
 
 	friend class CModule;
 };

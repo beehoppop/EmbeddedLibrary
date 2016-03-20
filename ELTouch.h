@@ -67,6 +67,9 @@ typedef void
 class CModule_Touch : public CModule
 {
 public:
+	
+	CModule_Touch(
+		);
 
 	// Register an event handler method for the given pin
 	void
@@ -78,9 +81,6 @@ public:
 		void*				inReference);
 
 private:
-	
-	CModule_Touch(
-		);
 
 	virtual void
 	Setup(

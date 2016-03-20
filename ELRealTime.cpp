@@ -32,8 +32,7 @@
 #include "ELRealTime.h"
 
 int			gDaysInMonth[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
-CRealTime	CRealTime::module;
-CRealTime*	gRealTime;
+CModule_RealTime*	gRealTime;
 
 #if defined(WIN32)
 STimeZoneRule gTimeZone = 
@@ -48,7 +47,8 @@ class CRealTimeDataProvider_DS3234 : public IRealTimeDataProvider
 public:
 
 	CRealTimeDataProvider_DS3234(
-		int	inChipSelect)
+		int		inChipSelect,
+		bool	inUseAltSPI)
 	{
 	}
 
@@ -84,7 +84,7 @@ public:
 		int		inChipSelect,
 		bool	inUseAltSPI)
 		:
-		spiSettings(SPI_CLOCK_DIV128, MSBFIRST, SPI_MODE3),
+		spiSettings(2000000, MSBFIRST, SPI_MODE3),
 		useAltSPI(inUseAltSPI)
 	{
 		chipselect = inChipSelect;
@@ -150,13 +150,13 @@ public:
 		else
 		{
 			// This is an invalid year so bail
-			DebugMsg("SetUTCDateAndTime: Invalid year");
+			SystemMsg("SetUTCDateAndTime: Invalid year");
 			return;
 		}
 
 		if(inMonth < 1 || inMonth > 12 || inDayOfMonth < 1 || inDayOfMonth > 31 || inHour < 0 || inHour > 23 || inMin < 0 || inMin > 59 || inSec < 0 || inSec > 59)
 		{
-			DebugMsg("SetUTCDateAndTime: Invalid date");
+			SystemMsg("SetUTCDateAndTime: Invalid date");
 			return;
 		}
 
@@ -206,8 +206,6 @@ public:
 	{
 		int TimeDate [7]; //second,minute,hour,null,day,month,year
 
-		DebugMsg("cs=%d", chipselect);
-
 		if(useAltSPI)
 		{
 			SPI.setMISO(8);
@@ -255,11 +253,11 @@ public:
 			TimeDate[6] += 2000;
 		}
 
-		DebugMsg("got %d %d %d %d %d %d\n", TimeDate[6], TimeDate[5], TimeDate[4], TimeDate[2], TimeDate[1], TimeDate[0]);
+		//SystemMsg("got %d %d %d %d %d %d\n", TimeDate[6], TimeDate[5], TimeDate[4], TimeDate[2], TimeDate[1], TimeDate[0]);
 
 		if(TimeDate[5] < 1 || TimeDate[5] > 12 || TimeDate[4] < 1 || TimeDate[4] > 31 || TimeDate[2] < 0 || TimeDate[2] > 23 || TimeDate[1] < 0 || TimeDate[1] > 59 || TimeDate[0] < 0 || TimeDate[0] > 59)
 		{
-			DebugMsg(eDbgLevel_Basic, "RequestSync: Invalid date from hardware");
+			SystemMsg(eMsgLevel_Basic, "RequestSync: Invalid date from hardware");
 			return;
 		}
 
@@ -272,7 +270,7 @@ public:
 };
 #endif
 
-CRealTime::CRealTime(
+CModule_RealTime::CModule_RealTime(
 	)
 	:
 	CModule(
@@ -284,10 +282,27 @@ CRealTime::CRealTime(
 		1)
 {
 	gRealTime = this;
+
+	memset(alarmArray, 0, sizeof(alarmArray));
+	memset(eventArray, 0, sizeof(eventArray));
+	memset(timeChangeHandlerArray, 0, sizeof(timeChangeHandlerArray));
+
+	provider = NULL;
+	providerSyncPeriod = 0;
+	epocUTCTimeAtLastSet = 0;
+	localMSAtLastSet = 0;
+	memset(&timeZoneInfo, 0, sizeof(timeZoneInfo));
+	dstStartUTCEpocTime = 0;
+	dstEndUTCEpocTime = 0;
+	dstStartUTC = 0;
+	stdStartUTC = 0;
+	dstStartLocal = 0;
+	stdStartLocal = 0;
+	timeMultiplier = 0;
 }
 
 void
-CRealTime::Setup(
+CModule_RealTime::Setup(
 	void)
 {
 	if((uint8_t)timeZoneInfo.abbrev[0] == 0xFF)
@@ -301,12 +316,12 @@ CRealTime::Setup(
 		SetTimeZone(gTimeZone, false);
 	#endif
 
-	gCommand->RegisterCommand("time_set", this, static_cast<TCmdHandlerMethod>(&CRealTime::SerialSetTime));
-	gCommand->RegisterCommand("time_get", this, static_cast<TCmdHandlerMethod>(&CRealTime::SerialGetTime));
-	gCommand->RegisterCommand("timezone_set", this, static_cast<TCmdHandlerMethod>(&CRealTime::SerialSetTimeZone));
-	gCommand->RegisterCommand("timezone_get", this, static_cast<TCmdHandlerMethod>(&CRealTime::SerialGetTimeZone));
-	gCommand->RegisterCommand("rt_dump", this, static_cast<TCmdHandlerMethod>(&CRealTime::SerialDumpTable));
-	gCommand->RegisterCommand("rt_set_mult", this, static_cast<TCmdHandlerMethod>(&CRealTime::SerialSetMultiplier));
+	gCommand->RegisterCommand("time_set", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialSetTime));
+	gCommand->RegisterCommand("time_get", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialGetTime));
+	gCommand->RegisterCommand("timezone_set", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialSetTimeZone));
+	gCommand->RegisterCommand("timezone_get", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialGetTimeZone));
+	gCommand->RegisterCommand("rt_dump", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialDumpTable));
+	gCommand->RegisterCommand("rt_set_mult", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialSetMultiplier));
 
 	timeMultiplier = 1;
 
@@ -314,7 +329,7 @@ CRealTime::Setup(
 }
 
 void
-CRealTime::Update(
+CModule_RealTime::Update(
 	uint32_t	inDeltaTimeUS)
 {
 	if(provider != NULL && (gCurLocalMS - localMSAtLastSet) / 1000 >= providerSyncPeriod && timeMultiplier == 1)
@@ -335,7 +350,7 @@ CRealTime::Update(
 		if(curAlarm->nextTriggerTimeUTC <= curEpochTimeUTC)
 		{
 			// this alarm is triggered
-			DebugMsg(eDbgLevel_Medium, "Triggering alarm %s\n", curAlarm->name);
+			SystemMsg(eMsgLevel_Medium, "Triggering alarm %s\n", curAlarm->name);
 			curAlarm->nextTriggerTimeUTC = 0;
 			bool	reschedule = (curAlarm->object->*curAlarm->method)(curAlarm->name, curAlarm->reference);
 			if(reschedule)
@@ -362,7 +377,7 @@ CRealTime::Update(
 		if(gCurLocalUS - curEvent->lastFireTime >= curEvent->periodUS)
 		{
 			curEvent->lastFireTime = gCurLocalUS;
-			DebugMsg(eDbgLevel_Medium, "Triggering event %s\n", curEvent->name);
+			SystemMsg(eMsgLevel_Medium, "Triggering event %s\n", curEvent->name);
 			(curEvent->object->*curEvent->method)(curEvent->name, curEvent->reference);
 			if(curEvent->onceOnly)
 			{
@@ -373,7 +388,7 @@ CRealTime::Update(
 }
 
 void
-CRealTime::SetTimeZone(
+CModule_RealTime::SetTimeZone(
 	STimeZoneRule&	inTimeZone,
 	bool			inWriteToEEPROM)
 {
@@ -395,7 +410,7 @@ CRealTime::SetTimeZone(
 }
 
 void
-CRealTime::SetProvider(
+CModule_RealTime::SetProvider(
 	IRealTimeDataProvider*	inProvider,				// If provider is NULL the user is responsible for calling SetDateAndTime and setting an alarm to periodically sync as needed
 	uint32_t				inProviderSyncPeriod)	// In seconds, the period between refreshing the time with the given provider
 {
@@ -409,7 +424,7 @@ CRealTime::SetProvider(
 }
 
 void
-CRealTime::SetDateAndTime(
+CModule_RealTime::SetDateAndTime(
 	int		inYear,			// 20xx
 	int		inMonth,		// 1 to 12
 	int		inDayOfMonth,	// 1 to 31
@@ -424,7 +439,7 @@ CRealTime::SetDateAndTime(
 }
 
 void 
-CRealTime::SetEpochTime(
+CModule_RealTime::SetEpochTime(
 	TEpochTime	inEpochTime,
 	bool		inUTC)
 {
@@ -455,7 +470,7 @@ CRealTime::SetEpochTime(
 }
 
 void
-CRealTime::GetDateAndTime(
+CModule_RealTime::GetDateAndTime(
 	int&	outYear,
 	int&	outMonth,
 	int&	outDayOfMonth,
@@ -469,7 +484,7 @@ CRealTime::GetDateAndTime(
 }
 
 TEpochTime 
-CRealTime::GetEpochTime(
+CModule_RealTime::GetEpochTime(
 	bool	inUTC)
 {
 	TEpochTime	result = epocUTCTimeAtLastSet + (uint32_t)((gCurLocalMS - localMSAtLastSet) * timeMultiplier / 1000);
@@ -483,56 +498,56 @@ CRealTime::GetEpochTime(
 }
 
 int
-CRealTime::GetYearNow(
+CModule_RealTime::GetYearNow(
 	bool	inUTC)
 {
 	return GetYearFromEpoch(GetEpochTime(inUTC));
 }
 
 int
-CRealTime::GetMonthNow(
+CModule_RealTime::GetMonthNow(
 	bool	inUTC)
 {
 	return GetMonthFromEpoch(GetEpochTime(inUTC));
 }
 
 int
-CRealTime::GetDayOfMonthNow(
+CModule_RealTime::GetDayOfMonthNow(
 	bool	inUTC)
 {
 	return GetDayOfMonthFromEpoch(GetEpochTime(inUTC));
 }
 
 int 
-CRealTime::GetDayOfWeekNow(
+CModule_RealTime::GetDayOfWeekNow(
 	bool	inUTC)
 {
 	return GetDayOfWeekFromEpoch(GetEpochTime(inUTC));
 }
 
 int
-CRealTime::GetHourNow(
+CModule_RealTime::GetHourNow(
 	bool	inUTC)
 {
 	return GetHourFromEpoch(GetEpochTime(inUTC));
 }
 
 int 
-CRealTime::GetMinutesNow(
+CModule_RealTime::GetMinutesNow(
 	bool	inUTC)
 {
 	return GetMinuteFromEpoch(GetEpochTime(inUTC));
 }
 
 int
-CRealTime::GetSecondsNow(
+CModule_RealTime::GetSecondsNow(
 	bool	inUTC)
 {
 	return GetSecondFromEpoch(GetEpochTime(inUTC));
 }
 
 int
-CRealTime::GetYearFromEpoch(
+CModule_RealTime::GetYearFromEpoch(
 	TEpochTime	inEpochTime)
 {
 	TEpochTime	daysEpochTime = inEpochTime / (60 * 60 * 24);
@@ -554,7 +569,7 @@ CRealTime::GetYearFromEpoch(
 }
 
 int
-CRealTime::GetMonthFromEpoch(
+CModule_RealTime::GetMonthFromEpoch(
 	TEpochTime	inEpochTime)
 {
 	TEpochTime	daysEpochTime = inEpochTime / (60 * 60 * 24);
@@ -600,7 +615,7 @@ CRealTime::GetMonthFromEpoch(
 }
 
 int
-CRealTime::GetDayOfMonthFromEpoch(
+CModule_RealTime::GetDayOfMonthFromEpoch(
 	TEpochTime	inEpochTime)
 {
 	TEpochTime	daysEpochTime = inEpochTime / (60 * 60 * 24);
@@ -646,7 +661,7 @@ CRealTime::GetDayOfMonthFromEpoch(
 }
 
 int
-CRealTime::GetDayOfWeekFromEpoch(
+CModule_RealTime::GetDayOfWeekFromEpoch(
 	TEpochTime	inEpochTime)
 {
 	TEpochTime	daysEpochTime = inEpochTime / (60 * 60 * 24);
@@ -655,28 +670,28 @@ CRealTime::GetDayOfWeekFromEpoch(
 }
 
 int
-CRealTime::GetHourFromEpoch(
+CModule_RealTime::GetHourFromEpoch(
 	TEpochTime	inEpochTime)
 {
 	return (inEpochTime / (60 * 60)) % 24;
 }
 
 int
-CRealTime::GetMinuteFromEpoch(
+CModule_RealTime::GetMinuteFromEpoch(
 	TEpochTime	inEpochTime)
 {
 	return (inEpochTime / 60) % 60;
 }
 
 int
-CRealTime::GetSecondFromEpoch(
+CModule_RealTime::GetSecondFromEpoch(
 	TEpochTime	inEpochTime)
 {
 	return inEpochTime % 60;
 }
 
 TEpochTime
-CRealTime::GetEpochTimeFromComponents(
+CModule_RealTime::GetEpochTimeFromComponents(
 	int inYear,
 	int inMonth, 
 	int inDayOfMonth, 
@@ -718,7 +733,7 @@ CRealTime::GetEpochTimeFromComponents(
 }
 
 void
-CRealTime::GetComponentsFromEpochTime(
+CModule_RealTime::GetComponentsFromEpochTime(
 	TEpochTime	inEpocTime,
 	int&		outYear,		// 20xx
 	int&		outMonth,		// 1 to 12
@@ -790,7 +805,7 @@ CRealTime::GetComponentsFromEpochTime(
 }
 
 TEpochTime
-CRealTime::LocalToUTC(
+CModule_RealTime::LocalToUTC(
 	TEpochTime	inLocalEpochTime)
 {
 	if(GetYearFromEpoch(inLocalEpochTime) != GetYearFromEpoch(dstStartLocal))
@@ -807,7 +822,7 @@ CRealTime::LocalToUTC(
 }
 
 TEpochTime
-CRealTime::UTCToLocal(
+CModule_RealTime::UTCToLocal(
 	TEpochTime	inUTCEpochTime)
 {
 	if(GetYearFromEpoch(inUTCEpochTime) != GetYearFromEpoch(dstStartUTC))
@@ -824,7 +839,7 @@ CRealTime::UTCToLocal(
 }
 	
 void
-CRealTime::LocalToUTC(
+CModule_RealTime::LocalToUTC(
 	int&	ioYear,
 	int&	ioMonth,
 	int&	ioDayOfMonth,
@@ -838,7 +853,7 @@ CRealTime::LocalToUTC(
 }
 	
 void
-CRealTime::UTCToLocal(
+CModule_RealTime::UTCToLocal(
 	int&	ioYear,
 	int&	ioMonth,
 	int&	ioDayOfMonth,
@@ -852,7 +867,7 @@ CRealTime::UTCToLocal(
 }
 
 bool
-CRealTime::InDST(
+CModule_RealTime::InDST(
 	TEpochTime	inEpochTime,
 	bool			inUTC)
 {
@@ -889,7 +904,7 @@ CRealTime::InDST(
 }
 
 void
-CRealTime::RegisterAlarm(
+CModule_RealTime::RegisterAlarm(
 	char const*	inAlarmName,
 	int			inYear,			// 20xx or eAlarm_Any
 	int			inMonth,		// 1 to 12 or eAlarm_Any
@@ -932,7 +947,7 @@ CRealTime::RegisterAlarm(
 }
 
 void
-CRealTime::CancelAlarm(
+CModule_RealTime::CancelAlarm(
 	char const*	inAlarmName)
 {
 	SAlarm*	targetAlarm = FindAlarmByName(inAlarmName);
@@ -943,7 +958,7 @@ CRealTime::CancelAlarm(
 }
 
 void
-CRealTime::RegisterEvent(
+CModule_RealTime::RegisterEvent(
 	char const*			inEventName,
 	uint64_t			inPeriodUS,
 	bool				inOnlyOnce,
@@ -973,7 +988,7 @@ CRealTime::RegisterEvent(
 }
 
 void
-CRealTime::CancelEvent(
+CModule_RealTime::CancelEvent(
 	char const*	inEventName)
 {
 	SEvent*	targetEvent = FindEventByName(inEventName);
@@ -984,7 +999,7 @@ CRealTime::CancelEvent(
 }
 
 void
-CRealTime::RegisterTimeChangeHandler(
+CModule_RealTime::RegisterTimeChangeHandler(
 	char const*				inName,
 	IRealTimeHandler*		inObject,
 	TRealTimeChangeMethod	inMethod)
@@ -1006,7 +1021,7 @@ CRealTime::RegisterTimeChangeHandler(
 }
 
 void
-CRealTime::CancelTimeChangeHandler(
+CModule_RealTime::CancelTimeChangeHandler(
 	char const*	inName)
 {
 	STimeChangeHandler*	targetHandler = FindTimeChangeHandlerByName(inName);
@@ -1017,7 +1032,7 @@ CRealTime::CancelTimeChangeHandler(
 }
 
 IRealTimeDataProvider*
-CRealTime::CreateDS3234Provider(
+CModule_RealTime::CreateDS3234Provider(
 	uint8_t	inChipSelectPin,
 	bool	inUseAltSPI)
 {
@@ -1031,8 +1046,8 @@ CRealTime::CreateDS3234Provider(
 	return ds3234Provider;
 }
 
-CRealTime::SAlarm*
-CRealTime::FindAlarmByName(
+CModule_RealTime::SAlarm*
+CModule_RealTime::FindAlarmByName(
 	char const*	inName)
 {
 	for(int i = 0; i < eAlarm_MaxActive; ++i)
@@ -1046,8 +1061,8 @@ CRealTime::FindAlarmByName(
 	return NULL;
 }
 
-CRealTime::SAlarm*
-CRealTime::FindAlarmFirstEmpty(
+CModule_RealTime::SAlarm*
+CModule_RealTime::FindAlarmFirstEmpty(
 	void)
 {
 	for(int i = 0; i < eAlarm_MaxActive; ++i)
@@ -1061,8 +1076,8 @@ CRealTime::FindAlarmFirstEmpty(
 	return NULL;
 }
 
-CRealTime::SEvent*
-CRealTime::FindEventByName(
+CModule_RealTime::SEvent*
+CModule_RealTime::FindEventByName(
 	char const*	inName)
 {
 	for(int i = 0; i < eEvent_MaxActive; ++i)
@@ -1076,8 +1091,8 @@ CRealTime::FindEventByName(
 	return NULL;
 }
 
-CRealTime::SEvent*
-CRealTime::FindEventFirstEmpty(
+CModule_RealTime::SEvent*
+CModule_RealTime::FindEventFirstEmpty(
 	void)
 {
 	for(int i = 0; i < eEvent_MaxActive; ++i)
@@ -1091,8 +1106,8 @@ CRealTime::FindEventFirstEmpty(
 	return NULL;
 }
 
-CRealTime::STimeChangeHandler*
-CRealTime::FindTimeChangeHandlerByName(
+CModule_RealTime::STimeChangeHandler*
+CModule_RealTime::FindTimeChangeHandlerByName(
 	char const*	inName)
 {
 	for(int i = 0; i < eTimeChangeHandler_MaxCount; ++i)
@@ -1106,8 +1121,8 @@ CRealTime::FindTimeChangeHandlerByName(
 	return NULL;
 }
 
-CRealTime::STimeChangeHandler*
-CRealTime::FindTimeChangeHandlerFirstEmpty(
+CModule_RealTime::STimeChangeHandler*
+CModule_RealTime::FindTimeChangeHandlerFirstEmpty(
 	void)
 {
 	for(int i = 0; i < eTimeChangeHandler_MaxCount; ++i)
@@ -1122,7 +1137,7 @@ CRealTime::FindTimeChangeHandlerFirstEmpty(
 }
 
 void
-CRealTime::ComputeDSTStartAndEnd(
+CModule_RealTime::ComputeDSTStartAndEnd(
 	int	inYear)
 {
 	dstStartLocal = ComputeEpochTimeForOffsetSpecifier(timeZoneInfo.dstStart, inYear);
@@ -1132,7 +1147,7 @@ CRealTime::ComputeDSTStartAndEnd(
 }
 
 TEpochTime
-CRealTime::ComputeEpochTimeForOffsetSpecifier(
+CModule_RealTime::ComputeEpochTimeForOffsetSpecifier(
 	STimeZoneOffsetSpecifier const&	inSpecifier,
 	int								inYear)
 {
@@ -1166,7 +1181,7 @@ CRealTime::ComputeEpochTimeForOffsetSpecifier(
 }
 
 void
-CRealTime::ScheduleAlarm(
+CModule_RealTime::ScheduleAlarm(
 	SAlarm*	inAlarm)
 {
 	// Reschedule it if possible
@@ -1185,20 +1200,20 @@ CRealTime::ScheduleAlarm(
 		{
 			inAlarm->nextTriggerTimeUTC = LocalToUTC(inAlarm->nextTriggerTimeUTC);
 		}
-		DebugMsg(eDbgLevel_Medium, "%s scheduled for %02d/%02d/%04d %02d:%02d:%02d", inAlarm->name, month, day, year, hour, min, sec);
+		SystemMsg(eMsgLevel_Medium, "%s scheduled for %02d/%02d/%04d %02d:%02d:%02d", inAlarm->name, month, day, year, hour, min, sec);
 	}
 	else
 	{
-		DebugMsg(eDbgLevel_Basic, "ScheduleAlarm: %s could not be scheduled", inAlarm->name);
-		DebugMsg(eDbgLevel_Medium, "  target was %02d/%02d/%04d %02d:%02d:%02d", inAlarm->month, inAlarm->dayOfMonth, inAlarm->year, inAlarm->hour, inAlarm->minute, inAlarm->second);
+		SystemMsg(eMsgLevel_Basic, "ScheduleAlarm: %s could not be scheduled", inAlarm->name);
+		SystemMsg(eMsgLevel_Medium, "  target was %02d/%02d/%04d %02d:%02d:%02d", inAlarm->month, inAlarm->dayOfMonth, inAlarm->year, inAlarm->hour, inAlarm->minute, inAlarm->second);
 		GetComponentsFromEpochTime(GetEpochTime(inAlarm->utc), year, month, day, dow, hour, min, sec);
-		DebugMsg(eDbgLevel_Medium, "  now is %02d/%02d/%04d %02d:%02d:%02d", month, day, year, hour, min, sec);
+		SystemMsg(eMsgLevel_Medium, "  now is %02d/%02d/%04d %02d:%02d:%02d", month, day, year, hour, min, sec);
 		inAlarm->name[0] = 0;
 	}
 }
 
 uint8_t
-CRealTime::SerialSetTime(
+CModule_RealTime::SerialSetTime(
 	IOutputDirector*	inOutput,
 	int					inArgC,
 	char const*			inArgV[])
@@ -1271,7 +1286,7 @@ CRealTime::SerialSetTime(
 }
 
 uint8_t
-CRealTime::SerialGetTime(
+CModule_RealTime::SerialGetTime(
 	IOutputDirector*	inOutput,
 	int					inArgC,
 	char const*			inArgV[])
@@ -1299,7 +1314,7 @@ CRealTime::SerialGetTime(
 }
 
 uint8_t
-CRealTime::SerialSetTimeZone(
+CModule_RealTime::SerialSetTimeZone(
 	IOutputDirector*	inOutput,
 	int					inArgC,
 	char const*			inArgV[])
@@ -1397,7 +1412,7 @@ CRealTime::SerialSetTimeZone(
 }
 
 uint8_t
-CRealTime::SerialGetTimeZone(
+CModule_RealTime::SerialGetTimeZone(
 	IOutputDirector*	inOutput,
 	int					inArgC,
 	char const*			inArgV[])
@@ -1412,7 +1427,7 @@ CRealTime::SerialGetTimeZone(
 }
 
 uint8_t
-CRealTime::SerialDumpTable(
+CModule_RealTime::SerialDumpTable(
 	IOutputDirector*	inOutput,
 	int					inArgC,
 	char const*			inArgV[])
@@ -1436,7 +1451,7 @@ CRealTime::SerialDumpTable(
 }
 
 uint8_t
-CRealTime::SerialSetMultiplier(
+CModule_RealTime::SerialSetMultiplier(
 	IOutputDirector*	inOutput,
 	int					inArgC,
 	char const*			inArgV[])
@@ -1528,7 +1543,7 @@ IncrementComp(
 }
 
 bool
-CRealTime::GetNextDateTimeFromTime(
+CModule_RealTime::GetNextDateTimeFromTime(
 	TEpochTime	inTime,
 	int&		ioYear,			// xxxx 4 digit year or eAlarm_Any
 	int&		ioMonth,		// 1 to 12 or eAlarm_Any
@@ -1622,7 +1637,7 @@ CRealTime::GetNextDateTimeFromTime(
 }
 
 bool
-CRealTime::GetNextDateTime(
+CModule_RealTime::GetNextDateTime(
 	int&	ioYear,
 	int&	ioMonth,
 	int&	ioDay,
@@ -1636,7 +1651,7 @@ CRealTime::GetNextDateTime(
 }
 
 int
-CRealTime::CompareDateTimeWithNow(
+CModule_RealTime::CompareDateTimeWithNow(
 	int		inYear,
 	int		inMonth,
 	int		inDay,

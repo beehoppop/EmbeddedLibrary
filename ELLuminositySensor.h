@@ -37,6 +37,9 @@ class CModule_LuminositySensor : public CModule, public ICmdHandler
 {
 public:
 
+	CModule_LuminositySensor(
+		);
+
 	float
 	GetActualLux(
 		void);
@@ -61,9 +64,6 @@ private:
 		float		minBrightnessLux;
 		float		maxBrightnessLux;
 	};
-
-	CModule_LuminositySensor(
-		);
 
 	virtual void
 	Setup(
@@ -120,13 +120,11 @@ private:
 	unsigned int		integrationTimeMS;
 	SLuminositySettings	settings;
 
-	double lux;
+	double	lux;
 	double	normalized;
 
 	char _i2c_address;
 	byte _error;
-
-	static CModule_LuminositySensor	module;
 };
 
 extern CModule_LuminositySensor*	gLuminositySensor;

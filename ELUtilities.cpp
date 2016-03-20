@@ -199,3 +199,23 @@ ComputeQuadradicValue(
 	return inX * inX * inCoefficients[0] + inX * inCoefficients[1] + inCoefficients[2];
 }
 
+void
+WaitForSerialPort(
+	void)
+{
+	for(;;)
+	{
+		Serial.printf("waiting for s\n");
+		int ab = Serial.available();
+		if(ab > 0)
+		{
+			char r = Serial.read();
+			if(r == 's')
+			{
+				break;
+			}
+		}
+		delay(1000);
+	}
+}
+

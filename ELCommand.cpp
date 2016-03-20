@@ -33,70 +33,54 @@
 #include <ELConfig.h>
 #include <ELUtilities.h>
 
-class CModule_SerialCmdHandler : public CModule
-{
-	CModule_SerialCmdHandler(
-		)
-		:
-		CModule("srlc", 0, 0, NULL, 100000, 254)
-	{
-	}
-
-	virtual void
-	Setup(
-		void)
-	{
-
-	}
-
-	void
-	Update(
-		uint32_t	inDeltaTimeUS)
-	{
-		size_t	bytesAvailable = Serial.available();
-		char	tmpBuffer[256];
-
-		if(bytesAvailable == 0)
-		{
-			return;
-		}
-
-		bytesAvailable = MMin(bytesAvailable, sizeof(tmpBuffer));
-		Serial.readBytes(tmpBuffer, bytesAvailable);
-
-		for(size_t i = 0; i < bytesAvailable; ++i)
-		{
-			char c = tmpBuffer[i];
-
-			if(c == '\n' || c == '\r')
-			{
-				if(curIndex > 0)
-				{
-					charBuffer[curIndex] = 0;
-					curIndex = 0;
-
-					gCommand->ProcessCommand(gSerialOut, charBuffer);
-				}
-			}
-			else
-			{
-				if(curIndex < (int)sizeof(charBuffer) - 1)
-				{
-					charBuffer[curIndex++] = c;
-				}
-			}
-		}
-	}
-
-	char	charBuffer[256];
-	int		curIndex;
-
-	static CModule_SerialCmdHandler	module;
-};
-CModule_SerialCmdHandler	CModule_SerialCmdHandler::module;
-
-CModule_Command	CModule_Command::module;
 CModule_Command*	gCommand;
+
+CModule_SerialCmdHandler::CModule_SerialCmdHandler(
+	)
+	:
+	CModule("srlc", 0, 0, NULL, 100000, 254)
+{
+	curIndex = 0;
+}
+
+void
+CModule_SerialCmdHandler::Update(
+	uint32_t	inDeltaTimeUS)
+{
+	size_t	bytesAvailable = Serial.available();
+	char	tmpBuffer[256];
+
+	if(bytesAvailable == 0)
+	{
+		return;
+	}
+
+	bytesAvailable = MMin(bytesAvailable, sizeof(tmpBuffer));
+	Serial.readBytes(tmpBuffer, bytesAvailable);
+
+	for(size_t i = 0; i < bytesAvailable; ++i)
+	{
+		char c = tmpBuffer[i];
+
+		if(c == '\n' || c == '\r')
+		{
+			if(curIndex > 0)
+			{
+				charBuffer[curIndex] = 0;
+				curIndex = 0;
+
+				gCommand->ProcessCommand(gSerialOut, charBuffer);
+			}
+		}
+		else
+		{
+			if(curIndex < (int)sizeof(charBuffer) - 1)
+			{
+				charBuffer[curIndex++] = c;
+			}
+		}
+	}
+}
 
 CModule_Command::CModule_Command(
 	)
@@ -105,6 +89,7 @@ CModule_Command::CModule_Command(
 {
 	gCommand = this;
 	handlerCount = 0;
+	memset(commandList, 0, sizeof(commandList));
 }
 
 void
@@ -129,7 +114,7 @@ CModule_Command::ProcessCommand(
 	int					inArgC,
 	char const*			inArgV[])
 {
-	AddDebugMsgHandler(inOutput);	// Add the output source to the list of debug msg handlers so it will get all output
+	AddSysMsgHandler(inOutput);	// Add the output source to the list of debug msg handlers so it will get all output
 
 	uint8_t	result = eCmd_Failed;
 	bool	cmdFound = false;
@@ -157,7 +142,7 @@ CModule_Command::ProcessCommand(
 		inOutput->printf("CC:[%03d] %s SUCCEEDED\n", gConfig->GetVal(gConfig->nodeIDIndex), inArgV[0]);
 	}
 
-	RemoveDebugMsgHandler(inOutput);	// Now that the command is done remove it's output handler
+	RemoveSysMsgHandler(inOutput);	// Now that the command is done remove it's output handler
 
 	return result;
 }

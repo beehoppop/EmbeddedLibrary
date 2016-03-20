@@ -8,7 +8,7 @@
 #include <ELRealTime.h>
 #include <ELInternetDevice_ESP8266.h>
 
-#if 1
+#if 0
 #define MESPDebugMsg(...) DebugMsgLocal(__VA_ARGS__)
 #else
 #define MESPDebugMsg(...)
@@ -113,6 +113,23 @@ public:
 		:
 		CModule("8266", 0, 0, NULL, 1000, 2, false)
 	{
+		serialPort = NULL;
+		rstPin = 0;
+		chPDPin = 0;
+		gpio0Pin = 0;
+		gpio2Pin = 0;
+		curIPDChannel = NULL;
+		ipdParsing = false;
+		commandHead = 0;
+		commandTail = 0;
+		memset(commandQueue, 0, sizeof(commandQueue));
+		serialInputBufferLength = 0;
+		serverPort = 0;
+		memset(channelArray, 0, sizeof(channelArray));
+		for(int i = 0; i < eMaxLinks; ++i)
+		{
+			channelArray[i].linkIndex = -1;
+		}
 	}
 
 	virtual void
@@ -584,7 +601,7 @@ public:
 
 		if(inOpenRef < 0 || inOpenRef >= eMaxLinks)
 		{
-			DebugMsg("Client_OpenCompleted %d is not valid", inOpenRef);
+			SystemMsg("Client_OpenCompleted %d is not valid", inOpenRef);
 			return true;
 		}
 
@@ -829,6 +846,8 @@ public:
 		uint32_t	inTimeoutSeconds,
 		...)
 	{
+		MESPDebugMsg("IssueCommand: %s\n", inCommand);
+
 		bool		waitingOn = false;
 		while((commandHead - commandTail) >= eMaxPendingCommands)
 		{
@@ -967,10 +986,7 @@ public:
 	uint16_t	serverPort;
 
 	SChannel	channelArray[eMaxLinks];
-
-	static CModule_ESP8266	module;
 };
-CModule_ESP8266	CModule_ESP8266::module;
 
 IInternetDevice*
 GetInternetDevice_ESP8266(
@@ -980,7 +996,14 @@ GetInternetDevice_ESP8266(
 	uint8_t	inGPIO0,
 	uint8_t	inGPIO2)
 {
-	CModule_ESP8266::module.Configure(inSerialPort, inRstPin, inChPDPin, inGPIO0, inGPIO2);
-	CModule_ESP8266::module.SetEnabledState(true);
-	return &CModule_ESP8266::module;
+	static CModule_ESP8266*	esp8266;
+
+	if(esp8266 == NULL)
+	{
+		esp8266 = new CModule_ESP8266();
+		esp8266->Configure(inSerialPort, inRstPin, inChPDPin, inGPIO0, inGPIO2);
+		esp8266->SetEnabledState(true);
+	}
+
+	return esp8266;
 }

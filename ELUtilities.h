@@ -72,4 +72,8 @@ ComputeQuadradicValue(
 	float	inX,
 	float	inCoefficients[3]);
 
+void
+WaitForSerialPort(
+	void);
+
 #endif /* _ELUTILITIES_H_ */

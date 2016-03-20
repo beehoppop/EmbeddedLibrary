@@ -113,6 +113,9 @@ typedef void
 class CModule_CANBus : public CModule, public ICmdHandler, public IOutputDirector
 {
 public:
+	
+	CModule_CANBus(
+		);
 
 	void
 	RegisterMsgHandler(
@@ -148,9 +151,6 @@ public:
 		size_t		inBytes);
 
 private:
-	
-	CModule_CANBus(
-		);
 
 	virtual void
 	Setup(
@@ -203,8 +203,6 @@ private:
 	CAN_message_t	sendFIFO[eCANBus_SendBufferSize];
 
 	uint8_t	targetNodeID;
-
-	static CModule_CANBus	module;
 };
 
 extern CModule_CANBus*	gCANBus;

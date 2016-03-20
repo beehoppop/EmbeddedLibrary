@@ -69,6 +69,9 @@ class CModule_DigitalIO : public CModule
 {
 public:
 	
+	CModule_DigitalIO(
+		);
+	
 	// Register an event handler method for the given pin
 	void
 	RegisterEventHandler(
@@ -103,9 +106,6 @@ public:
 		uint8_t	inPin);
 
 private:
-	
-	CModule_DigitalIO(
-		);
 
 	virtual void
 	Setup(
@@ -129,8 +129,6 @@ private:
 	};
 
 	SPinState	pinState[eDigitalIO_PinCount];
-
-	static CModule_DigitalIO	module;
 };
 
 extern CModule_DigitalIO*	gDigitalIO;

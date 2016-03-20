@@ -30,13 +30,14 @@
 #include "ELCommand.h"
 
 CModule_Config*	gConfig;
-CModule_Config	CModule_Config::module;
 
 CModule_Config::CModule_Config(
 	)
 	:
 	CModule("cnfg", sizeof(configVars), 1, configVars, 0, 255)
 {
+	memset(configVars, 0, sizeof(configVars));
+	memset(configVarUsed, 0, sizeof(configVarUsed));
 }
 
 void
@@ -45,11 +46,6 @@ CModule_Config::Setup(
 {
 	gConfig = this;
 	MAssert(eepromOffset > 0);
-
-	for(int i = 0; i < eConfigVar_Max; ++i)
-	{
-		configVarUsed[i] = false;
-	}
 
 	gCommand->RegisterCommand("config_set", this, static_cast<TCmdHandlerMethod>(&CModule_Config::SetConfig));
 	gCommand->RegisterCommand("config_get", this, static_cast<TCmdHandlerMethod>(&CModule_Config::GetConfig));

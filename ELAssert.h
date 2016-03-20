@@ -29,61 +29,104 @@
 /*
 	ABOUT
 
-	Commonly needed functionality for debugging, verifying program correctness, and handling errors gracefully
+	Commonly needed functionality for logging, debugging, verifying program correctness, and handling errors gracefully
 */
 
 #include <EL.h>
 #include <ELOutput.h>
+#include <ELModule.h>
+#include <ELCommand.h>
 
 // Use this macro to assert that an expression is true - if its not the program will halt execution and repeatedly output a debug message
 #define MAssert(x) if(!(x)) AssertFailed(#x, __FILE__, __LINE__)
 
 // Use this macro to return from a function if the given condition is true and notify the user about it
-#define MReturnOnError(x, ...) do {if(x) {DebugMsgLocal("ERROR: %s %s %d", #x, __FILE__, __LINE__); return __VA_ARGS__;}} while(0)
+#define MReturnOnError(x, ...) do {if(x) {SystemMsg("ERROR: %s %s %d", #x, __FILE__, __LINE__); return __VA_ARGS__;}} while(0)
 
 enum
 {
-	eMaxDebugMsgHandlers = 4,
+	eMaxMsgHandlers = 6,
 
-	eDbgLevel_Off = 0,
+	eMsgLevel_Off = 0,
 
-	eDbgLevel_Always = 0,
-	eDbgLevel_Basic,
-	eDbgLevel_Medium,
-	eDbgLevel_Verbose,
+	eMsgLevel_Always = 0,
+	eMsgLevel_Basic,
+	eMsgLevel_Medium,
+	eMsgLevel_Verbose,
+
+	eMsgBuffer_Size = 8 * 1024,
+};
+
+// Instantiate this module to dump a log of system messages using the "msg_dump" command
+class CModule_SysMsgCmdHandler : public CModule, public ICmdHandler, public IOutputDirector
+{
+public:
+	
+	CModule_SysMsgCmdHandler(
+		);
+
+private:
+
+	virtual void
+	Setup(
+		void);
+
+	uint8_t
+	MsgLogDump(
+		IOutputDirector*	inOutputDirector,
+		int					inArgC,
+		char const*			inArgV[]);
+
+	virtual void
+	write(
+		char const*	inMsg,
+		size_t		inBytes);
+
+	char		msgBuffer[eMsgBuffer_Size];
+	uint32_t	msgBufferIndex;
+};
+
+// This module is instantiated by the library so that system msgs go out to the serial port
+class CModule_SysMsgSerialHandler : public CModule, public IOutputDirector
+{
+public:
+	
+	CModule_SysMsgSerialHandler(
+		);
+
+private:
+
+	virtual void
+	Setup(
+		void);
+
+	virtual void
+	write(
+		char const*	inMsg,
+		size_t		inBytes);
 };
 
 // Output a debug msg when inLevel <= the current debug level
 void
-DebugMsg(
+SystemMsg(
 	uint8_t		inLevel,
 	char const*	inMsg,
 	...);
 
+// Always output the debug msg
 void
-DebugMsg(
+SystemMsg(
 	char const*	inMsg,
 	...);
 
+// Add the given handler so that it can be called on every call to SystemMsg()
 void
-DebugMsgLocal(
-	uint8_t		inLevel,
-	char const*	inMsg,
-	...);
-
-void
-DebugMsgLocal(
-	char const*	inMsg,
-	...);
-
-// Add the given handler so that it can be called on every call to DebugMsg()
-void
-AddDebugMsgHandler(
+AddSysMsgHandler(
 	IOutputDirector*	inOutputDirector);
 
-// Add the given handler so that it can be called on every call to DebugMsg()
+// Add the given handler so that it can be called on every call to SystemMsg()
 void
-RemoveDebugMsgHandler(
+RemoveSysMsgHandler(
 	IOutputDirector*	inOutputDirector);
 
 // This is used by the MAssert macro to handle a failed assertion

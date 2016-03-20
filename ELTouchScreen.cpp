@@ -2,7 +2,6 @@
 #include <ELModule.h>
 #include <ELTouchScreen.h>
 
-CModule_TouchScreen	CModule_TouchScreen::module;
 CModule_TouchScreen*	gTouchScreen;
 
 CModule_TouchScreen::CModule_TouchScreen(

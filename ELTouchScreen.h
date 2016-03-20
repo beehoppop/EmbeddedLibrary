@@ -80,6 +80,9 @@ class CModule_TouchScreen
 {
 public:
 	
+	CModule_TouchScreen(
+		);
+	
 	void
 	SetTouchScreenProvider(
 		ITouchScreenHandler*	inProvider);
@@ -92,9 +95,6 @@ public:
 		void*						inRefCont);
 
 private:
-	
-	CModule_TouchScreen(
-		);
 
 	virtual void
 	Setup(

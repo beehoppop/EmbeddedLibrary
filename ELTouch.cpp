@@ -90,7 +90,7 @@ CModule_Touch::Update(
 					if(gCurLocalMS - curTouch->time >= eSettleTimeMS)
 					{
 						curTouch->state = eState_WaitingForChangeToRelease;
-						DebugMsg(eDbgLevel_Verbose, "TTch: Touched %d\n", i);
+						SystemMsg(eMsgLevel_Verbose, "TTch: Touched %d\n", i);
 						((curTouch->object)->*(curTouch->method))(curTouch->id, eTouchEvent_Touch, curTouch->reference);
 					}
 					break;
@@ -98,7 +98,7 @@ CModule_Touch::Update(
 				case eState_WaitingForChangeToRelease:
 					if(!touched)
 					{
-						//DebugMsg(eDbgLevel_Verbose, "TeensyTouch: Going to release settle %d\n", itr);
+						//SystemMsg(eMsgLevel_Verbose, "TeensyTouch: Going to release settle %d\n", itr);
 						curTouch->time = gCurLocalMS;
 						curTouch->state = eState_WaitingForReleaseSettle;
 					}
@@ -107,7 +107,7 @@ CModule_Touch::Update(
 				case eState_WaitingForReleaseSettle:
 					if(touched)
 					{
-						//DebugMsg(eDbgLevel_Verbose, "MPR121: Going to release waiting %d\n", itr);
+						//SystemMsg(eMsgLevel_Verbose, "MPR121: Going to release waiting %d\n", itr);
 						curTouch->state = eState_WaitingForChangeToRelease;
 						break;
 					}
@@ -115,7 +115,7 @@ CModule_Touch::Update(
 					if(gCurLocalMS - curTouch->time >= eSettleTimeMS)
 					{
 						curTouch->state = eState_WaitingForChangeToTouched;
-						DebugMsg(eDbgLevel_Verbose, "TTch: Release %d\n", i);
+						SystemMsg(eMsgLevel_Verbose, "TTch: Release %d\n", i);
 						((curTouch->object)->*(curTouch->method))(curTouch->id, eTouchEvent_Release, curTouch->reference);
 					}
 					break;
@@ -337,9 +337,9 @@ CModule_MPR121::Initialize(
 	pinMode(eIRQPin, INPUT);
 	digitalWrite(eIRQPin, HIGH); //enable pullup resistor
 
-	//DebugMsg(eDbgLevel_Verbose, "MPR121: Staring wire");
+	//SystemMsg(eMsgLevel_Verbose, "MPR121: Staring wire");
 	Wire.begin();
-	//DebugMsg(eDbgLevel_Verbose, "MPR121: done wire");
+	//SystemMsg(eMsgLevel_Verbose, "MPR121: done wire");
 
 	// Enter config mode
 	if(MPR121SetRegister(ELE_CFG, 0x00) != 0)
@@ -430,7 +430,7 @@ CModule_MPR121::Update(
 				if(gCurLocalMS - gLastTouchTime[itr] >= eSettleTimeMS)
 				{
 					gTouchState[itr] = eState_WaitingForChangeToRelease;
-					DebugMsg(eDbgLevel_Verbose, "MPR121: Touched %d\n", itr);
+					SystemMsg(eMsgLevel_Verbose, "MPR121: Touched %d\n", itr);
 					for(int itr2 = 0; itr2 < gSensorInterfaceCount; ++itr2)
 					{
 						gSensorInterfaceList[itr2].touchSensor->Touch(itr);
@@ -441,7 +441,7 @@ CModule_MPR121::Update(
 			case eState_WaitingForChangeToRelease:
 				if(!touched)
 				{
-					//DebugMsg(eDbgLevel_Verbose, "MPR121: Going to release settle %d\n", itr);
+					//SystemMsg(eMsgLevel_Verbose, "MPR121: Going to release settle %d\n", itr);
 					gLastTouchTime[itr] = gCurLocalMS;
 					gTouchState[itr] = eState_WaitingForReleaseSettle;
 				}
@@ -450,7 +450,7 @@ CModule_MPR121::Update(
 			case eState_WaitingForReleaseSettle:
 				if(touched)
 				{
-					//DebugMsg(eDbgLevel_Verbose, "MPR121: Going to release waiting %d\n", itr);
+					//SystemMsg(eMsgLevel_Verbose, "MPR121: Going to release waiting %d\n", itr);
 					gTouchState[itr] = eState_WaitingForChangeToRelease;
 					break;
 				}
@@ -458,7 +458,7 @@ CModule_MPR121::Update(
 				if(gCurLocalMS - gLastTouchTime[itr] >= eSettleTimeMS)
 				{
 					gTouchState[itr] = eState_WaitingForChangeToTouched;
-					DebugMsg(eDbgLevel_Verbose, "MPR121: Release %d\n", itr);
+					SystemMsg(eMsgLevel_Verbose, "MPR121: Release %d\n", itr);
 					for(int itr2 = 0; itr2 < gSensorInterfaceCount; ++itr2)
 					{
 						gSensorInterfaceList[itr2].touchSensor->Release(itr);

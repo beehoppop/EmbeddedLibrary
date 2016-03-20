@@ -39,7 +39,6 @@ enum
 	eUpdateTimeUS = 10000
 };
 
-CModule_DigitalIO	CModule_DigitalIO::module;
 CModule_DigitalIO*	gDigitalIO;
 
 CModule_DigitalIO::CModule_DigitalIO(
@@ -74,7 +73,7 @@ CModule_DigitalIO::Update(
 				case eState_WaitingForChangeToActive:
 					if(value == curState->activeHigh)
 					{
-						DebugMsg(eDbgLevel_Verbose, "dio pin %d triggered\n", i);
+						SystemMsg(eMsgLevel_Verbose, "dio pin %d triggered\n", i);
 						curState->time = gCurLocalMS;
 						curState->lastState = eState_WaitingForSettleActive;
 					}
@@ -83,14 +82,14 @@ CModule_DigitalIO::Update(
 				case eState_WaitingForSettleActive:
 					if(value != curState->activeHigh)
 					{
-						DebugMsg(eDbgLevel_Verbose, "dio pin %d UN triggered\n", i);
+						SystemMsg(eMsgLevel_Verbose, "dio pin %d UN triggered\n", i);
 						curState->lastState = eState_WaitingForChangeToActive;
 						break;
 					}
 
 					if(gCurLocalMS - curState->time >= curState->settleMS)
 					{
-						DebugMsg(eDbgLevel_Verbose, "dio pin %d activated\n", i);
+						SystemMsg(eMsgLevel_Verbose, "dio pin %d activated\n", i);
 						curState->lastState = eState_WaitingForChangeToDeactive;
 						
 						((curState->object)->*(curState->method))(i, eDigitalIO_PinActivated, curState->reference);
@@ -114,7 +113,7 @@ CModule_DigitalIO::Update(
 
 					if(gCurLocalMS - curState->time >= curState->settleMS)
 					{
-						DebugMsg(eDbgLevel_Verbose, "dio pin %d deactivated\n", i);
+						SystemMsg(eMsgLevel_Verbose, "dio pin %d deactivated\n", i);
 						curState->lastState = eState_WaitingForChangeToActive;
 						
 						((curState->object)->*(curState->method))(i, eDigitalIO_PinDeactivated, curState->reference);

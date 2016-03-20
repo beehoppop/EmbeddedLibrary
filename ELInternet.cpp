@@ -4,7 +4,6 @@
 #include <ELUtilities.h>
 #include <ELCommand.h>
 
-CModule_Internet	CModule_Internet::module;
 CModule_Internet*	gInternet;
 
 static char const*	gCmdHomePageGet = "GET / HTTP";
@@ -15,9 +14,18 @@ static char const*	gReplyStringPostOutput = "</code></body></html>";
 CModule_Internet::CModule_Internet(
 	)
 	:
-	CModule("intn", sizeof(settings), 0, &settings, 10000)
+	CModule("intn", sizeof(settings), 0, &settings, 10000, 1)
 {
 	gInternet = this;
+
+	internetDevice = NULL;
+	memset(serverList, 0, sizeof(serverList));
+	memset(connectionList, 0, sizeof(connectionList));
+	memset(&settings, 0, sizeof(settings));
+	commandServerPort = 0;
+	respondingServer = false;
+	respondingServerPort = 0;
+	respondingReplyPort = 0;
 
 	SConnection*	cur = connectionList;
 	for(int i = 0; i < eMaxConnectionsCount; ++i, ++cur)
@@ -262,7 +270,7 @@ CModule_Internet::Update(
 				*httpStr = 0;
 
 				char*	csp = buffer + strlen(gCmdProcessPageGet);
-				//DebugMsg(eDbgLevel_Always, "Parsing Command: %s", csp);
+				//SystemMsg(eMsgLevel_Always, "Parsing Command: %s", csp);
 
 				char*		cdp = buffer;
 				char const*	argList[64];

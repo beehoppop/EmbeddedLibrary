@@ -63,6 +63,7 @@ static uint32_t		gLastMillis;
 static uint32_t		gLastMicros;
 static bool			gFlashLED;
 static int			gBlinkLEDIndex;		// config index for blink LED config var
+static bool			gSetupFinished;
 
 uint64_t	gCurLocalMS;
 uint64_t	gCurLocalUS;
@@ -71,6 +72,8 @@ char const*	gVersionStr;
 
 class CModuleManager : public CModule, public ICmdHandler
 {
+public:
+
 	CModuleManager(
 		)
 		:
@@ -82,6 +85,8 @@ class CModuleManager : public CModule, public ICmdHandler
 	Setup(
 		void)
 	{
+		MAssert(gCommand != NULL);
+		MAssert(gConfig != NULL);
 		gCommand->RegisterCommand("alive", this, static_cast<TCmdHandlerMethod>(&CModuleManager::SerialCmdAlive));
 		gBlinkLEDIndex = gConfig->RegisterConfigVar("blink_led");
 	}
@@ -97,9 +102,7 @@ class CModuleManager : public CModule, public ICmdHandler
 		return eCmd_Succeeded;
 	}
 
-	static CModuleManager	module;
 };
-CModuleManager	CModuleManager::module;
 
 CModule::CModule(
 	char const*	inUID,
@@ -155,7 +158,7 @@ CModule::SetEnabledState(
 {
 	enabled = inEnabled;
 
-	if(enabled && !hasBeenSetup)
+	if(enabled && !hasBeenSetup && gSetupFinished)
 	{
 		Setup();
 		lastUpdateUS = gCurLocalUS;
@@ -223,11 +226,14 @@ CModule::SetupAll(
 		digitalWrite(13, 1);
 	}
 
-	Serial.begin(115200);
+	new CModuleManager();
+	new CModule_SysMsgSerialHandler();
+	new CModule_Config();
+	new CModule_Command();
 
-	DebugMsg(eDbgLevel_Basic, "Module count=%d\n", gModuleCount);
+	SystemMsg(eMsgLevel_Basic, "Module count=%d\n", gModuleCount);
 
-	MAssert(gTooManyModules == false);	// This is reported here since we can't safely access the serial port in constructors
+	MAssert(gTooManyModules == false);
 
 	bool	changes = false;
 	uint8_t	eepromVersion = EEPROM.read(eEEPROM_VersionOffset);
@@ -253,12 +259,12 @@ CModule::SetupAll(
 
 			if(target == NULL)
 			{
-				DebugMsg(eDbgLevel_Medium, "Module %s: no eeprom entry\n", StringizeUInt32(curModule->uid));
+				SystemMsg(eMsgLevel_Medium, "Module %s: no eeprom entry\n", StringizeUInt32(curModule->uid));
 				changes = true;
 			}
 			else if(target->size != curModule->eepromSize || target->version != curModule->eepromVersion)
 			{
-				DebugMsg(eDbgLevel_Medium, "Module %s: eeprom changed version or size\n", StringizeUInt32(curModule->uid));
+				SystemMsg(eMsgLevel_Medium, "Module %s: eeprom changed version or size\n", StringizeUInt32(curModule->uid));
 				changes = true;
 			}
 			else
@@ -274,7 +280,7 @@ CModule::SetupAll(
 	}
 	else
 	{
-		DebugMsg(eDbgLevel_Basic, "EEPROM version mismatch old=%d new=%d\n", eepromVersion, eEEPROM_Version);
+		SystemMsg(eMsgLevel_Basic, "EEPROM version mismatch old=%d new=%d\n", eepromVersion, eEEPROM_Version);
 
 		changes = true;
 		for(int i = 0; i < eMaxModuleCount; ++i)
@@ -301,7 +307,7 @@ CModule::SetupAll(
 			curEEPROM->version = curModule->eepromVersion;
 			if(!curEEPROM->inUse)
 			{
-				DebugMsg(eDbgLevel_Medium, "Module %s: Initializing eeprom\n", StringizeUInt32(curModule->uid));
+				SystemMsg(eMsgLevel_Medium, "Module %s: Initializing eeprom\n", StringizeUInt32(curModule->uid));
 				curModule->EEPROMInitialize();
 			}
 			WriteDataToEEPROM(curModule->eepromData, curOffset, curModule->eepromSize);
@@ -314,7 +320,7 @@ CModule::SetupAll(
 		EEPROM.write(eEEPROM_ModuleCountOffset, eMaxModuleCount);
 	}
 
-	#if MDebugDelayStart
+	#if 0//MDebugDelayStart
 		if(MDebugTargetNode == 0xFF /*|| MDebugTargetNode == gConfig->GetVal(eConfigVar_NodeID)*/)	// 		Need to fix this code to not reference gConfig since it has not been initialized yet
 		{
 			for(;;)
@@ -351,7 +357,7 @@ CModule::SetupAll(
 				}
 
 				#if MDebugDelayEachModule || MDebugDelayStart
-					DebugMsg(eDbgLevel_Always, "Module: Setup %s\n", StringizeUInt32(curModule->uid));
+					SystemMsg(eMsgLevel_Always, "Module: Setup %s %d\n", StringizeUInt32(curModule->uid), curModule->priority);
 				#endif
 				#if MDebugDelayEachModule
 					//Need to fix this code to not reference gConfig since it has not been initialized yet
@@ -367,10 +373,11 @@ CModule::SetupAll(
 		}
 	}
 
+	gSetupFinished = true;
 	gConfig->SetupFinished();
 
 	#if MDebugDelayEachModule || MDebugDelayStart
-		DebugMsg(eDbgLevel_Always, "Module: Setup Complete\n");
+		SystemMsg(eMsgLevel_Always, "Module: Setup Complete\n");
 	#endif
 }
 
@@ -385,7 +392,7 @@ CModule::TearDownAll(
 			if(gModuleList[i]->priority == priorityItr)
 			{
 				#if MDebugModules
-				DebugMsg(eDbgLevel_Medium, "Module: TearDown %s\n", StringizeUInt32(gModuleList[i]->uid));
+				SystemMsg(eMsgLevel_Medium, "Module: TearDown %s\n", StringizeUInt32(gModuleList[i]->uid));
 				delay(3000);
 				#endif
 				gModuleList[i]->TearDown();
@@ -396,7 +403,7 @@ CModule::TearDownAll(
 	gTearingDown = true;
 
 	#if MDebugModules
-	DebugMsg(eDbgLevel_Medium, "Module: TearDown Complete\n");
+	SystemMsg(eMsgLevel_Medium, "Module: TearDown Complete\n");
 	#endif
 }
 
@@ -408,7 +415,7 @@ CModule::ResetAllState(
 
 	for(int i = 0; i < gModuleCount; ++i)
 	{
-		DebugMsg(eDbgLevel_Medium, "Module: ResetState %s\n", StringizeUInt32(gModuleList[i]->uid));
+		SystemMsg(eMsgLevel_Medium, "Module: ResetState %s\n", StringizeUInt32(gModuleList[i]->uid));
 		#if MDebugModules
 		delay(3000);
 		#endif
@@ -420,7 +427,7 @@ CModule::ResetAllState(
 	gTearingDown = true;
 
 	#if MDebugModules
-	DebugMsg(eDbgLevel_Medium, "Module: ResetAllState Complete\n");
+	SystemMsg(eMsgLevel_Medium, "Module: ResetAllState Complete\n");
 	#endif
 }
 
@@ -429,6 +436,7 @@ void
 CModule::LoopAll(
 	void)
 {
+
 	if(gFlashLED && gConfig->GetVal(gBlinkLEDIndex) == 1)
 	{
 		static bool	on = false;
@@ -441,6 +449,7 @@ CModule::LoopAll(
 			lastBlinkTime = gCurLocalMS;
 		}
 	}
+
 
 	for(int i = 0; i < gModuleCount; ++i)
 	{
@@ -462,7 +471,7 @@ CModule::LoopAll(
 		{
 			if(gModuleList[i]->enabled)
 			{
-				//if(gFlag) Serial.printf("Updating %s %d\n", StringizeUInt32(gModuleList[i]->uid), gModuleList[i]->enabled);
+				//Serial.printf("Updating %s %d\n", StringizeUInt32(gModuleList[i]->uid), gModuleList[i]->enabled);
 				gModuleList[i]->Update((uint32_t)updateDeltaUS);
 				gModuleList[i]->lastUpdateUS = gCurLocalUS;
 			}
@@ -471,6 +480,7 @@ CModule::LoopAll(
 
 	gTearingDown = false;
 }
+
 
 /*
 

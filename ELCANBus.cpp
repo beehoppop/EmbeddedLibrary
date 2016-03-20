@@ -30,7 +30,6 @@
 #include <ELOutput.h>
 
 CModule_CANBus*	gCANBus;
-CModule_CANBus	CModule_CANBus::module;
 
 enum
 {
@@ -68,6 +67,9 @@ CModule_CANBus::CModule_CANBus(
 	gCANBus = this;
 	canBus.begin();
 
+	memset(handlerList, 0, sizeof(handlerList));
+	memset(sendFIFO, 0, sizeof(sendFIFO));
+
 	targetNodeID = 0xFF;
 
 	for(int i = 0; i < eCANBus_MaxSerialCmdStates; ++i)
@@ -76,6 +78,10 @@ CModule_CANBus::CModule_CANBus(
 		serialCmdStates[i].msgType = 0xFF;
 		serialCmdStates[i].serialCmdLength = 0;
 	}
+
+	sendFIFOPendingNext = 0;
+	sendFIFOOutgoingNext = 0;
+	targetNodeID = 0;
 }
 
 void
@@ -127,7 +133,7 @@ CModule_CANBus::SendMsg(
 {
 	CAN_message_t	msg;
 
-	//DebugMsg(eDbgLevel_Basic, "CAN: %02x TXM src=0x%x dst=0x%x typ=0x%x len=%d\n", gConfig->GetVal(gConfig->nodeIDIndex), gConfig->GetVal(gConfig->nodeIDIndex), inDstNode, inMsgType, inMsgSize);
+	//SystemMsg(eMsgLevel_Basic, "CAN: %02x TXM src=0x%x dst=0x%x typ=0x%x len=%d\n", gConfig->GetVal(gConfig->nodeIDIndex), gConfig->GetVal(gConfig->nodeIDIndex), inDstNode, inMsgType, inMsgSize);
 
 	MReturnOnError(inMsgSize > eCANBus_MaxMsgLength);
 

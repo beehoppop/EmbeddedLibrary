@@ -64,19 +64,4 @@ public:
 
 extern IOutputDirector*	gSerialOut;	// This director will save recent data to an internal buffer in addition to sending to the primary serial port
 
-// Use this if you want to write stuff out in a constructor since the above pointer will not be safely setup until all constructors have finished
-void
-SerialOutEarly_printf(
-	char const*	inMsg,
-	...);
-
-void
-SerialOutEarly_write(
-	char const*	inMsg);
-
-void
-SerialOutEarly_write(
-	char const*	inMsg,
-	size_t		inBytes);
-
 #endif /* _ELOUTPUT_H_ */

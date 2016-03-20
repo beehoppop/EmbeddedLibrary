@@ -135,9 +135,12 @@ typedef void
 	char const*	inName,
 	bool		inTimeZone);
 
-class CRealTime : public CModule, public ICmdHandler
+class CModule_RealTime : public CModule, public ICmdHandler
 {
 public:
+
+	CModule_RealTime(
+		void);
 	
 	// Set the current timezone and optionally write it to eeprom
 	void
@@ -387,9 +390,6 @@ public:
 
 private:
 
-	CRealTime(
-		void);
-
 	virtual void
 	Setup(
 		void);
@@ -528,10 +528,9 @@ private:
 		int					inArgC,
 		char const*			inArgV[]);
 
-	static CRealTime	module;
 };
 
 extern int			gDaysInMonth[12];	// This is 0 based not 1 based
-extern CRealTime*	gRealTime;
+extern CModule_RealTime*	gRealTime;
 
 #endif /* _ELREALTIME_H_ */

@@ -59,9 +59,29 @@ typedef uint8_t
 	int					inArgC,
 	char const*			inArgV[]);
 
+class CModule_SerialCmdHandler : public CModule
+{
+public:
+	CModule_SerialCmdHandler(
+		);
+
+private:
+
+	void
+	Update(
+		uint32_t	inDeltaTimeUS);
+
+	char	charBuffer[256];
+	int		curIndex;
+};
+
+
 class CModule_Command : public CModule
 {
 public:
+	
+	CModule_Command(
+		);
 	
 	// Register a command handler
 	void
@@ -85,9 +105,6 @@ public:
 
 private:
 	
-	CModule_Command(
-		);
-	
 	struct SCommand
 	{
 		char				name[eCmd_MaxNameLen + 1];
@@ -97,8 +114,6 @@ private:
 
 	int			handlerCount;
 	SCommand	commandList[eCmd_MaxCommands];
-
-	static CModule_Command	module;
 };
 
 extern CModule_Command*	gCommand;

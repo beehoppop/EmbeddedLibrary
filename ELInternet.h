@@ -280,9 +280,6 @@ private:
 	uint16_t	respondingServerPort;
 	uint16_t	respondingReplyPort;
 	
-
-	static CModule_Internet	module;
-
 };
 
 extern CModule_Internet*	gInternet;

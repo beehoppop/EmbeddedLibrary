@@ -75,7 +75,6 @@ enum ELuminositySensor
 #define	TSL2561_REG_DATA_0    0x0C
 #define	TSL2561_REG_DATA_1    0x0E
 
-CModule_LuminositySensor	CModule_LuminositySensor::module;
 CModule_LuminositySensor*	gLuminositySensor;
 
 CModule_LuminositySensor::CModule_LuminositySensor(
@@ -91,6 +90,12 @@ CModule_LuminositySensor::CModule_LuminositySensor(
 		false)
 {
 	gLuminositySensor = this;
+
+	integrationTimeMS = 0;
+	lux = 0;
+	normalized = 0;
+	_i2c_address = 0;
+	_error = 0;
 }
 
 float

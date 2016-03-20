@@ -83,6 +83,9 @@ typedef void
 class CSunRiseAndSetModule : public CModule, public IRealTimeHandler, public ICmdHandler
 {
 public:
+	
+	CSunRiseAndSetModule(
+		);
 
 	void
 	SetLongitudeAndLatitude(
@@ -208,9 +211,6 @@ public:
 		int		inSunRelativePosition = eSunRelativePosition_UpperLimb);
 
 private:
-	
-	CSunRiseAndSetModule(
-		);
 
 	virtual void
 	Setup(
@@ -272,9 +272,6 @@ private:
 
 	SEvent		eventList[eMaxSunRiseSetEvents];
 	SSettings	settings;
-
-	static CSunRiseAndSetModule	module;
-
 };
 
 extern CSunRiseAndSetModule*	gSunRiseAndSet;
