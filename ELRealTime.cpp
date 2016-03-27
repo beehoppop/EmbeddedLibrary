@@ -350,7 +350,7 @@ CModule_RealTime::Update(
 		if(curAlarm->nextTriggerTimeUTC <= curEpochTimeUTC)
 		{
 			// this alarm is triggered
-			SystemMsg(eMsgLevel_Medium, "Triggering alarm %s\n", curAlarm->name);
+			//SystemMsg("Triggering alarm %s\n", curAlarm->name);
 			curAlarm->nextTriggerTimeUTC = 0;
 			bool	reschedule = (curAlarm->object->*curAlarm->method)(curAlarm->name, curAlarm->reference);
 			if(reschedule)
@@ -377,8 +377,9 @@ CModule_RealTime::Update(
 		if(gCurLocalUS - curEvent->lastFireTime >= curEvent->periodUS)
 		{
 			curEvent->lastFireTime = gCurLocalUS;
-			SystemMsg(eMsgLevel_Medium, "Triggering event %s\n", curEvent->name);
+			//SystemMsg("Triggering event %s\n", curEvent->name);
 			(curEvent->object->*curEvent->method)(curEvent->name, curEvent->reference);
+			//SystemMsg("Done");
 			if(curEvent->onceOnly)
 			{
 				curEvent->name[0] = 0;

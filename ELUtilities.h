@@ -30,6 +30,7 @@
 
 #define MMax(x, y) (((x) > (y)) ? (x) : (y))
 #define MMin(x, y) (((x) < (y)) ? (x) : (y))
+#define MPin(x, y, z) ((y) < (x) ? (x) : (y) > (z) ? (z) : (y))
 
 bool
 IsStrDigit(

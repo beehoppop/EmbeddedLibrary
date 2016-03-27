@@ -132,7 +132,7 @@ AssertFailed(
 {
 	for(;;)
 	{
-		SystemMsg(eMsgLevel_Always, "ASSERT: %s %d %s\n", inFile, inLine, inMsg);
+		SystemMsg("ASSERT: %s %d %s\n", inFile, inLine, inMsg);
 		delay(500);
 	}
 }

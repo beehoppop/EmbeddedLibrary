@@ -579,7 +579,10 @@ public:
 	{
 		SChannel*	targetChannel = FindAvailableChannel();
 
-		MReturnOnError(targetChannel == NULL, -1);
+		if(targetChannel == NULL)
+		{
+			return -1;
+		}
 
 		MESPDebugMsg("Client_RequestOpen chn=%d", targetChannel - channelArray);
 

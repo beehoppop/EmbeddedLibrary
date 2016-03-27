@@ -77,7 +77,7 @@ public:
 	CModuleManager(
 		)
 		:
-		CModule("mdmg", 0, 0, 0, 253)
+		CModule("mdmg", 0, 0, 0, 0, 253)
 	{
 	}
 
@@ -226,6 +226,11 @@ CModule::SetupAll(
 		digitalWrite(13, 1);
 	}
 
+	while(!Serial)
+	{
+		delay(1);
+	}
+
 	new CModuleManager();
 	new CModule_SysMsgSerialHandler();
 	new CModule_Config();
@@ -320,23 +325,10 @@ CModule::SetupAll(
 		EEPROM.write(eEEPROM_ModuleCountOffset, eMaxModuleCount);
 	}
 
-	#if 0//MDebugDelayStart
+	#if MDebugDelayStart
 		if(MDebugTargetNode == 0xFF /*|| MDebugTargetNode == gConfig->GetVal(eConfigVar_NodeID)*/)	// 		Need to fix this code to not reference gConfig since it has not been initialized yet
 		{
-			for(;;)
-			{
-				Serial.printf("waiting for s\n");
-				int ab = Serial.available();
-				if(ab > 0)
-				{
-					char r = Serial.read();
-					if(r == 's')
-					{
-						break;
-					}
-				}
-				delay(1000);
-			}
+			WaitForSerialPort();
 		}
 	#endif
 
@@ -357,13 +349,13 @@ CModule::SetupAll(
 				}
 
 				#if MDebugDelayEachModule || MDebugDelayStart
-					SystemMsg(eMsgLevel_Always, "Module: Setup %s %d\n", StringizeUInt32(curModule->uid), curModule->priority);
+					SystemMsg("Module: Setup %s %d\n", StringizeUInt32(curModule->uid), curModule->priority);
 				#endif
 				#if MDebugDelayEachModule
 					//Need to fix this code to not reference gConfig since it has not been initialized yet
 					//if(MDebugTargetNode == 0xFF || MDebugTargetNode == gConfig->GetVal(eConfigVar_NodeID))
 					{
-						delay(3000);
+						delay(1000);
 					}
 				#endif
 				curModule->Setup();
@@ -377,7 +369,7 @@ CModule::SetupAll(
 	gConfig->SetupFinished();
 
 	#if MDebugDelayEachModule || MDebugDelayStart
-		SystemMsg(eMsgLevel_Always, "Module: Setup Complete\n");
+		SystemMsg("Module: Setup Complete\n"); delay(100);
 	#endif
 }
 
@@ -471,7 +463,7 @@ CModule::LoopAll(
 		{
 			if(gModuleList[i]->enabled)
 			{
-				//Serial.printf("Updating %s %d\n", StringizeUInt32(gModuleList[i]->uid), gModuleList[i]->enabled);
+				//Serial.printf("Updating %s %d\n", StringizeUInt32(gModuleList[i]->uid), gModuleList[i]->enabled); delay(100);
 				gModuleList[i]->Update((uint32_t)updateDeltaUS);
 				gModuleList[i]->lastUpdateUS = gCurLocalUS;
 			}

@@ -38,10 +38,15 @@
 	#include <EEPROM.h>
 	#include <SPI.h>
 	#include <Wire.h>
+
+	#define MUNUSED __attribute__((unused))
 #elif defined(WIN32)
 	#include "ArduinoSimulator.h"
+
+	#define MUNUSED
 #else
 	#include "WProgram.h"
 #endif
+
 
 #endif /* _EL_H_ */

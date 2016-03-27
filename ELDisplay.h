@@ -49,6 +49,8 @@
 */
 
 #include <ELModule.h>
+#include <ELUtilities.h>
+#include <ELAssert.h>
 
 #define MMakeColor(r, g, b) ((((r) & 0x1f) << 11) | (((g) & 0x3f) << 5) | ((b) & 0x1F))
 
@@ -60,6 +62,14 @@ enum
 	eVert_Top		= 1 << 3,
 	eVert_Center	= 1 << 4,
 	eVert_Bottom	= 1 << 5,
+};
+
+enum EDisplayOrientation
+{
+	eDisplayOrientation_LandscapeUpside,
+	eDisplayOrientation_LandscapeUpsideDown,
+	eDisplayOrientation_PortraitUpside,
+	eDisplayOrientation_PortraitUpsideDown,
 };
 
 struct SFontData
@@ -83,19 +93,175 @@ struct SFontData
 	unsigned char cap_height;
 };
 
+struct SDisplayPoint
+{
+	SDisplayPoint(){}
+
+	SDisplayPoint(
+		int16_t	inX,
+		int16_t	inY)
+		:
+		x(inX), y(inY)
+	{
+	}
+
+	SDisplayPoint(
+		SDisplayPoint const&	inPoint)
+		:
+		x(inPoint.x), y(inPoint.y)
+	{
+	}
+
+	void
+	Dump(
+		char const* inMsg) const
+	{
+		SystemMsg("%s=(%d,%d)", inMsg, x, y);
+	}
+
+	int16_t	x, y;
+};
+
+struct SDisplayRect
+{
+	SDisplayRect() {}
+
+	SDisplayRect(
+		SDisplayPoint const&	inTopLeft,
+		SDisplayPoint const&	inBottomRight)
+		:
+		topLeft(inTopLeft),
+		bottomRight(inBottomRight)
+	{
+
+	}
+
+	SDisplayRect(
+		int16_t	inLeft,
+		int16_t	inTop,
+		int16_t	inWidth,
+		int16_t	inHeight)
+		:
+		topLeft(inLeft, inTop),
+		bottomRight(inLeft + inWidth, inTop + inHeight)
+	{
+
+	}
+
+	void
+	Dump(
+		char const*	inMsg) const
+	{
+		SystemMsg(inMsg);
+		topLeft.Dump("  topLeft");
+		bottomRight.Dump("  bottomRight");
+	}
+
+	void
+	Intersect(
+		SDisplayRect const&	inRectA,
+		SDisplayRect const&	inRectB)
+	{
+		topLeft.x = MPin(inRectA.topLeft.x, inRectB.topLeft.x, inRectA.bottomRight.x);
+		bottomRight.x = MPin(inRectA.topLeft.x, inRectB.bottomRight.x, inRectA.bottomRight.x);
+		topLeft.y = MPin(inRectA.topLeft.y, inRectB.topLeft.y, inRectA.bottomRight.y);
+		bottomRight.y = MPin(inRectA.topLeft.y, inRectB.bottomRight.y, inRectA.bottomRight.y);
+	}
+
+	bool
+	IsEmpty(
+		void) const
+	{
+		return topLeft.x >= bottomRight.x || topLeft.y >= bottomRight.y;
+	}
+
+	SDisplayPoint
+	GetDimensions(
+		void) const
+	{
+		return SDisplayPoint(bottomRight.x - topLeft.x, bottomRight.y - topLeft.y);
+	}
+
+	SDisplayPoint	topLeft;
+	SDisplayPoint	bottomRight;
+};
+
+struct SDisplayColor
+{
+	SDisplayColor(
+		uint8_t	inR,
+		uint8_t	inG,
+		uint8_t	inB,
+		uint8_t	inA = 0xFF)
+		:
+		r(inR), g(inG), b(inB), a(inA)
+	{
+	}
+
+	uint16_t
+	GetRGB565(
+		void) const
+	{
+		return ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+	}
+
+	uint8_t	r, g, b, a;
+};
+
 class IDisplayDriver
 {
 public:
+	
+	virtual int16_t
+	GetWidth(
+		void) = 0;
+	
+	virtual int16_t
+	GetHeight(
+		void) = 0;
 
 	virtual void
-	DrawText(
-		char const*	inStr,
-		uint16_t	inX,
-		uint16_t	inY,
-		SFontData*	inFont,
-		uint16_t	inForground,
-		uint16_t	inBackground) = 0;
+	BeginDrawing(
+		void) = 0;
 
+	virtual void
+	EndDrawing(
+		void) = 0;
+	
+	virtual void
+	FillScreen(
+		SDisplayColor const&	inColor) = 0;
+
+	virtual void
+	FillRect(
+		SDisplayRect const&		inRect,
+		SDisplayColor const&	inColor) = 0;
+
+	virtual void
+	DrawPixel(
+		SDisplayPoint const&	inPoint,
+		SDisplayColor const&	inColor) = 0;
+
+	virtual void
+	DrawContinuousStart(
+		SDisplayRect const&		inRect,
+		SDisplayColor const&	inFGColor,
+		SDisplayColor const&	inBGColor) = 0;
+
+	virtual void
+	DrawContinuousBits(
+		int16_t					inPixelCount,
+		uint16_t				inSrcBitStartIndex,
+		uint8_t const*			inSrcBitData) = 0;
+
+	virtual void
+	DrawContinuousSolid(
+		int16_t					inPixelCount,
+		bool					inUseForeground) = 0;
+
+	virtual void
+	DrawContinuousEnd(
+		void) = 0;
 };
 
 class CDisplayRegion
@@ -105,11 +271,11 @@ public:
 	CDisplayRegion(
 		uint16_t	inFlags);
 
-	virtual uint16_t
+	virtual int16_t
 	GetWidth(
 		void) = 0;
 
-	virtual uint16_t
+	virtual int16_t
 	GetHeight(
 		void) = 0;
 
@@ -123,7 +289,7 @@ public:
 
 	void
 	RemoveFromGraph(
-		CDisplayRegion*	inParent);
+		void);
 
 	void
 	SetFlags(
@@ -139,10 +305,10 @@ private:
 	CDisplayRegion*	firstChild;
 	CDisplayRegion*	nextChild;
 	uint16_t		flags;
-	uint16_t		width;
-	uint16_t		height;
-	uint16_t		x;
-	uint16_t		y;
+	int16_t			width;
+	int16_t			height;
+	int16_t			x;
+	int16_t			y;
 };
 
 class CDisplayRegion_Text : public CDisplayRegion
@@ -172,11 +338,11 @@ public:
 
 private:
 
-	virtual uint16_t
+	virtual int16_t
 	GetWidth(
 		void);
 
-	virtual uint16_t
+	virtual int16_t
 	GetHeight(
 		void);
 
@@ -187,19 +353,19 @@ private:
 	char const*	text;
 };
 
-class CDisplayModule : public CModule
+class CModule_Display : public CModule
 {
 public:
 
-	CDisplayModule(
+	CModule_Display(
 		);
+
+	void
+	SetDisplayDriver(
+		IDisplayDriver*	inDisplayDriver);
 
 	CDisplayRegion*
 	GetTopDisplayRegion(
-		void);
-
-	void
-	Draw(
 		void);
 
 	uint16_t
@@ -212,11 +378,36 @@ public:
 		char const*	inStr,
 		SFontData*	inFont);
 
+	int16_t		// returns the width of the char
+	DrawChar(
+		char					inChar,
+		SDisplayPoint const&	inPoint,
+		SFontData*				inFont,
+		SDisplayColor const&	inForeground,
+		SDisplayColor const&	inBackground);
+
+	void
+	DrawText(
+		char const*				inStr,
+		SDisplayPoint const&	inPoint,
+		SFontData*				inFont,
+		SDisplayColor const&	inForeground,
+		SDisplayColor const&	inBackground);
 
 private:
 
+	IDisplayDriver*	displayDriver;
 };
 
-extern CDisplayModule*	gModule;
+IDisplayDriver*
+CreateILI9341Driver(
+	EDisplayOrientation	inDisplayOrientation,
+	uint8_t	inCS,
+	uint8_t	inDC,
+	uint8_t	inMOSI,
+	uint8_t	inClk,
+	uint8_t	inMISO);
+
+extern CModule_Display*	gDisplayModule;
 
 #endif /* _EL_DISPLAY_H_ */
