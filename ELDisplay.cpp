@@ -36,6 +36,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "ELDisplay.h"
 #include "ELAssert.h"
+#include "ELModule.h"
 
 #define SPICLOCK 30000000
 #define MADCTL_MY  0x80
@@ -130,6 +131,349 @@ static const uint8_t init_commands[] =
 };
 
 CModule_Display*	gDisplayModule;
+
+SPlacement
+SPlacement::Outisde(
+	uint8_t	inSide,
+	uint8_t	inAlignment)
+{
+	return SPlacement(ePlace_Inside, inSide, inAlignment);
+}
+
+SPlacement
+SPlacement::Inside(
+	uint8_t	inHoriz,
+	uint8_t	inVert)
+{
+	return SPlacement(ePlace_Inside, inHoriz, inVert);
+}
+
+#ifdef WIN32
+#include <Windows.h>
+
+class CDisplayDriver_ILI9341 : public CModule, public IDisplayDriver
+{
+public:
+
+	CDisplayDriver_ILI9341(
+		EDisplayOrientation	inDisplayOrientation,
+		uint8_t	inCS,
+		uint8_t	inDC,
+		uint8_t	inMOSI,
+		uint8_t	inClk,
+		uint8_t	inMISO)
+		:
+		displayOrientation(inDisplayOrientation),
+		cs(inCS), dc(inDC), mosi(inMOSI), clk(inClk), miso(inMISO),
+		CModule("ili9", 0, 0, NULL, 10 * 1000)
+	{
+		MReturnOnError(!((mosi == 11 || mosi == 7) && (miso == 12 || miso == 8) && (clk == 13 || clk == 14)));
+
+		me = this;
+
+		displayWidth = 320;
+		displayHeight = 240;
+
+		displayPort.topLeft.x = 0;
+		displayPort.topLeft.y = 0;
+		displayPort.bottomRight.x = displayWidth;
+		displayPort.bottomRight.y = displayHeight;
+
+		drawingActive = false;
+
+		WNDCLASSEX ex;
+ 
+		ex.cbSize = sizeof(WNDCLASSEX);
+		ex.style = CS_OWNDC;
+		ex.lpfnWndProc = WinProc;
+		ex.cbClsExtra = 0;
+		ex.cbWndExtra = 0;
+		ex.hInstance = GetModuleHandle(0);
+		ex.hIcon = LoadIcon(NULL, IDI_APPLICATION);
+		ex.hCursor = LoadCursor(NULL, IDC_ARROW);
+		ex.hbrBackground = (HBRUSH)GetStockObject(WHITE_BRUSH);
+		ex.lpszMenuName = NULL;
+		ex.lpszClassName = L"wndclass";
+		ex.hIconSm = NULL;
+ 
+		RegisterClassEx(&ex);
+	
+		hwnd = 
+			CreateWindowEx(
+				NULL,
+ 				L"wndclass",
+				L"Window",
+				WS_OVERLAPPED | WS_VISIBLE,
+				100, 100,
+				displayWidth + 50, displayHeight + 50,
+				NULL,
+				NULL,
+				GetModuleHandle(0),
+				this);
+
+		ShowWindow(hwnd, SW_SHOW);
+		UpdateWindow(hwnd);
+		
+	}
+	
+	virtual void
+	Update(
+		uint32_t inDeltaTimeUS)
+	{
+		MSG msg;
+		if(PeekMessage(&msg, NULL, NULL, NULL, PM_REMOVE))
+		{
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
+	}
+	
+	virtual int16_t
+	GetWidth(
+		void)
+	{
+		return displayWidth;
+	}
+	
+	virtual int16_t
+	GetHeight(
+		void)
+	{
+		return displayHeight;
+	}
+
+	virtual void
+	BeginDrawing(
+		void)
+	{
+		drawingActive = true;
+	}
+
+	virtual void
+	EndDrawing(
+		void)
+	{
+		drawingActive = false;
+	}
+	
+	virtual void
+	FillScreen(
+		SDisplayColor const&	inColor)
+	{
+		MReturnOnError(!drawingActive);
+
+		uint16_t	color = inColor.GetRGB565();
+		for(int x = 0; x < displayWidth; ++x)
+		{
+			for(int y = 0; y < displayHeight; ++y)
+			{
+				displayMemory[y][x] = color;
+			}
+		}
+	}
+	
+	virtual void
+	FillRect(
+		SDisplayRect const&		inRect,
+		SDisplayColor const&	inColor)
+	{
+		MReturnOnError(!drawingActive);
+
+		SDisplayRect	clippedRect;
+
+		clippedRect.Intersect(displayPort, inRect);
+
+		if(clippedRect.IsEmpty())
+		{
+			return;
+		}
+
+		uint16_t	color = inColor.GetRGB565();
+		for(int x = inRect.topLeft.x; x < inRect.bottomRight.x; ++x)
+		{
+			for(int y = inRect.topLeft.y; y < inRect.bottomRight.y; ++y)
+			{
+				displayMemory[y][x] = color;
+			}
+		}
+	}
+
+	virtual void
+	DrawPixel(
+		SDisplayPoint const&	inPoint,
+		SDisplayColor const&	inColor)
+	{
+		MReturnOnError(!drawingActive);
+
+		uint16_t	color = inColor.GetRGB565();
+
+		displayMemory[inPoint.y][inPoint.x] = color;
+	}
+
+	virtual void
+	DrawContinuousStart(
+		SDisplayRect const&		inRect,
+		SDisplayColor const&	inFGColor,
+		SDisplayColor const&	inBGColor)
+	{
+		MReturnOnError(!drawingActive);
+
+		SDisplayRect	clippedRect;
+
+		clippedRect.Intersect(displayPort, inRect);
+
+		continuousTotalClip = clippedRect.IsEmpty();
+		if(continuousTotalClip)
+		{
+			return;
+		}
+
+		continuousRect = inRect;
+		fgColor = inFGColor.GetRGB565();
+		bgColor = inBGColor.GetRGB565();
+		continuousX = inRect.topLeft.x;
+		continuousY = inRect.topLeft.y;
+	}
+
+	virtual void
+	DrawContinuousBits(
+		int16_t					inPixelCount,
+		uint16_t				inSrcBitStartIndex,
+		uint8_t const*			inSrcBitData)
+	{
+		MReturnOnError(!drawingActive);
+
+		if(continuousTotalClip)
+		{
+			return;
+		}
+
+		while(inPixelCount-- > 0)
+		{
+			if(continuousX >= 0 && continuousX < displayWidth && continuousY >= 0 && continuousY < displayHeight)
+			{
+				if(inSrcBitData[inSrcBitStartIndex >> 3] & (1 << (7 - (inSrcBitStartIndex & 0x7))))
+				{
+					displayMemory[continuousY][continuousX] = fgColor;
+				}
+				else
+				{
+					displayMemory[continuousY][continuousX] = bgColor;
+				}
+			}
+
+			++continuousX;
+			if(continuousX >= continuousRect.bottomRight.x)
+			{
+				continuousX = continuousRect.topLeft.x;
+				++continuousY;
+			}
+			++inSrcBitStartIndex;
+		}
+	}
+
+	virtual void
+	DrawContinuousSolid(
+		int16_t					inPixelCount,
+		bool					inUseForeground)
+	{
+		MReturnOnError(!drawingActive);
+
+		if(continuousTotalClip)
+		{
+			return;
+		}
+
+		while(inPixelCount-- > 0)
+		{
+			if(continuousX >= 0 && continuousX < displayWidth && continuousY >= 0 && continuousY < displayHeight)
+			{
+				if(inUseForeground)
+				{
+					displayMemory[continuousY][continuousX] = fgColor;
+				}
+				else
+				{
+					displayMemory[continuousY][continuousX] = bgColor;
+				}
+			}
+
+			++continuousX;
+			if(continuousX >= continuousRect.bottomRight.x)
+			{
+				continuousX = continuousRect.topLeft.x;
+				++continuousY;
+			}
+		}
+	}
+
+	virtual void
+	DrawContinuousEnd(
+		void)
+	{
+		MReturnOnError(!drawingActive);
+	}
+
+	static LRESULT CALLBACK 
+	WinProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
+
+	static CDisplayDriver_ILI9341*	me;
+
+	EDisplayOrientation	displayOrientation;
+	int16_t	displayWidth;
+	int16_t	displayHeight;
+	uint8_t	cs, dc, mosi, clk, miso;
+	uint8_t pcs_data, pcs_command;
+
+	bool	drawingActive;
+
+	SDisplayRect	displayPort;
+
+	bool			continuousTotalClip;
+	int16_t			continuousX;
+	int16_t			continuousY;
+	SDisplayRect	continuousRect;
+	uint16_t		fgColor;
+	uint16_t		bgColor;
+
+	uint16_t	displayMemory[240][320];
+
+	HDC		hdc;
+	HWND	hwnd;
+};
+
+CDisplayDriver_ILI9341*	CDisplayDriver_ILI9341::me;
+
+LRESULT CALLBACK 
+CDisplayDriver_ILI9341::WinProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
+{
+	switch(msg)
+	{
+		case WM_PAINT:
+		{
+			HDC hdc = GetDC(hwnd);
+
+			for(int x = 0; x < me->displayWidth; ++x)
+			{
+				for(int y = 0; y < me->displayHeight; ++y)
+				{
+					uint16_t	color = me->displayMemory[y][x];
+					uint8_t		r = color >> 11;
+					uint8_t		g = (color >> 5) & 0x3F;
+					uint8_t		b = color & 0x1F;
+					SetPixel(hdc, x, y, RGB(r << 3, g << 2, b << 3));
+				}
+			}
+
+			ReleaseDC(hwnd, hdc);
+			return 0;
+		}
+	}
+
+	return DefWindowProc(hwnd, msg, wparam, lparam);
+}
+
+#else
 
 class CDisplayDriver_ILI9341 : public IDisplayDriver
 {
@@ -308,17 +652,6 @@ public:
 	{
 		drawingActive = false;
 		SPI.end();
-	}
-
-	virtual void
-	DrawText(
-		char const*				inStr,
-		SDisplayPoint const&	inPoint,
-		SFontData*				inFont,
-		SDisplayColor const&	inForeground,
-		SDisplayColor const&	inBackground)
-	{
-		MReturnOnError(!drawingActive);
 	}
 	
 	virtual void
@@ -512,6 +845,7 @@ public:
 	uint16_t		fgColor;
 	uint16_t		bgColor;
 };
+#endif
 
 IDisplayDriver*
 CreateILI9341Driver(
@@ -568,6 +902,512 @@ static uint32_t fetchbits_signed(const uint8_t *p, uint32_t index, uint32_t requ
 	return (int32_t)val;
 }
 
+CDisplayRegion::CDisplayRegion(
+	SPlacement	inPlacement)
+	:
+	parent(NULL),
+	firstChild(NULL),
+	nextChild(NULL),
+	placement(inPlacement),
+	curRect(0, 0, 0, 0),
+	oldRect(0, 0, 0, 0),
+	width(0),
+	height(0),
+	boarderLeft(0),
+	boarderRight(0),
+	boarderTop(0),
+	boarderBottom(0)
+{
+
+}
+	
+CDisplayRegion::CDisplayRegion(
+	SDisplayRect const&	inRect)
+	:
+	parent(NULL),
+	firstChild(NULL),
+	nextChild(NULL),
+	placement(SPlacement::Inside(eInside_Horiz_Left, eInside_Vert_Top)),
+	curRect(inRect),
+	oldRect(inRect),
+	width(0),
+	height(0),
+	boarderLeft(0),
+	boarderRight(0),
+	boarderTop(0),
+	boarderBottom(0)
+{
+
+}
+
+int16_t
+CDisplayRegion::GetWidth(
+	void)
+{
+	return width;
+}
+
+int16_t
+CDisplayRegion::GetHeight(
+	void)
+{
+	return height;
+}
+
+void
+CDisplayRegion::AddToGraph(
+	CDisplayRegion*	inParent)
+{
+	MReturnOnError(parent != NULL);
+	parent = inParent;
+	nextChild = inParent->firstChild;
+	inParent->firstChild = this;
+}
+
+void
+CDisplayRegion::RemoveFromGraph(
+	void)
+{
+	MReturnOnError(parent == NULL);
+
+	CDisplayRegion*	prevRegion = NULL;
+	CDisplayRegion*	curRegion = parent->firstChild;
+
+	while(curRegion != NULL)
+	{
+		if(curRegion == this)
+		{
+			break;
+		}
+
+		prevRegion = curRegion;
+		curRegion = curRegion->nextChild;
+	}
+
+	if(prevRegion == NULL)
+	{
+		parent->firstChild = parent->firstChild->nextChild;
+	}
+	else
+	{
+		prevRegion->nextChild = nextChild;
+	}
+
+	parent = NULL;
+}
+
+void
+CDisplayRegion::SetPlacement(
+	SPlacement	inPlacement)
+{
+	placement = inPlacement;
+}
+
+void
+CDisplayRegion::SetBoarder(
+	int16_t	inLeft,
+	int16_t	inRight,
+	int16_t	inTop,
+	int16_t	inBottom)
+{
+	boarderLeft = inLeft;
+	boarderRight = inRight;
+	boarderTop = inTop;
+	boarderBottom = inBottom;
+}
+
+void
+CDisplayRegion::StartUpdate(
+	void)
+{
+	oldRect = curRect;
+
+	if(parent != NULL)
+	{
+		curRect.Reset();
+	}
+
+	CDisplayRegion*	curRegion = firstChild;
+
+	while(curRegion != NULL)
+	{
+		curRegion->StartUpdate();
+		curRegion = curRegion->nextChild;
+	}
+}
+
+void
+CDisplayRegion::UpdateDimensions(
+	void)
+{
+	if(firstChild != NULL)
+	{
+		CDisplayRegion*	curRegion = firstChild;
+
+		// update all of the children
+		while(curRegion != NULL)
+		{
+			curRegion->UpdateDimensions();
+			curRegion = curRegion->nextChild;
+		}
+
+		// compute the width and height of this region
+		int16_t	maxWidth  = 0;
+		int16_t	maxHeight = 0;
+		int16_t	curWidth;
+		int16_t	curHeight;
+
+		SumRegionList(curWidth, curHeight, SPlacement::Inside(eInside_Horiz_Left, eSecondary_Any), firstChild);
+		if(curHeight > maxHeight)
+		{
+			maxHeight = curHeight;
+		}
+
+		SumRegionList(curWidth, curHeight, SPlacement::Inside(eInside_Horiz_Center, eSecondary_Any), firstChild);
+		if(curHeight > maxHeight)
+		{
+			maxHeight = curHeight;
+		}
+
+		SumRegionList(curWidth, curHeight, SPlacement::Inside(eInside_Horiz_Center, eSecondary_Any), firstChild);
+		if(curHeight > maxHeight)
+		{
+			maxHeight = curHeight;
+		}
+
+		SumRegionList(curWidth, curHeight, SPlacement::Inside(ePrimary_Any, eInside_Vert_Top), firstChild);
+		if(curWidth > maxWidth)
+		{
+			maxWidth = curWidth;
+		}
+
+		SumRegionList(curWidth, curHeight, SPlacement::Inside(ePrimary_Any, eInside_Vert_Center), firstChild);
+		if(curWidth > maxWidth)
+		{
+			maxWidth = curWidth;
+		}
+
+		SumRegionList(curWidth, curHeight, SPlacement::Inside(ePrimary_Any, eInside_Vert_Bottom), firstChild);
+		if(curWidth > maxWidth)
+		{
+			maxWidth = curWidth;
+		}
+
+		width = maxWidth;
+		height = maxHeight;
+	}
+}
+	
+void
+CDisplayRegion::UpdateOrigins(
+	void)
+{
+	if(parent != NULL)
+	{
+		SDisplayRect const&	parentRect = parent->curRect;
+
+		if(placement.GetPlace() == ePlace_Outside)
+		{
+			switch(placement.GetOutsideSide())
+			{
+				case eOutside_SideTop:
+				case eOutside_SideBottom:
+					
+					if(placement.GetOutsideSide() == eOutside_SideTop)
+					{
+						curRect.topLeft.y = parentRect.topLeft.y - height;
+						curRect.bottomRight.y = parentRect.topLeft.y;
+					}
+					else
+					{
+						curRect.topLeft.y = parentRect.bottomRight.y;
+						curRect.bottomRight.y = parentRect.bottomRight.y + height;
+					}
+
+					switch(placement.GetOutsideAlign())
+					{
+						case eOutside_AlignLeft:
+							curRect.topLeft.x = parentRect.topLeft.x;
+							curRect.bottomRight.x = parentRect.topLeft.x + width;
+							break;
+
+						case eOutside_AlignCenter:
+							curRect.topLeft.x = parentRect.topLeft.x + ((parentRect.GetWidth() - width) >> 1);
+							curRect.bottomRight.x = curRect.topLeft.x + width;
+							break;
+
+						case eOutside_AlignRight:
+							curRect.topLeft.x = parentRect.bottomRight.x - width;
+							curRect.bottomRight.x = parentRect.bottomRight.x;
+							break;
+
+					}
+
+					break;
+
+				case eOutside_SideLeft:
+				case eOutside_SideRight:
+					if(placement.GetOutsideSide() == eOutside_SideLeft)
+					{
+						curRect.topLeft.x = parentRect.topLeft.x - width;
+						curRect.bottomRight.x = parentRect.topLeft.x;
+					}
+					else
+					{
+						curRect.topLeft.x = parentRect.topLeft.x;
+						curRect.bottomRight.x = parentRect.topLeft.x + width;
+					}
+
+					switch(placement.GetOutsideAlign())
+					{
+						case eOutside_AlignTop:
+							curRect.topLeft.y = parentRect.topLeft.y;
+							curRect.bottomRight.y = parentRect.topLeft.y + height;
+							break;
+
+						case eOutside_AlignCenter:
+							curRect.topLeft.y = parentRect.topLeft.y + ((parentRect.GetHeight() - height) >> 1);
+							curRect.bottomRight.y = curRect.topLeft.y + height;
+							break;
+
+						case eOutside_AlignBottom:
+							curRect.topLeft.y = parentRect.bottomRight.y - height;
+							curRect.bottomRight.y = parentRect.bottomRight.y;
+							break;
+
+					}
+					break;
+			}
+		}
+		else
+		{
+			switch(placement.GetInsideHoriz())
+			{
+				case eInside_Horiz_Left:
+					curRect.topLeft.x = parentRect.topLeft.x;
+					curRect.bottomRight.x = parentRect.topLeft.x + width;
+					break;
+
+				case eInside_Horiz_Center:
+					curRect.topLeft.x = parentRect.topLeft.x + ((parentRect.GetWidth() - width) >> 1);
+					curRect.bottomRight.x = curRect.topLeft.x + width;
+					break;
+
+				case eInside_Horiz_Right:
+					curRect.topLeft.x = parentRect.bottomRight.x - width;
+					curRect.bottomRight.x = parentRect.bottomRight.x;
+					break;
+
+			}
+
+			switch(placement.GetInsideVert())
+			{
+				case eInside_Vert_Top:
+					curRect.topLeft.y = parentRect.topLeft.y;
+					curRect.bottomRight.y = parentRect.topLeft.y + height;
+					break;
+
+				case eInside_Vert_Center:
+					curRect.topLeft.y = parentRect.topLeft.y + ((parentRect.GetHeight() - height) >> 1);
+					curRect.bottomRight.y = curRect.topLeft.y + height;
+					break;
+
+				case eInside_Vert_Bottom:
+					curRect.topLeft.y = parentRect.bottomRight.y - height;
+					curRect.bottomRight.y = parentRect.bottomRight.y;
+					break;
+
+			}
+		}
+	}
+	CDisplayRegion*	curRegion = firstChild;
+
+	while(curRegion != NULL)
+	{
+		curRegion->UpdateOrigins();
+		curRegion = curRegion->nextChild;
+	}
+}
+
+void
+CDisplayRegion::EraseOldRegions(
+	void)
+{
+	if(firstChild == NULL)
+	{
+		if(curRect != oldRect)
+		{
+			if(curRect && oldRect)
+			{
+				if(curRect.topLeft.x > oldRect.topLeft.x)
+				{
+					// the left side of the new rect has moved to the right from the left side of the previous rect
+					gDisplayModule->GetDisplayDriver()->FillRect(SDisplayRect(oldRect.topLeft, SDisplayPoint(curRect.topLeft.x, oldRect.bottomRight.y)), SDisplayColor(0, 0, 0));
+				}
+				if(curRect.bottomRight.x < oldRect.bottomRight.x)
+				{
+					// the right side of the new rect has moved to the left from the right side of the previous rect
+					gDisplayModule->GetDisplayDriver()->FillRect(SDisplayRect(SDisplayPoint(curRect.bottomRight.x, oldRect.topLeft.y), oldRect.bottomRight), SDisplayColor(0, 0, 0));
+				}
+				if(curRect.topLeft.y > oldRect.topLeft.y)
+				{
+					// the top side of the new rect has moved below the top side of the old rect
+					gDisplayModule->GetDisplayDriver()->FillRect(SDisplayRect(oldRect.topLeft, SDisplayPoint(oldRect.bottomRight.x, curRect.bottomRight.y)), SDisplayColor(0, 0, 0));
+				}
+				if(curRect.bottomRight.y < oldRect.bottomRight.y)
+				{
+					// the bottom side of the new rect has moved above the top side of the previous rect
+					gDisplayModule->GetDisplayDriver()->FillRect(SDisplayRect(SDisplayPoint(oldRect.topLeft.x, curRect.bottomRight.y), oldRect.bottomRight), SDisplayColor(0, 0, 0));
+				}
+			}
+			else
+			{
+				// erase the whole rect
+				gDisplayModule->GetDisplayDriver()->FillRect(oldRect, SDisplayColor(0, 0, 0));
+			}
+		}
+	}
+	else
+	{
+		CDisplayRegion*	curRegion = firstChild;
+
+		while(curRegion != NULL)
+		{
+			curRegion->EraseOldRegions();
+			curRegion = curRegion->nextChild;
+		}
+	}
+}
+
+void
+CDisplayRegion::Draw(
+	void)
+{
+	CDisplayRegion*	curRegion = firstChild;
+
+	// update all of the children
+	while(curRegion != NULL)
+	{
+		curRegion->Draw();
+		curRegion = curRegion->nextChild;
+	}
+}
+
+void
+CDisplayRegion::SumRegionList(
+	int16_t&		outWidth,
+	int16_t&		outHeight,
+	SPlacement		inPlacement,
+	CDisplayRegion*	inList)
+{
+	outWidth = 0;
+	outHeight = 0;
+
+	CDisplayRegion*	curRegion = firstChild;
+
+	while(curRegion != NULL)
+	{
+		if(curRegion->placement.Match(inPlacement))
+		{
+			outWidth += curRegion->width;
+			outHeight += curRegion->height;
+		}
+
+		curRegion = curRegion->nextChild;
+	}
+}
+
+CDisplayRegion_Text::CDisplayRegion_Text(
+	SPlacement	inPlacement)
+	:
+	CDisplayRegion(inPlacement),
+	text(NULL),
+	dirty(false),
+	font(NULL)
+{
+
+}
+	
+CDisplayRegion_Text::~CDisplayRegion_Text(
+	)
+{
+	if(text != NULL)
+	{
+		gDisplayModule->FreeString(text);
+	}
+}
+
+void
+CDisplayRegion_Text::printf(
+	char const*	inFormat,
+	...)
+{
+	char buffer[256];
+
+	va_list	varArgs;
+	va_start(varArgs, inFormat);
+	vsnprintf(buffer, sizeof(buffer) - 1, inFormat, varArgs);
+	buffer[sizeof(buffer) - 1] = 0;	// Ensure valid string
+	va_end(varArgs);
+
+	int	newStrLen = strlen(buffer);
+	text = gDisplayModule->ReallocString(text, newStrLen + 1);
+
+	MReturnOnError(text == NULL);
+
+	strcpy(text, buffer);
+
+	dirty = true;
+	if(font != NULL)
+	{
+		width = gDisplayModule->GetTextWidth(text, font);
+		height = gDisplayModule->GetTextHeight(text, font);
+	}
+}
+	
+void
+CDisplayRegion_Text::SetTextAlignment(
+	uint16_t	inAlignmentFlags)
+{
+
+}
+
+void
+CDisplayRegion_Text::SetTextFont(
+	SFontData const&	inFont)
+{
+	font = &inFont;
+
+	dirty = true;
+	if(text != NULL)
+	{
+		width = gDisplayModule->GetTextWidth(text, font);
+		height = gDisplayModule->GetTextHeight(text, font);
+	}
+}
+
+void
+CDisplayRegion_Text::SetTextColor(
+	SDisplayColor const&	inFGColor,
+	SDisplayColor const&	inBGColor)
+{
+	dirty = true;
+	fgColor = inFGColor;
+	bgColor = inBGColor;
+}
+
+void
+CDisplayRegion_Text::Draw(
+	void)
+{
+	gDisplayModule->DrawText(text, curRect.topLeft, font, fgColor, bgColor);
+	dirty = false;
+
+	CDisplayRegion*	curRegion = firstChild;
+
+	CDisplayRegion::Draw();
+}
+
 CModule_Display::CModule_Display(
 	)
 	:
@@ -575,6 +1415,7 @@ CModule_Display::CModule_Display(
 {
 	displayDriver = NULL;
 	gDisplayModule = this;
+	memset(stringTable, 0xFF, sizeof(stringTable));
 }
 
 void
@@ -582,19 +1423,28 @@ CModule_Display::SetDisplayDriver(
 	IDisplayDriver*	inDisplayDriver)
 {
 	displayDriver = inDisplayDriver;
+	topRegion = new CDisplayRegion(SDisplayRect(0, 0, displayDriver->GetWidth(), displayDriver->GetHeight()));
+}
+
+IDisplayDriver*
+CModule_Display::GetDisplayDriver(
+	void)
+{
+	return displayDriver;
 }
 
 CDisplayRegion*
 CModule_Display::GetTopDisplayRegion(
 	void)
 {
-	return NULL;
+	MReturnOnError(topRegion == NULL, NULL);
+	return topRegion;
 }
 
 uint16_t
 CModule_Display::GetTextWidth(
-	char const*	inStr,
-	SFontData*	inFont)
+	char const*			inStr,
+	SFontData const*	inFont)
 {
 	uint16_t		result = 0;
 	uint32_t		bitoffset;
@@ -603,6 +1453,11 @@ CModule_Display::GetTextWidth(
 	for(;;)
 	{
 		unsigned char c = *inStr++;
+
+		if(c == 0)
+		{
+			break;
+		}
 
 		if (c >= inFont->index1_first && c <= inFont->index1_last) 
 		{
@@ -636,7 +1491,7 @@ CModule_Display::GetTextWidth(
 
 		uint32_t delta = fetchbits_unsigned(data, bitoffset, inFont->bits_delta);
 
-		result += delta;
+		result += (uint16_t)delta;
 	}
 
 	return result;
@@ -644,8 +1499,8 @@ CModule_Display::GetTextWidth(
 
 uint16_t
 CModule_Display::GetTextHeight(
-	char const*	inStr,
-	SFontData*	inFont)
+	char const*			inStr,
+	SFontData const*	inFont)
 {
 	return inFont->line_space;
 }
@@ -654,7 +1509,7 @@ int16_t
 CModule_Display::DrawChar(
 	char					inChar,
 	SDisplayPoint const&	inPoint,
-	SFontData*				inFont,
+	SFontData const*		inFont,
 	SDisplayColor const&	inForeground,
 	SDisplayColor const&	inBackground)
 {
@@ -689,29 +1544,29 @@ CModule_Display::DrawChar(
 		return 0;
 	}
 
-	uint32_t width = fetchbits_unsigned(data, 3, inFont->bits_width);
+	int16_t width = (int16_t)fetchbits_unsigned(data, 3, inFont->bits_width);
 	bitoffset = inFont->bits_width + 3;
 
-	uint32_t height = fetchbits_unsigned(data, bitoffset, inFont->bits_height);
+	int16_t height = (int16_t)fetchbits_unsigned(data, bitoffset, inFont->bits_height);
 	bitoffset += inFont->bits_height;
 
-	int32_t xoffset = fetchbits_signed(data, bitoffset, inFont->bits_xoffset);
+	int16_t xoffset = (int16_t)fetchbits_signed(data, bitoffset, inFont->bits_xoffset);
 	bitoffset += inFont->bits_xoffset;
 
-	int32_t yoffset = fetchbits_signed(data, bitoffset, inFont->bits_yoffset);
+	int16_t yoffset = (int16_t)fetchbits_signed(data, bitoffset, inFont->bits_yoffset);
 	bitoffset += inFont->bits_yoffset;
 
-	uint32_t delta = fetchbits_unsigned(data, bitoffset, inFont->bits_delta);
+	int16_t delta = (int16_t)fetchbits_unsigned(data, bitoffset, inFont->bits_delta);
 	bitoffset += inFont->bits_delta;
 
-	displayDriver->DrawContinuousStart(SDisplayRect(inPoint.x, inPoint.y, delta, inFont->line_space), inForeground, inBackground);
+	displayDriver->DrawContinuousStart(SDisplayRect(inPoint.x, inPoint.y, MMax(delta, width + abs(xoffset)), inFont->line_space), inForeground, inBackground);
 
-	uint32_t	topLines = inFont->cap_height - height - yoffset;
-	uint32_t	bottomLines = inFont->line_space - topLines - height;
+	int16_t	topLines = (int16_t)inFont->cap_height - height - yoffset;
+	int16_t	bottomLines = (int16_t)inFont->line_space - topLines - height;
 
-	SystemMsg("width=%d height=%d xoff=%d yoff=%d delta=%d line_space=%d cap_height=%d topLines=%d bottomLines=%d", width, height, xoffset, yoffset, delta, inFont->line_space, inFont->cap_height, topLines, bottomLines);
+	//SystemMsg("width=%d height=%d xoff=%d yoff=%d delta=%d line_space=%d cap_height=%d topLines=%d bottomLines=%d", width, height, xoffset, yoffset, delta, inFont->line_space, inFont->cap_height, topLines, bottomLines);
 
-	for(uint32_t i = 0; i < topLines; ++i)
+	for(int16_t i = 0; i < topLines; ++i)
 	{
 		displayDriver->DrawContinuousSolid(delta, false);
 	}
@@ -740,11 +1595,10 @@ CModule_Display::DrawChar(
 		} 
 		else 
 		{
-			uint32_t n = fetchbits_unsigned(data, bitoffset, 3) + 2;
+			uint16_t n = (uint16_t)fetchbits_unsigned(data, bitoffset, 3) + 2;
 			bitoffset += 3;
-			y += n;
 
-			while(n-- > 0)
+			for(uint16_t i = 0; i < n; ++i)
 			{
 				if(xoffset > 0)
 				{
@@ -756,10 +1610,11 @@ CModule_Display::DrawChar(
 					displayDriver->DrawContinuousSolid(trailingX, false);
 				}
 			}
+			y += n;
 			bitoffset += width;
 		}
 	}
-	for(uint32_t i = 0; i < bottomLines; ++i)
+	for(int16_t i = 0; i < bottomLines; ++i)
 	{
 		displayDriver->DrawContinuousSolid(delta, false);
 	}
@@ -773,7 +1628,7 @@ void
 CModule_Display::DrawText(
 	char const*				inStr,
 	SDisplayPoint const&	inPoint,
-	SFontData*				inFont,
+	SFontData const*		inFont,
 	SDisplayColor const&	inForeground,
 	SDisplayColor const&	inBackground)
 {
@@ -792,3 +1647,170 @@ CModule_Display::DrawText(
 		curPoint.x += charWidth;
 	}
 }
+
+void
+CModule_Display::UpdateDisplay(
+	void)
+{
+	topRegion->StartUpdate();
+	topRegion->UpdateDimensions();
+	topRegion->UpdateOrigins();
+	displayDriver->BeginDrawing();
+	topRegion->EraseOldRegions();
+	topRegion->Draw();
+	displayDriver->EndDrawing();
+}
+
+char*
+CModule_Display::ReallocString(
+	char*	inStr,
+	int		inNewSize)
+{
+	int	strLen;
+	
+	if(inStr != NULL)
+	{
+		strLen = strlen(inStr) + 1;
+	}
+	else
+	{
+		strLen = 0;
+		inStr = (char*)gDisplayModule->stringTable;
+	}
+
+	if(inNewSize <= strLen)
+	{
+		uint8_t*	cp = (uint8_t*)inStr + inNewSize;
+
+		for(int i = 0; i < strLen - inNewSize; ++i)
+		{
+			*cp++ = 0xFF;
+		}
+
+		return inStr;
+	}
+
+	// See if there is room after the current string
+	int	delta = inNewSize - strLen;
+	uint8_t*	cp = (uint8_t*)inStr + strLen;
+	uint8_t*	ep = gDisplayModule->stringTable + sizeof(gDisplayModule->stringTable);
+
+	while(delta > 0 && cp < ep)
+	{
+		uint8_t c = *cp++;
+		if(c != 0xFF)
+		{
+			break;
+		}
+
+		--delta;
+	}
+
+	if(delta == 0)
+	{
+		// there is room after the current string
+		return inStr;
+	}
+
+	cp = gDisplayModule->stringTable;
+
+	// Now we need to find storage
+	while(cp < ep)
+	{
+		uint8_t c = *cp++;
+
+		if(c != 0xFF)
+		{
+			continue;
+		}
+
+		uint8_t*	sp = cp - 1;
+		int			count = inNewSize;
+
+		while(count > 0 && cp < ep)
+		{
+			uint8_t c = *cp++;
+			if(c != 0xFF)
+			{
+				break;
+			}
+
+			--count;
+		}
+
+		if(count == 0)
+		{
+			// We have found room
+			return (char*)sp;
+		}
+	}
+
+	// Eventually compact memory here and then see if there is room
+	#if 0
+	cp = gDisplayModule->stringTable;
+
+	char*	fp = cp;
+
+	for(;;)
+	{
+		int	strLen = str(cp) + 1;
+
+		cp += strLen;
+
+		if(cp >= ep)
+		{
+			break;
+		}
+
+		if(*cp != 0xFF)
+		{
+			continue;
+		}
+
+		char*	sp = cp;
+
+		while(sp < ep && *cp == 0xFF)
+		{
+			++cp;
+		}
+
+		if(sp >= ep)
+		{
+			cp = sp;
+			break;
+		}
+
+		CDisplayRegion_Text*	curRegion = FindRegion(cp);
+
+		if(curRegion == NULL)
+		{
+			return NULL;
+		}
+
+		memmove(sp, cp, strlen(cp) + 1);
+
+	}
+	#endif
+
+	return NULL;
+}
+
+void
+CModule_Display::FreeString(
+	char*	inStr)
+{
+	unsigned char*	cp = (unsigned char*)inStr;
+		
+	for(;;)
+	{
+		unsigned char c = *cp;
+
+		*cp++ = 0xFF;
+
+		if(c == 0)
+		{
+			break;
+		}
+	}
+}
+

@@ -54,14 +54,37 @@
 
 #define MMakeColor(r, g, b) ((((r) & 0x1f) << 11) | (((g) & 0x3f) << 5) | ((b) & 0x1F))
 
+class CModule_Display;
+
 enum
 {
-	eHoriz_Left		= 1 << 0,
-	eHoriz_Center	= 1 << 1,
-	eHoriz_Right	= 1 << 2,
-	eVert_Top		= 1 << 3,
-	eVert_Center	= 1 << 4,
-	eVert_Bottom	= 1 << 5,
+	ePlace_Inside	= 0,
+	ePlace_Outside	= 1,
+
+	eInside_Horiz_Left		= 0,
+	eInside_Horiz_Center	= 1,
+	eInside_Horiz_Right		= 2,
+
+	eInside_Vert_Top		= 0,
+	eInside_Vert_Center		= 1,
+	eInside_Vert_Bottom		= 2,
+
+	eOutside_SideTop			= 0,
+	eOutside_SideBottom			= 1,
+	eOutside_SideLeft			= 2,
+	eOutside_SideRight			= 3,
+
+	eOutside_AlignLeft			= 0,
+	eOutside_AlignCenter		= 1,
+	eOutside_AlignRight			= 2,
+	eOutside_AlignTop			= 0,
+	eOutside_AlignBottom		= 2,
+	
+	ePrimary_Any = 4,
+	eSecondary_Any = 3,
+
+
+	eStringTableSize = 1024,
 };
 
 enum EDisplayOrientation
@@ -93,6 +116,94 @@ struct SFontData
 	unsigned char cap_height;
 };
 
+struct SPlacement
+{
+	
+	inline bool
+	GetPlace(
+		void)
+	{
+		return place;
+	}
+
+	inline uint8_t
+	GetInsideHoriz(
+		void)
+	{
+		return primary;
+	}
+
+	inline uint8_t
+	GetInsideVert(
+		void)
+	{
+		return secondary;
+	}
+
+	inline uint8_t
+	GetOutsideSide(
+		void)
+	{
+		return primary;
+	}
+
+	inline uint8_t
+	GetOutsideAlign(
+		void)
+	{
+		return secondary;
+	}
+
+	inline bool
+	Match(
+		SPlacement	inPlacement)
+	{
+		if(place != inPlacement.place)
+		{
+			return false;
+		}
+
+		if(inPlacement.primary != ePrimary_Any && primary != inPlacement.primary)
+		{
+			return false;
+		}
+
+		if(inPlacement.secondary != eSecondary_Any && secondary != inPlacement.secondary)
+		{
+			return false;
+		}
+
+		return true;
+	}
+
+	static SPlacement
+	Outisde(
+		uint8_t	inSide,
+		uint8_t	inAlignment);
+
+	static SPlacement
+	Inside(
+		uint8_t	inHoriz,
+		uint8_t	inVert);
+
+private:
+	
+	SPlacement(
+		uint8_t	inPlace,
+		uint8_t	inPrimary,
+		uint8_t	inSecondary)
+		:
+		place(inPlace),
+		primary(inPrimary),
+		secondary(inSecondary)
+	{
+	}
+
+	uint8_t		place : 1,
+				primary : 3,
+				secondary : 2;
+};
+
 struct SDisplayPoint
 {
 	SDisplayPoint(){}
@@ -112,11 +223,32 @@ struct SDisplayPoint
 	{
 	}
 
-	void
+	inline void
 	Dump(
 		char const* inMsg) const
 	{
 		SystemMsg("%s=(%d,%d)", inMsg, x, y);
+	}
+
+	inline void
+	Reset(
+		void)
+	{
+		x = y = 0;
+	}
+
+	inline bool
+	operator ==(
+		SDisplayPoint const&	inRHS) const
+	{
+		return x == inRHS.x && y == inRHS.y;
+	}
+
+	inline bool
+	operator !=(
+		SDisplayPoint const&	inRHS) const
+	{
+		return x != inRHS.x || y != inRHS.y;
 	}
 
 	int16_t	x, y;
@@ -148,7 +280,7 @@ struct SDisplayRect
 
 	}
 
-	void
+	inline void
 	Dump(
 		char const*	inMsg) const
 	{
@@ -157,7 +289,7 @@ struct SDisplayRect
 		bottomRight.Dump("  bottomRight");
 	}
 
-	void
+	inline void
 	Intersect(
 		SDisplayRect const&	inRectA,
 		SDisplayRect const&	inRectB)
@@ -168,19 +300,86 @@ struct SDisplayRect
 		bottomRight.y = MPin(inRectA.topLeft.y, inRectB.bottomRight.y, inRectA.bottomRight.y);
 	}
 
-	bool
+	inline bool
 	IsEmpty(
 		void) const
 	{
 		return topLeft.x >= bottomRight.x || topLeft.y >= bottomRight.y;
 	}
 
-	SDisplayPoint
+	inline SDisplayPoint
 	GetDimensions(
 		void) const
 	{
 		return SDisplayPoint(bottomRight.x - topLeft.x, bottomRight.y - topLeft.y);
 	}
+
+	inline int16_t
+	GetWidth(
+		void) const
+	{
+		return bottomRight.x - topLeft.x;
+	}
+
+	inline int16_t
+	GetHeight(
+		void) const
+	{
+		return bottomRight.y - topLeft.y;
+	}
+
+	inline void
+	Reset(
+		void)
+	{
+		topLeft.Reset();
+		bottomRight.Reset();
+	}
+
+	inline void
+	SetWidth(
+		int16_t	inWidth)
+	{
+		bottomRight.x = topLeft.x + inWidth;
+	}
+
+	inline void
+	SetHeight(
+		int16_t	inHeight)
+	{
+		bottomRight.y = topLeft.y + inHeight;
+	}
+
+	inline void
+	SetWidthHeight(
+		int16_t	inWidth,
+		int16_t	inHeight)
+	{
+		bottomRight.x = topLeft.x + inWidth;
+		bottomRight.y = topLeft.y + inHeight;
+	}
+
+	inline bool
+	operator ==(
+		SDisplayRect const&	inRHS) const
+	{
+		return topLeft == inRHS.topLeft && bottomRight == inRHS.bottomRight;
+	}
+
+	inline bool
+	operator !=(
+		SDisplayRect const&	inRHS) const
+	{
+		return topLeft != inRHS.topLeft || bottomRight != inRHS.bottomRight;
+	}
+
+	inline bool
+	operator &&(
+		SDisplayRect const&	inRHS) const
+	{
+		return !(bottomRight.x < inRHS.topLeft.x || bottomRight.y < inRHS.topLeft.y || topLeft.x >= inRHS.bottomRight.x || topLeft.y >= inRHS.bottomRight.y);
+	}
+
 
 	SDisplayPoint	topLeft;
 	SDisplayPoint	bottomRight;
@@ -188,6 +387,11 @@ struct SDisplayRect
 
 struct SDisplayColor
 {
+	SDisplayColor(
+		)
+	{
+	}
+
 	SDisplayColor(
 		uint8_t	inR,
 		uint8_t	inG,
@@ -269,19 +473,18 @@ class CDisplayRegion
 public:
 	
 	CDisplayRegion(
-		uint16_t	inFlags);
+		SPlacement	inPlacement);
+	
+	CDisplayRegion(
+		SDisplayRect const&	inRect);
 
 	virtual int16_t
 	GetWidth(
-		void) = 0;
+		void);
 
 	virtual int16_t
 	GetHeight(
-		void) = 0;
-
-	virtual void
-	Draw(
-		void) = 0;
+		void);
 
 	void
 	AddToGraph(
@@ -292,65 +495,100 @@ public:
 		void);
 
 	void
-	SetFlags(
-		uint16_t	inFlags);
-
-private:
+	SetPlacement(
+		SPlacement	inPlacement);
 
 	void
-	UpdatePlacement(
+	SetBoarder(
+		int16_t	inLeft,
+		int16_t	inRight,
+		int16_t	inTop,
+		int16_t	inBottom);
+
+protected:
+
+	void
+	StartUpdate(
 		void);
 
-	CDisplayRegion*	parent;
-	CDisplayRegion*	firstChild;
-	CDisplayRegion*	nextChild;
-	uint16_t		flags;
-	int16_t			width;
-	int16_t			height;
-	int16_t			x;
-	int16_t			y;
-};
-
-class CDisplayRegion_Text : public CDisplayRegion
-{
-public:
+	void
+	UpdateDimensions(
+		void);
 	
 	void
-	printf(
-		char const&	inFormat,
-		...);
-	
-	void
-	SetAlignment(
-		uint16_t	inAlignmentFlags);
-
-	void
-	SetFont(
-		SFontData*	inFont);
-
-	void
-	SetForegroundColor(
+	UpdateOrigins(
 		void);
 
 	void
-	SetBackgroundColor(
-		void);
-
-private:
-
-	virtual int16_t
-	GetWidth(
-		void);
-
-	virtual int16_t
-	GetHeight(
+	EraseOldRegions(
 		void);
 
 	virtual void
 	Draw(
 		void);
 
-	char const*	text;
+	void
+	SumRegionList(
+		int16_t&		outWidth,
+		int16_t&		outHeight,
+		SPlacement		inPlacement,
+		CDisplayRegion*	inList);
+
+	CDisplayRegion*	parent;
+	CDisplayRegion*	firstChild;
+	CDisplayRegion*	nextChild;
+	SPlacement		placement;
+	SDisplayRect	curRect;
+	SDisplayRect	oldRect;
+	int16_t			width;
+	int16_t			height;
+	int16_t			boarderLeft;
+	int16_t			boarderRight;
+	int16_t			boarderTop;
+	int16_t			boarderBottom;
+
+	friend CModule_Display;
+};
+
+class CDisplayRegion_Text : public CDisplayRegion
+{
+public:
+	
+	CDisplayRegion_Text(
+		SPlacement	inPlacement);
+	
+	~CDisplayRegion_Text(
+		);
+
+	void
+	printf(
+		char const*	inFormat,
+		...);
+	
+	void
+	SetTextAlignment(
+		uint16_t	inAlignmentFlags);
+
+	void
+	SetTextFont(
+		SFontData const&	inFont);
+
+	void
+	SetTextColor(
+		SDisplayColor const&	inFGColor,
+		SDisplayColor const&	inBGColor);
+
+private:
+
+	virtual void
+	Draw(
+		void);
+
+	char*				text;
+	SDisplayColor		fgColor;
+	SDisplayColor		bgColor;
+	SFontData const*	font;
+	bool				dirty;
 };
 
 class CModule_Display : public CModule
@@ -364,25 +602,29 @@ public:
 	SetDisplayDriver(
 		IDisplayDriver*	inDisplayDriver);
 
+	IDisplayDriver*
+	GetDisplayDriver(
+		void);
+
 	CDisplayRegion*
 	GetTopDisplayRegion(
 		void);
 
 	uint16_t
 	GetTextWidth(
-		char const*	inStr,
-		SFontData*	inFont);
+		char const*			inStr,
+		SFontData const*	inFont);
 
 	uint16_t
 	GetTextHeight(
-		char const*	inStr,
-		SFontData*	inFont);
+		char const*			inStr,
+		SFontData const*	inFont);
 
 	int16_t		// returns the width of the char
 	DrawChar(
 		char					inChar,
 		SDisplayPoint const&	inPoint,
-		SFontData*				inFont,
+		SFontData const*		inFont,
 		SDisplayColor const&	inForeground,
 		SDisplayColor const&	inBackground);
 
@@ -390,13 +632,30 @@ public:
 	DrawText(
 		char const*				inStr,
 		SDisplayPoint const&	inPoint,
-		SFontData*				inFont,
+		SFontData const*		inFont,
 		SDisplayColor const&	inForeground,
 		SDisplayColor const&	inBackground);
 
+	void
+	UpdateDisplay(
+		void);
+
 private:
 
+	char*
+	ReallocString(
+		char*	inStr,
+		int		inNewSize);
+
+	void
+	FreeString(
+		char*	inStr);
+
+	friend CDisplayRegion_Text;
+
 	IDisplayDriver*	displayDriver;
+	CDisplayRegion*	topRegion;
+	uint8_t			stringTable[eStringTableSize];
 };
 
 IDisplayDriver*
