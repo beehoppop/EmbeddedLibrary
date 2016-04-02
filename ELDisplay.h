@@ -58,31 +58,30 @@ class CModule_Display;
 
 enum
 {
-	ePlace_Inside	= 0,
-	ePlace_Outside	= 1,
+	ePlace_Inside	= 0,				// Place the child box inside of the parent box
+	ePlace_Outside	= 1,				// Place the child box outside of the parent box
 
-	eInside_Horiz_Left		= 0,
-	eInside_Horiz_Center	= 1,
-	eInside_Horiz_Right		= 2,
+	eInside_Horiz_Left		= 0,		// Place the child box inside in the left side of the parent box
+	eInside_Horiz_Center	= 1,		// Place the child box inside in the horiz center of the parent box
+	eInside_Horiz_Right		= 2,		// Place the child box inside in the right side of the parent box
 
-	eInside_Vert_Top		= 0,
-	eInside_Vert_Center		= 1,
-	eInside_Vert_Bottom		= 2,
+	eInside_Vert_Top		= 0,		// Place the child box inside in the top of the parent box
+	eInside_Vert_Center		= 1,		// PLace the child box inside in the vertical center of the parent box
+	eInside_Vert_Bottom		= 2,		// Place the child box inside in the bottom of the parent box
 
-	eOutside_SideTop			= 0,
-	eOutside_SideBottom			= 1,
-	eOutside_SideLeft			= 2,
-	eOutside_SideRight			= 3,
+	eOutside_SideTop			= 0,	// Place the child box outside on top of the parent box
+	eOutside_SideBottom			= 1,	// Place the child box outside on the bottom of the parent box
+	eOutside_SideLeft			= 2,	// Place the child box outside on the left of the parent box
+	eOutside_SideRight			= 3,	// Place the child box outside on the right of the parent box
 
-	eOutside_AlignLeft			= 0,
-	eOutside_AlignCenter		= 1,
-	eOutside_AlignRight			= 2,
-	eOutside_AlignTop			= 0,
-	eOutside_AlignBottom		= 2,
+	eOutside_AlignLeft			= 0,	// Place the child box outside on the left top or bottom side of the parent box
+	eOutside_AlignCenter		= 1,	// Place the child box outside in the center top, bottom, left, or side side of the parent box
+	eOutside_AlignRight			= 2,	// Place the child box outside on the right top or bottom side of the parent box
+	eOutside_AlignTop			= 0,	// Place the child box outside on the top left or right side of the parent box
+	eOutside_AlignBottom		= 2,	// Place the child box outside on the bottom left or right side of the parent box
 	
 	ePrimary_Any = 4,
 	eSecondary_Any = 3,
-
 
 	eStringTableSize = 1024,
 };
@@ -116,8 +115,18 @@ struct SFontData
 	unsigned char cap_height;
 };
 
-struct SPlacement
+struct SPlacement	// This is used to organize the placement data of how to position a box relative to its parent
 {
+
+	static SPlacement
+	Inside(
+		uint8_t	inHoriz,
+		uint8_t	inVert);
+
+	static SPlacement
+	Outside(
+		uint8_t	inSide,
+		uint8_t	inAlignment);
 	
 	inline bool
 	GetPlace(
@@ -176,16 +185,6 @@ struct SPlacement
 		return true;
 	}
 
-	static SPlacement
-	Outisde(
-		uint8_t	inSide,
-		uint8_t	inAlignment);
-
-	static SPlacement
-	Inside(
-		uint8_t	inHoriz,
-		uint8_t	inVert);
-
 private:
 	
 	SPlacement(
@@ -224,13 +223,6 @@ struct SDisplayPoint
 	}
 
 	inline void
-	Dump(
-		char const* inMsg) const
-	{
-		SystemMsg("%s=(%d,%d)", inMsg, x, y);
-	}
-
-	inline void
 	Reset(
 		void)
 	{
@@ -251,8 +243,23 @@ struct SDisplayPoint
 		return x != inRHS.x || y != inRHS.y;
 	}
 
+	inline void
+	Dump(
+		char const* inMsg) const
+	{
+		SystemMsg("%s=(%d,%d)", inMsg, x, y);
+	}
+
 	int16_t	x, y;
 };
+
+inline SDisplayPoint
+operator +(
+	SDisplayPoint const& inLHS,
+	SDisplayPoint const& inRHS)
+{
+	return SDisplayPoint(inLHS.x + inRHS.x, inLHS.y + inRHS.y);
+}
 
 struct SDisplayRect
 {
@@ -265,7 +272,6 @@ struct SDisplayRect
 		topLeft(inTopLeft),
 		bottomRight(inBottomRight)
 	{
-
 	}
 
 	SDisplayRect(
@@ -277,7 +283,6 @@ struct SDisplayRect
 		topLeft(inLeft, inTop),
 		bottomRight(inLeft + inWidth, inTop + inHeight)
 	{
-
 	}
 
 	inline void
@@ -473,10 +478,12 @@ class CDisplayRegion
 public:
 	
 	CDisplayRegion(
-		SPlacement	inPlacement);
+		SPlacement		inPlacement,
+		CDisplayRegion*	inParent);
 	
 	CDisplayRegion(
-		SDisplayRect const&	inRect);
+		SDisplayRect const&	inRect,
+		CDisplayRegion*		inParent);
 
 	virtual int16_t
 	GetWidth(
@@ -499,7 +506,7 @@ public:
 		SPlacement	inPlacement);
 
 	void
-	SetBoarder(
+	SetBorder(
 		int16_t	inLeft,
 		int16_t	inRight,
 		int16_t	inTop,
@@ -511,7 +518,7 @@ protected:
 	StartUpdate(
 		void);
 
-	void
+	virtual void
 	UpdateDimensions(
 		void);
 	
@@ -542,10 +549,10 @@ protected:
 	SDisplayRect	oldRect;
 	int16_t			width;
 	int16_t			height;
-	int16_t			boarderLeft;
-	int16_t			boarderRight;
-	int16_t			boarderTop;
-	int16_t			boarderBottom;
+	int16_t			borderLeft;
+	int16_t			borderRight;
+	int16_t			borderTop;
+	int16_t			borderBottom;
 
 	friend CModule_Display;
 };
@@ -555,7 +562,13 @@ class CDisplayRegion_Text : public CDisplayRegion
 public:
 	
 	CDisplayRegion_Text(
-		SPlacement	inPlacement);
+		SPlacement			inPlacement,
+		CDisplayRegion*		inParent,
+		SDisplayColor		inFGColor,
+		SDisplayColor		inBGColor,
+		SFontData const&	inFont,
+		char const*			inFormat,
+		...);
 	
 	~CDisplayRegion_Text(
 		);
@@ -582,6 +595,10 @@ private:
 
 	virtual void
 	Draw(
+		void);
+
+	virtual void
+	UpdateDimensions(
 		void);
 
 	char*				text;

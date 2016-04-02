@@ -133,11 +133,11 @@ static const uint8_t init_commands[] =
 CModule_Display*	gDisplayModule;
 
 SPlacement
-SPlacement::Outisde(
+SPlacement::Outside(
 	uint8_t	inSide,
 	uint8_t	inAlignment)
 {
-	return SPlacement(ePlace_Inside, inSide, inAlignment);
+	return SPlacement(ePlace_Outside, inSide, inAlignment);
 }
 
 SPlacement
@@ -903,9 +903,10 @@ static uint32_t fetchbits_signed(const uint8_t *p, uint32_t index, uint32_t requ
 }
 
 CDisplayRegion::CDisplayRegion(
-	SPlacement	inPlacement)
+	SPlacement		inPlacement,
+	CDisplayRegion*	inParent)
 	:
-	parent(NULL),
+	parent(inParent),
 	firstChild(NULL),
 	nextChild(NULL),
 	placement(inPlacement),
@@ -913,18 +914,23 @@ CDisplayRegion::CDisplayRegion(
 	oldRect(0, 0, 0, 0),
 	width(0),
 	height(0),
-	boarderLeft(0),
-	boarderRight(0),
-	boarderTop(0),
-	boarderBottom(0)
+	borderLeft(0),
+	borderRight(0),
+	borderTop(0),
+	borderBottom(0)
 {
-
+	if(parent != NULL)
+	{
+		nextChild = inParent->firstChild;
+		inParent->firstChild = this;
+	}
 }
 	
 CDisplayRegion::CDisplayRegion(
-	SDisplayRect const&	inRect)
+	SDisplayRect const&	inRect,
+	CDisplayRegion*		inParent)
 	:
-	parent(NULL),
+	parent(inParent),
 	firstChild(NULL),
 	nextChild(NULL),
 	placement(SPlacement::Inside(eInside_Horiz_Left, eInside_Vert_Top)),
@@ -932,12 +938,16 @@ CDisplayRegion::CDisplayRegion(
 	oldRect(inRect),
 	width(0),
 	height(0),
-	boarderLeft(0),
-	boarderRight(0),
-	boarderTop(0),
-	boarderBottom(0)
+	borderLeft(0),
+	borderRight(0),
+	borderTop(0),
+	borderBottom(0)
 {
-
+	if(parent != NULL)
+	{
+		nextChild = inParent->firstChild;
+		inParent->firstChild = this;
+	}
 }
 
 int16_t
@@ -1004,16 +1014,16 @@ CDisplayRegion::SetPlacement(
 }
 
 void
-CDisplayRegion::SetBoarder(
+CDisplayRegion::SetBorder(
 	int16_t	inLeft,
 	int16_t	inRight,
 	int16_t	inTop,
 	int16_t	inBottom)
 {
-	boarderLeft = inLeft;
-	boarderRight = inRight;
-	boarderTop = inTop;
-	boarderBottom = inBottom;
+	borderLeft = inLeft;
+	borderRight = inRight;
+	borderTop = inTop;
+	borderBottom = inBottom;
 }
 
 void
@@ -1154,8 +1164,8 @@ CDisplayRegion::UpdateOrigins(
 					}
 					else
 					{
-						curRect.topLeft.x = parentRect.topLeft.x;
-						curRect.bottomRight.x = parentRect.topLeft.x + width;
+						curRect.topLeft.x = parentRect.bottomRight.x;
+						curRect.bottomRight.x = parentRect.bottomRight.x + width;
 					}
 
 					switch(placement.GetOutsideAlign())
@@ -1318,14 +1328,35 @@ CDisplayRegion::SumRegionList(
 }
 
 CDisplayRegion_Text::CDisplayRegion_Text(
-	SPlacement	inPlacement)
+	SPlacement			inPlacement,
+	CDisplayRegion*		inParent,
+	SDisplayColor		inFGColor,
+	SDisplayColor		inBGColor,
+	SFontData const&	inFont,
+	char const*			inFormat,
+	...)
 	:
-	CDisplayRegion(inPlacement),
+	CDisplayRegion(inPlacement, inParent),
 	text(NULL),
-	dirty(false),
-	font(NULL)
+	dirty(true),
+	fgColor(inFGColor),
+	bgColor(inBGColor),
+	font(&inFont)
 {
+	char buffer[256];
 
+	va_list	varArgs;
+	va_start(varArgs, inFormat);
+	vsnprintf(buffer, sizeof(buffer) - 1, inFormat, varArgs);
+	buffer[sizeof(buffer) - 1] = 0;	// Ensure valid string
+	va_end(varArgs);
+
+	int	newStrLen = strlen(buffer);
+	text = gDisplayModule->ReallocString(text, newStrLen + 1);
+
+	MReturnOnError(text == NULL);
+
+	strcpy(text, buffer);
 }
 	
 CDisplayRegion_Text::~CDisplayRegion_Text(
@@ -1358,11 +1389,6 @@ CDisplayRegion_Text::printf(
 	strcpy(text, buffer);
 
 	dirty = true;
-	if(font != NULL)
-	{
-		width = gDisplayModule->GetTextWidth(text, font);
-		height = gDisplayModule->GetTextHeight(text, font);
-	}
 }
 	
 void
@@ -1379,11 +1405,6 @@ CDisplayRegion_Text::SetTextFont(
 	font = &inFont;
 
 	dirty = true;
-	if(text != NULL)
-	{
-		width = gDisplayModule->GetTextWidth(text, font);
-		height = gDisplayModule->GetTextHeight(text, font);
-	}
 }
 
 void
@@ -1400,12 +1421,25 @@ void
 CDisplayRegion_Text::Draw(
 	void)
 {
-	gDisplayModule->DrawText(text, curRect.topLeft, font, fgColor, bgColor);
+	gDisplayModule->DrawText(text, curRect.topLeft + SDisplayPoint(borderLeft, borderTop), font, fgColor, bgColor);
 	dirty = false;
 
 	CDisplayRegion*	curRegion = firstChild;
 
 	CDisplayRegion::Draw();
+}
+
+void
+CDisplayRegion_Text::UpdateDimensions(
+	void)
+{
+	if(text != NULL && font != NULL)
+	{
+		width = gDisplayModule->GetTextWidth(text, font) + borderLeft + borderRight;
+		height = gDisplayModule->GetTextHeight(text, font) + borderTop + borderBottom;
+	}
+
+	CDisplayRegion::UpdateDimensions();
 }
 
 CModule_Display::CModule_Display(
@@ -1423,7 +1457,7 @@ CModule_Display::SetDisplayDriver(
 	IDisplayDriver*	inDisplayDriver)
 {
 	displayDriver = inDisplayDriver;
-	topRegion = new CDisplayRegion(SDisplayRect(0, 0, displayDriver->GetWidth(), displayDriver->GetHeight()));
+	topRegion = new CDisplayRegion(SDisplayRect(0, 0, displayDriver->GetWidth(), displayDriver->GetHeight()), NULL);
 }
 
 IDisplayDriver*
