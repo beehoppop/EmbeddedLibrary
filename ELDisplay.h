@@ -94,6 +94,12 @@ enum EDisplayOrientation
 	eDisplayOrientation_PortraitUpsideDown,
 };
 
+enum ETouchEvent
+{
+	eTouchEvent_Down,
+	eTouchEvent_Up
+};
+
 struct SFontData
 {
 	const unsigned char *index;
@@ -385,6 +391,12 @@ struct SDisplayRect
 		return !(bottomRight.x < inRHS.topLeft.x || bottomRight.y < inRHS.topLeft.y || topLeft.x >= inRHS.bottomRight.x || topLeft.y >= inRHS.bottomRight.y);
 	}
 
+	inline bool
+	operator &&(
+		SDisplayPoint const&	inRHS) const
+	{
+		return topLeft.x <= inRHS.x && inRHS.x < bottomRight.x && topLeft.y <= inRHS.y && inRHS.y < bottomRight.y;
+	}
 
 	SDisplayPoint	topLeft;
 	SDisplayPoint	bottomRight;
@@ -417,6 +429,29 @@ struct SDisplayColor
 	uint8_t	r, g, b, a;
 };
 
+// A dummy class for the touch handler method object
+class ITouchHandler
+{
+public:
+};
+
+// The typedef for the command handler method
+typedef void
+(ITouchHandler::*TTouchHandlerMethod)(
+	ETouchEvent				inEvent,
+	SDisplayPoint const&	inPoint,
+	void*					inRefCon);
+
+class ITouchDriver
+{
+public:
+
+	virtual bool
+	GetTouch(
+		SDisplayPoint&	outTouchLoc) = 0;
+
+};
+
 class IDisplayDriver
 {
 public:
@@ -444,6 +479,17 @@ public:
 	virtual void
 	FillRect(
 		SDisplayRect const&		inRect,
+		SDisplayColor const&	inColor) = 0;
+
+	virtual void
+	DrawRect(
+		SDisplayRect const&		inRect,
+		SDisplayColor const&	inColor) = 0;
+
+	virtual void
+	DrawLine(
+		SDisplayPoint const&	inPointA,
+		SDisplayPoint const&	inPointB,
 		SDisplayColor const&	inColor) = 0;
 
 	virtual void
@@ -512,7 +558,18 @@ public:
 		int16_t	inTop,
 		int16_t	inBottom);
 
+	void
+	SetTouchHandler(
+		ITouchHandler*		inHandler,
+		TTouchHandlerMethod	inMethod,
+		void*				inRefCon);
+
 protected:
+	
+	void
+	ProcessTouch(
+		ETouchEvent				inTouchEvent,
+		SDisplayPoint const&	inTouchLoc);
 
 	void
 	StartUpdate(
@@ -547,12 +604,18 @@ protected:
 	SPlacement		placement;
 	SDisplayRect	curRect;
 	SDisplayRect	oldRect;
+
+	ITouchHandler*		touchObject;
+	TTouchHandlerMethod	touchMethod;
+	void*				touchRefCon;
+
 	int16_t			width;
 	int16_t			height;
 	int16_t			borderLeft;
 	int16_t			borderRight;
 	int16_t			borderTop;
 	int16_t			borderBottom;
+	bool			fixedSize;
 
 	friend CModule_Display;
 };
@@ -614,10 +677,22 @@ public:
 
 	CModule_Display(
 		);
+	
+	int16_t
+	GetWidth(
+		void);
+	
+	int16_t
+	GetHeight(
+		void);
 
 	void
 	SetDisplayDriver(
 		IDisplayDriver*	inDisplayDriver);
+
+	void
+	SetTouchscreenDriver(
+		ITouchDriver*	inTouchDriver);
 
 	IDisplayDriver*
 	GetDisplayDriver(
@@ -627,20 +702,15 @@ public:
 	GetTopDisplayRegion(
 		void);
 
-	uint16_t
-	GetTextWidth(
-		char const*			inStr,
-		SFontData const*	inFont);
-
-	uint16_t
-	GetTextHeight(
+	SDisplayPoint
+	GetTextDimensions(
 		char const*			inStr,
 		SFontData const*	inFont);
 
 	int16_t		// returns the width of the char
 	DrawChar(
 		char					inChar,
-		SDisplayPoint const&	inPoint,
+		SDisplayRect const&		inRect,
 		SFontData const*		inFont,
 		SDisplayColor const&	inForeground,
 		SDisplayColor const&	inBackground);
@@ -648,7 +718,7 @@ public:
 	void
 	DrawText(
 		char const*				inStr,
-		SDisplayPoint const&	inPoint,
+		SDisplayRect const&		inRect,
 		SFontData const*		inFont,
 		SDisplayColor const&	inForeground,
 		SDisplayColor const&	inBackground);
@@ -658,6 +728,10 @@ public:
 		void);
 
 private:
+
+	virtual void
+	Update(
+		uint32_t inDeltaTimeUS);
 
 	char*
 	ReallocString(
@@ -671,8 +745,11 @@ private:
 	friend CDisplayRegion_Text;
 
 	IDisplayDriver*	displayDriver;
+	ITouchDriver*	touchDriver;
 	CDisplayRegion*	topRegion;
 	uint8_t			stringTable[eStringTableSize];
+	bool			touchDown;
+	SDisplayPoint	touchLoc;
 };
 
 IDisplayDriver*
@@ -684,6 +761,16 @@ CreateILI9341Driver(
 	uint8_t	inClk,
 	uint8_t	inMISO);
 
+ITouchDriver*
+CreateXPT2046Driver(
+	uint8_t	inChipselect);
+
 extern CModule_Display*	gDisplayModule;
+
+extern SDisplayColor	gColorWhite;
+extern SDisplayColor	gColorBlack;
+extern SDisplayColor	gColorRed;
+extern SDisplayColor	gColorGreen;
+extern SDisplayColor	gColorBlue;
 
 #endif /* _EL_DISPLAY_H_ */

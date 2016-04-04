@@ -38,99 +38,18 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "ELAssert.h"
 #include "ELModule.h"
 
-#define SPICLOCK 30000000
-#define MADCTL_MY  0x80
-#define MADCTL_MX  0x40
-#define MADCTL_MV  0x20
-#define MADCTL_ML  0x10
-#define MADCTL_RGB 0x00
-#define MADCTL_BGR 0x08
-#define MADCTL_MH  0x04
-
-#define ILI9341_TFTWIDTH  240
-#define ILI9341_TFTHEIGHT 320
-
-#define ILI9341_NOP     0x00
-#define ILI9341_SWRESET 0x01
-#define ILI9341_RDDID   0x04
-#define ILI9341_RDDST   0x09
-
-#define ILI9341_SLPIN   0x10
-#define ILI9341_SLPOUT  0x11
-#define ILI9341_PTLON   0x12
-#define ILI9341_NORON   0x13
-
-#define ILI9341_RDMODE  0x0A
-#define ILI9341_RDMADCTL  0x0B
-#define ILI9341_RDPIXFMT  0x0C
-#define ILI9341_RDIMGFMT  0x0D
-#define ILI9341_RDSELFDIAG  0x0F
-
-#define ILI9341_INVOFF  0x20
-#define ILI9341_INVON   0x21
-#define ILI9341_GAMMASET 0x26
-#define ILI9341_DISPOFF 0x28
-#define ILI9341_DISPON  0x29
-
-#define ILI9341_CASET   0x2A
-#define ILI9341_PASET   0x2B
-#define ILI9341_RAMWR   0x2C
-#define ILI9341_RAMRD   0x2E
-
-#define ILI9341_PTLAR    0x30
-#define ILI9341_MADCTL   0x36
-#define ILI9341_VSCRSADD 0x37
-#define ILI9341_PIXFMT   0x3A
-
-#define ILI9341_FRMCTR1 0xB1
-#define ILI9341_FRMCTR2 0xB2
-#define ILI9341_FRMCTR3 0xB3
-#define ILI9341_INVCTR  0xB4
-#define ILI9341_DFUNCTR 0xB6
-
-#define ILI9341_PWCTR1  0xC0
-#define ILI9341_PWCTR2  0xC1
-#define ILI9341_PWCTR3  0xC2
-#define ILI9341_PWCTR4  0xC3
-#define ILI9341_PWCTR5  0xC4
-#define ILI9341_VMCTR1  0xC5
-#define ILI9341_VMCTR2  0xC7
-
-#define ILI9341_RDID1   0xDA
-#define ILI9341_RDID2   0xDB
-#define ILI9341_RDID3   0xDC
-#define ILI9341_RDID4   0xDD
-
-#define ILI9341_GMCTRP1 0xE0
-#define ILI9341_GMCTRN1 0xE1
-
-static const uint8_t init_commands[] =
-{
-	4, 0xEF, 0x03, 0x80, 0x02,
-	4, 0xCF, 0x00, 0XC1, 0X30,
-	5, 0xED, 0x64, 0x03, 0X12, 0X81,
-	4, 0xE8, 0x85, 0x00, 0x78,
-	6, 0xCB, 0x39, 0x2C, 0x00, 0x34, 0x02,
-	2, 0xF7, 0x20,
-	3, 0xEA, 0x00, 0x00,
-	2, ILI9341_PWCTR1, 0x23, // Power control
-	2, ILI9341_PWCTR2, 0x10, // Power control
-	3, ILI9341_VMCTR1, 0x3e, 0x28, // VCM control
-	2, ILI9341_VMCTR2, 0x86, // VCM control2
-	2, ILI9341_MADCTL, 0x48, // Memory Access Control
-	2, ILI9341_PIXFMT, 0x55,
-	3, ILI9341_FRMCTR1, 0x00, 0x18,
-	4, ILI9341_DFUNCTR, 0x08, 0x82, 0x27, // Display Function Control
-	2, 0xF2, 0x00, // Gamma Function Disable
-	2, ILI9341_GAMMASET, 0x01, // Gamma curve selected
-	16, ILI9341_GMCTRP1, 0x0F, 0x31, 0x2B, 0x0C, 0x0E, 0x08,
-		0x4E, 0xF1, 0x37, 0x07, 0x10, 0x03, 0x0E, 0x09, 0x00, // Set Gamma
-	16, ILI9341_GMCTRN1, 0x00, 0x0E, 0x14, 0x03, 0x11, 0x07,
-		0x31, 0xC1, 0x48, 0x08, 0x0F, 0x0C, 0x31, 0x36, 0x0F, // Set Gamma
-	0
-};
-
 CModule_Display*	gDisplayModule;
+SDisplayColor	gColorWhite(255, 255, 255);
+SDisplayColor	gColorBlack(0, 0, 0);
+SDisplayColor	gColorRed(255, 0, 0);
+SDisplayColor	gColorGreen(0, 255, 0);
+SDisplayColor	gColorBlue(0, 0, 255);
+
+#ifdef WIN32
+#include "ELDisplay_ILI9341Win.h"
+#else
+#include "ELDisplay_ILI9341.h"
+#endif
 
 SPlacement
 SPlacement::Outside(
@@ -147,705 +66,6 @@ SPlacement::Inside(
 {
 	return SPlacement(ePlace_Inside, inHoriz, inVert);
 }
-
-#ifdef WIN32
-#include <Windows.h>
-
-class CDisplayDriver_ILI9341 : public CModule, public IDisplayDriver
-{
-public:
-
-	CDisplayDriver_ILI9341(
-		EDisplayOrientation	inDisplayOrientation,
-		uint8_t	inCS,
-		uint8_t	inDC,
-		uint8_t	inMOSI,
-		uint8_t	inClk,
-		uint8_t	inMISO)
-		:
-		displayOrientation(inDisplayOrientation),
-		cs(inCS), dc(inDC), mosi(inMOSI), clk(inClk), miso(inMISO),
-		CModule("ili9", 0, 0, NULL, 10 * 1000)
-	{
-		MReturnOnError(!((mosi == 11 || mosi == 7) && (miso == 12 || miso == 8) && (clk == 13 || clk == 14)));
-
-		me = this;
-
-		displayWidth = 320;
-		displayHeight = 240;
-
-		displayPort.topLeft.x = 0;
-		displayPort.topLeft.y = 0;
-		displayPort.bottomRight.x = displayWidth;
-		displayPort.bottomRight.y = displayHeight;
-
-		drawingActive = false;
-
-		WNDCLASSEX ex;
- 
-		ex.cbSize = sizeof(WNDCLASSEX);
-		ex.style = CS_OWNDC;
-		ex.lpfnWndProc = WinProc;
-		ex.cbClsExtra = 0;
-		ex.cbWndExtra = 0;
-		ex.hInstance = GetModuleHandle(0);
-		ex.hIcon = LoadIcon(NULL, IDI_APPLICATION);
-		ex.hCursor = LoadCursor(NULL, IDC_ARROW);
-		ex.hbrBackground = (HBRUSH)GetStockObject(WHITE_BRUSH);
-		ex.lpszMenuName = NULL;
-		ex.lpszClassName = L"wndclass";
-		ex.hIconSm = NULL;
- 
-		RegisterClassEx(&ex);
-	
-		hwnd = 
-			CreateWindowEx(
-				NULL,
- 				L"wndclass",
-				L"Window",
-				WS_OVERLAPPED | WS_VISIBLE,
-				100, 100,
-				displayWidth + 50, displayHeight + 50,
-				NULL,
-				NULL,
-				GetModuleHandle(0),
-				this);
-
-		ShowWindow(hwnd, SW_SHOW);
-		UpdateWindow(hwnd);
-		
-	}
-	
-	virtual void
-	Update(
-		uint32_t inDeltaTimeUS)
-	{
-		MSG msg;
-		if(PeekMessage(&msg, NULL, NULL, NULL, PM_REMOVE))
-		{
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
-		}
-	}
-	
-	virtual int16_t
-	GetWidth(
-		void)
-	{
-		return displayWidth;
-	}
-	
-	virtual int16_t
-	GetHeight(
-		void)
-	{
-		return displayHeight;
-	}
-
-	virtual void
-	BeginDrawing(
-		void)
-	{
-		drawingActive = true;
-	}
-
-	virtual void
-	EndDrawing(
-		void)
-	{
-		drawingActive = false;
-	}
-	
-	virtual void
-	FillScreen(
-		SDisplayColor const&	inColor)
-	{
-		MReturnOnError(!drawingActive);
-
-		uint16_t	color = inColor.GetRGB565();
-		for(int x = 0; x < displayWidth; ++x)
-		{
-			for(int y = 0; y < displayHeight; ++y)
-			{
-				displayMemory[y][x] = color;
-			}
-		}
-	}
-	
-	virtual void
-	FillRect(
-		SDisplayRect const&		inRect,
-		SDisplayColor const&	inColor)
-	{
-		MReturnOnError(!drawingActive);
-
-		SDisplayRect	clippedRect;
-
-		clippedRect.Intersect(displayPort, inRect);
-
-		if(clippedRect.IsEmpty())
-		{
-			return;
-		}
-
-		uint16_t	color = inColor.GetRGB565();
-		for(int x = inRect.topLeft.x; x < inRect.bottomRight.x; ++x)
-		{
-			for(int y = inRect.topLeft.y; y < inRect.bottomRight.y; ++y)
-			{
-				displayMemory[y][x] = color;
-			}
-		}
-	}
-
-	virtual void
-	DrawPixel(
-		SDisplayPoint const&	inPoint,
-		SDisplayColor const&	inColor)
-	{
-		MReturnOnError(!drawingActive);
-
-		uint16_t	color = inColor.GetRGB565();
-
-		displayMemory[inPoint.y][inPoint.x] = color;
-	}
-
-	virtual void
-	DrawContinuousStart(
-		SDisplayRect const&		inRect,
-		SDisplayColor const&	inFGColor,
-		SDisplayColor const&	inBGColor)
-	{
-		MReturnOnError(!drawingActive);
-
-		SDisplayRect	clippedRect;
-
-		clippedRect.Intersect(displayPort, inRect);
-
-		continuousTotalClip = clippedRect.IsEmpty();
-		if(continuousTotalClip)
-		{
-			return;
-		}
-
-		continuousRect = inRect;
-		fgColor = inFGColor.GetRGB565();
-		bgColor = inBGColor.GetRGB565();
-		continuousX = inRect.topLeft.x;
-		continuousY = inRect.topLeft.y;
-	}
-
-	virtual void
-	DrawContinuousBits(
-		int16_t					inPixelCount,
-		uint16_t				inSrcBitStartIndex,
-		uint8_t const*			inSrcBitData)
-	{
-		MReturnOnError(!drawingActive);
-
-		if(continuousTotalClip)
-		{
-			return;
-		}
-
-		while(inPixelCount-- > 0)
-		{
-			if(continuousX >= 0 && continuousX < displayWidth && continuousY >= 0 && continuousY < displayHeight)
-			{
-				if(inSrcBitData[inSrcBitStartIndex >> 3] & (1 << (7 - (inSrcBitStartIndex & 0x7))))
-				{
-					displayMemory[continuousY][continuousX] = fgColor;
-				}
-				else
-				{
-					displayMemory[continuousY][continuousX] = bgColor;
-				}
-			}
-
-			++continuousX;
-			if(continuousX >= continuousRect.bottomRight.x)
-			{
-				continuousX = continuousRect.topLeft.x;
-				++continuousY;
-			}
-			++inSrcBitStartIndex;
-		}
-	}
-
-	virtual void
-	DrawContinuousSolid(
-		int16_t					inPixelCount,
-		bool					inUseForeground)
-	{
-		MReturnOnError(!drawingActive);
-
-		if(continuousTotalClip)
-		{
-			return;
-		}
-
-		while(inPixelCount-- > 0)
-		{
-			if(continuousX >= 0 && continuousX < displayWidth && continuousY >= 0 && continuousY < displayHeight)
-			{
-				if(inUseForeground)
-				{
-					displayMemory[continuousY][continuousX] = fgColor;
-				}
-				else
-				{
-					displayMemory[continuousY][continuousX] = bgColor;
-				}
-			}
-
-			++continuousX;
-			if(continuousX >= continuousRect.bottomRight.x)
-			{
-				continuousX = continuousRect.topLeft.x;
-				++continuousY;
-			}
-		}
-	}
-
-	virtual void
-	DrawContinuousEnd(
-		void)
-	{
-		MReturnOnError(!drawingActive);
-	}
-
-	static LRESULT CALLBACK 
-	WinProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
-
-	static CDisplayDriver_ILI9341*	me;
-
-	EDisplayOrientation	displayOrientation;
-	int16_t	displayWidth;
-	int16_t	displayHeight;
-	uint8_t	cs, dc, mosi, clk, miso;
-	uint8_t pcs_data, pcs_command;
-
-	bool	drawingActive;
-
-	SDisplayRect	displayPort;
-
-	bool			continuousTotalClip;
-	int16_t			continuousX;
-	int16_t			continuousY;
-	SDisplayRect	continuousRect;
-	uint16_t		fgColor;
-	uint16_t		bgColor;
-
-	uint16_t	displayMemory[240][320];
-
-	HDC		hdc;
-	HWND	hwnd;
-};
-
-CDisplayDriver_ILI9341*	CDisplayDriver_ILI9341::me;
-
-LRESULT CALLBACK 
-CDisplayDriver_ILI9341::WinProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
-{
-	switch(msg)
-	{
-		case WM_PAINT:
-		{
-			HDC hdc = GetDC(hwnd);
-
-			for(int x = 0; x < me->displayWidth; ++x)
-			{
-				for(int y = 0; y < me->displayHeight; ++y)
-				{
-					uint16_t	color = me->displayMemory[y][x];
-					uint8_t		r = color >> 11;
-					uint8_t		g = (color >> 5) & 0x3F;
-					uint8_t		b = color & 0x1F;
-					SetPixel(hdc, x, y, RGB(r << 3, g << 2, b << 3));
-				}
-			}
-
-			ReleaseDC(hwnd, hdc);
-			return 0;
-		}
-	}
-
-	return DefWindowProc(hwnd, msg, wparam, lparam);
-}
-
-#else
-
-class CDisplayDriver_ILI9341 : public IDisplayDriver
-{
-public:
-
-	inline void
-	WaitFIFOReady(
-		void)
-	{
-		uint32_t sr;
-		volatile uint32_t MUNUSED tmp;
-		do {
-			sr = (KINETISK_SPI0.SR >> 12) & 0xF;
-		} while (sr > 3);
-	}
-
-	inline void
-	WaitFIFOEmpty(void)
-	{
-		uint32_t sr;
-		volatile uint32_t MUNUSED tmp;
-		do {
-			sr = (KINETISK_SPI0.SR >> 12) & 0xF;
-		} while (sr > 0);
-	}
-
-	inline void 
-	WriteCommand(
-		uint8_t inCommand)
-	{
-		WaitFIFOReady();
-		KINETISK_SPI0.PUSHR = inCommand | (pcs_command << 16) | SPI_PUSHR_CTAS(0) | SPI_PUSHR_CONT;
-	}
-
-	inline void 
-	WriteData8(uint8_t inData)
-	{
-		WaitFIFOReady();
-		KINETISK_SPI0.PUSHR = inData | (pcs_data << 16) | SPI_PUSHR_CTAS(0) | SPI_PUSHR_CONT;
-	}
-
-	inline void 
-	WriteData16(
-		uint16_t inData)
-	{
-		WaitFIFOReady();
-		KINETISK_SPI0.PUSHR = inData | (pcs_data << 16) | SPI_PUSHR_CTAS(1) | SPI_PUSHR_CONT;
-	}
-
-	inline void 
-	setAddr(
-		uint16_t x0, 
-		uint16_t y0, 
-		uint16_t x1, 
-		uint16_t y1)
-	{
-		WriteCommand(ILI9341_CASET); // Column addr set
-		WriteData16(x0);   // XSTART
-		WriteData16(x1);   // XEND
-		WriteCommand(ILI9341_PASET); // Row addr set
-		WriteData16(y0);   // YSTART
-		WriteData16(y1);   // YEND
-	}
-
-	CDisplayDriver_ILI9341(
-		EDisplayOrientation	inDisplayOrientation,
-		uint8_t	inCS,
-		uint8_t	inDC,
-		uint8_t	inMOSI,
-		uint8_t	inClk,
-		uint8_t	inMISO)
-		:
-		displayOrientation(inDisplayOrientation),
-		cs(inCS), dc(inDC), mosi(inMOSI), clk(inClk), miso(inMISO)
-	{
-		MReturnOnError(!((mosi == 11 || mosi == 7) && (miso == 12 || miso == 8) && (clk == 13 || clk == 14)));
-
-		SPI.begin();
-		MReturnOnError(!SPI.pinIsChipSelect(cs, dc));
-
-		pcs_data = SPI.setCS(cs);
-		pcs_command = pcs_data | SPI.setCS(dc);
-
-		SPI.beginTransaction(SPISettings(SPICLOCK, MSBFIRST, SPI_MODE0));
-
-		const uint8_t *addr = init_commands;
-		while (1) 
-		{
-			uint8_t count = *addr++;
-			if (count-- == 0)
-			{
-				break;
-			}
-			WriteCommand(*addr++);
-			while (count-- > 0)
-			{
-				WriteData8(*addr++);
-			}
-		}
-		WriteCommand(ILI9341_SLPOUT);    // Exit Sleep
-		WaitFIFOEmpty();
-
-		delay(120); 		
-		WriteCommand(ILI9341_DISPON);    // Display on
-		WaitFIFOEmpty();
-
-		WriteCommand(ILI9341_MADCTL);
-		switch(displayOrientation)
-		{
-			case eDisplayOrientation_LandscapeUpside:
-				displayWidth = ILI9341_TFTHEIGHT;
-				displayHeight = ILI9341_TFTWIDTH;
-				WriteData8(MADCTL_MV | MADCTL_BGR);
-				break;
-
-			case eDisplayOrientation_LandscapeUpsideDown:
-				displayWidth = ILI9341_TFTHEIGHT;
-				displayHeight = ILI9341_TFTWIDTH;
-				WriteData8(MADCTL_MX | MADCTL_MY | MADCTL_MV | MADCTL_BGR);
-				break;
-
-			case eDisplayOrientation_PortraitUpside:
-				displayWidth = ILI9341_TFTWIDTH;
-				displayHeight = ILI9341_TFTHEIGHT;
-				WriteData8(MADCTL_MX | MADCTL_BGR);
-				break;
-
-			case eDisplayOrientation_PortraitUpsideDown:
-				WriteData8(MADCTL_MY | MADCTL_BGR);
-				displayWidth = ILI9341_TFTWIDTH;
-				displayHeight = ILI9341_TFTHEIGHT;
-				break;
-
-			default:
-				WriteData8(MADCTL_MV | MADCTL_BGR);
-				SystemMsg("Unknown orientation");
-		}
-		WaitFIFOEmpty();
-
-		SPI.endTransaction();
-		SPI.end();
-
-		displayPort.topLeft.x = 0;
-		displayPort.topLeft.y = 0;
-		displayPort.bottomRight.x = displayWidth;
-		displayPort.bottomRight.y = displayHeight;
-
-		drawingActive = false;
-	}
-	
-	virtual int16_t
-	GetWidth(
-		void)
-	{
-		return displayWidth;
-	}
-	
-	virtual int16_t
-	GetHeight(
-		void)
-	{
-		return displayHeight;
-	}
-
-	virtual void
-	BeginDrawing(
-		void)
-	{
-		drawingActive = true;
-		SPI.begin();
-	}
-
-	virtual void
-	EndDrawing(
-		void)
-	{
-		drawingActive = false;
-		SPI.end();
-	}
-	
-	virtual void
-	FillScreen(
-		SDisplayColor const&	inColor)
-	{
-		MReturnOnError(!drawingActive);
-
-		SPI.beginTransaction(SPISettings(SPICLOCK, MSBFIRST, SPI_MODE0));
-		setAddr(0, 0, displayWidth - 1, displayHeight - 1);
-		WriteCommand(ILI9341_RAMWR);
-
-		uint16_t	color = inColor.GetRGB565();
-		for(int32_t y = displayWidth * displayHeight; y > 0; y--)
-		{
-			WriteData16(color);
-		}
-		WaitFIFOEmpty();
-		SPI.endTransaction();
-	}
-	
-	virtual void
-	FillRect(
-		SDisplayRect const&		inRect,
-		SDisplayColor const&	inColor)
-	{
-		MReturnOnError(!drawingActive);
-
-		SDisplayRect	clippedRect;
-
-		clippedRect.Intersect(displayPort, inRect);
-
-		if(clippedRect.IsEmpty())
-		{
-			return;
-		}
-
-		SPI.beginTransaction(SPISettings(SPICLOCK, MSBFIRST, SPI_MODE0));
-		setAddr(clippedRect.topLeft.x, clippedRect.topLeft.y, clippedRect.bottomRight.x - 1, clippedRect.bottomRight.y - 1);
-		WriteCommand(ILI9341_RAMWR);
-
-		SDisplayPoint dimensions = clippedRect.GetDimensions();
-		uint16_t	color = inColor.GetRGB565();
-		for(int32_t y = dimensions.y * dimensions.x; y > 0; y--)
-		{
-			WriteData16(color);
-		}
-		WaitFIFOEmpty();
-		SPI.endTransaction();
-	}
-
-	virtual void
-	DrawPixel(
-		SDisplayPoint const&	inPoint,
-		SDisplayColor const&	inColor)
-	{
-		MReturnOnError(!drawingActive);
-
-	}
-
-	virtual void
-	DrawContinuousStart(
-		SDisplayRect const&		inRect,
-		SDisplayColor const&	inFGColor,
-		SDisplayColor const&	inBGColor)
-	{
-		MReturnOnError(!drawingActive);
-
-		SDisplayRect	clippedRect;
-
-		clippedRect.Intersect(displayPort, inRect);
-
-		continuousTotalClip = clippedRect.IsEmpty();
-		if(continuousTotalClip)
-		{
-			return;
-		}
-
-		continuousRect = inRect;
-		fgColor = inFGColor.GetRGB565();
-		bgColor = inBGColor.GetRGB565();
-		continuousX = inRect.topLeft.x;
-		continuousY = inRect.topLeft.y;
-
-		SPI.beginTransaction(SPISettings(SPICLOCK, MSBFIRST, SPI_MODE0));
-		setAddr(clippedRect.topLeft.x, clippedRect.topLeft.y, clippedRect.bottomRight.x - 1, clippedRect.bottomRight.y - 1);
-		WriteCommand(ILI9341_RAMWR);
-	}
-
-	virtual void
-	DrawContinuousBits(
-		int16_t					inPixelCount,
-		uint16_t				inSrcBitStartIndex,
-		uint8_t const*			inSrcBitData)
-	{
-		MReturnOnError(!drawingActive);
-
-		if(continuousTotalClip)
-		{
-			return;
-		}
-
-		while(inPixelCount-- > 0)
-		{
-			if(continuousX >= 0 && continuousX < displayWidth && continuousY >= 0 && continuousY < displayHeight)
-			{
-				if(inSrcBitData[inSrcBitStartIndex >> 3] & (1 << (7 - (inSrcBitStartIndex & 0x7))))
-				{
-					WriteData16(fgColor);
-				}
-				else
-				{
-					WriteData16(bgColor);
-				}
-			}
-
-			++continuousX;
-			if(continuousX >= continuousRect.bottomRight.x)
-			{
-				continuousX = continuousRect.topLeft.x;
-				++continuousY;
-			}
-			++inSrcBitStartIndex;
-		}
-	}
-
-	virtual void
-	DrawContinuousSolid(
-		int16_t					inPixelCount,
-		bool					inUseForeground)
-	{
-		MReturnOnError(!drawingActive);
-
-		if(continuousTotalClip)
-		{
-			return;
-		}
-
-		while(inPixelCount-- > 0)
-		{
-			if(continuousX >= 0 && continuousX < displayWidth && continuousY >= 0 && continuousY < displayHeight)
-			{
-				if(inUseForeground)
-				{
-					WriteData16(fgColor);
-				}
-				else
-				{
-					WriteData16(bgColor);
-				}
-			}
-
-			++continuousX;
-			if(continuousX >= continuousRect.bottomRight.x)
-			{
-				continuousX = continuousRect.topLeft.x;
-				++continuousY;
-			}
-		}
-	}
-
-	virtual void
-	DrawContinuousEnd(
-		void)
-	{
-		MReturnOnError(!drawingActive);
-
-		if(continuousTotalClip)
-		{
-			return;
-		}
-
-		WaitFIFOEmpty();
-		SPI.endTransaction();
-	}
-
-	EDisplayOrientation	displayOrientation;
-	int16_t	displayWidth;
-	int16_t	displayHeight;
-	uint8_t	cs, dc, mosi, clk, miso;
-	uint8_t pcs_data, pcs_command;
-
-	bool	drawingActive;
-
-	SDisplayRect	displayPort;
-
-	bool			continuousTotalClip;
-	int16_t			continuousX;
-	int16_t			continuousY;
-	SDisplayRect	continuousRect;
-	uint16_t		fgColor;
-	uint16_t		bgColor;
-};
-#endif
 
 IDisplayDriver*
 CreateILI9341Driver(
@@ -864,6 +84,21 @@ CreateILI9341Driver(
 	}
 
 	return displayDriver;
+}
+
+ITouchDriver*
+CreateXPT2046Driver(
+	uint8_t	inChipselect)
+{
+
+	static ITouchDriver*	touchDriver = NULL;
+
+	if(touchDriver == NULL)
+	{
+		touchDriver = new ITouchDriver_XPT2046(inChipselect);
+	}
+
+	return touchDriver;
 }
 
 static uint32_t fetchbit(const uint8_t *p, uint32_t index)
@@ -917,8 +152,11 @@ CDisplayRegion::CDisplayRegion(
 	borderLeft(0),
 	borderRight(0),
 	borderTop(0),
-	borderBottom(0)
+	borderBottom(0),
+	fixedSize(false)
 {
+	touchObject = NULL;
+
 	if(parent != NULL)
 	{
 		nextChild = inParent->firstChild;
@@ -941,8 +179,11 @@ CDisplayRegion::CDisplayRegion(
 	borderLeft(0),
 	borderRight(0),
 	borderTop(0),
-	borderBottom(0)
+	borderBottom(0),
+	fixedSize(false)
 {
+	touchObject = NULL;
+
 	if(parent != NULL)
 	{
 		nextChild = inParent->firstChild;
@@ -1027,6 +268,37 @@ CDisplayRegion::SetBorder(
 }
 
 void
+CDisplayRegion::SetTouchHandler(
+	ITouchHandler*		inHandler,
+	TTouchHandlerMethod	inMethod,
+	void*				inRefCon)
+{
+	touchObject = inHandler;
+	touchMethod = inMethod;
+	touchRefCon = inRefCon;
+}
+	
+void
+CDisplayRegion::ProcessTouch(
+	ETouchEvent				inTouchEvent,
+	SDisplayPoint const&	inTouchLoc)
+{
+	if((curRect && inTouchLoc) && touchObject != NULL)
+	{
+		(touchObject->*touchMethod)(inTouchEvent, inTouchLoc, touchRefCon);
+	}
+
+	// Children can be outside of the bounds so recurse on all children regardless of the point being contained in the parent
+	CDisplayRegion*	curRegion = firstChild;
+
+	while(curRegion != NULL)
+	{
+		curRegion->ProcessTouch(inTouchEvent, inTouchLoc);
+		curRegion = curRegion->nextChild;
+	}
+}
+
+void
 CDisplayRegion::StartUpdate(
 	void)
 {
@@ -1061,50 +333,53 @@ CDisplayRegion::UpdateDimensions(
 			curRegion = curRegion->nextChild;
 		}
 
-		// compute the width and height of this region
-		int16_t	maxWidth  = 0;
-		int16_t	maxHeight = 0;
-		int16_t	curWidth;
-		int16_t	curHeight;
-
-		SumRegionList(curWidth, curHeight, SPlacement::Inside(eInside_Horiz_Left, eSecondary_Any), firstChild);
-		if(curHeight > maxHeight)
+		if(fixedSize == false)
 		{
-			maxHeight = curHeight;
-		}
+			// compute the width and height of this region
+			int16_t	maxWidth  = 0;
+			int16_t	maxHeight = 0;
+			int16_t	curWidth;
+			int16_t	curHeight;
 
-		SumRegionList(curWidth, curHeight, SPlacement::Inside(eInside_Horiz_Center, eSecondary_Any), firstChild);
-		if(curHeight > maxHeight)
-		{
-			maxHeight = curHeight;
-		}
+			SumRegionList(curWidth, curHeight, SPlacement::Inside(eInside_Horiz_Left, eSecondary_Any), firstChild);
+			if(curHeight > maxHeight)
+			{
+				maxHeight = curHeight;
+			}
 
-		SumRegionList(curWidth, curHeight, SPlacement::Inside(eInside_Horiz_Center, eSecondary_Any), firstChild);
-		if(curHeight > maxHeight)
-		{
-			maxHeight = curHeight;
-		}
+			SumRegionList(curWidth, curHeight, SPlacement::Inside(eInside_Horiz_Center, eSecondary_Any), firstChild);
+			if(curHeight > maxHeight)
+			{
+				maxHeight = curHeight;
+			}
 
-		SumRegionList(curWidth, curHeight, SPlacement::Inside(ePrimary_Any, eInside_Vert_Top), firstChild);
-		if(curWidth > maxWidth)
-		{
-			maxWidth = curWidth;
-		}
+			SumRegionList(curWidth, curHeight, SPlacement::Inside(eInside_Horiz_Right, eSecondary_Any), firstChild);
+			if(curHeight > maxHeight)
+			{
+				maxHeight = curHeight;
+			}
 
-		SumRegionList(curWidth, curHeight, SPlacement::Inside(ePrimary_Any, eInside_Vert_Center), firstChild);
-		if(curWidth > maxWidth)
-		{
-			maxWidth = curWidth;
-		}
+			SumRegionList(curWidth, curHeight, SPlacement::Inside(ePrimary_Any, eInside_Vert_Top), firstChild);
+			if(curWidth > maxWidth)
+			{
+				maxWidth = curWidth;
+			}
 
-		SumRegionList(curWidth, curHeight, SPlacement::Inside(ePrimary_Any, eInside_Vert_Bottom), firstChild);
-		if(curWidth > maxWidth)
-		{
-			maxWidth = curWidth;
-		}
+			SumRegionList(curWidth, curHeight, SPlacement::Inside(ePrimary_Any, eInside_Vert_Center), firstChild);
+			if(curWidth > maxWidth)
+			{
+				maxWidth = curWidth;
+			}
 
-		width = maxWidth;
-		height = maxHeight;
+			SumRegionList(curWidth, curHeight, SPlacement::Inside(ePrimary_Any, eInside_Vert_Bottom), firstChild);
+			if(curWidth > maxWidth)
+			{
+				maxWidth = curWidth;
+			}
+
+			width = maxWidth;
+			height = maxHeight;
+		}
 	}
 }
 	
@@ -1142,7 +417,7 @@ CDisplayRegion::UpdateOrigins(
 							break;
 
 						case eOutside_AlignCenter:
-							curRect.topLeft.x = parentRect.topLeft.x + ((parentRect.GetWidth() - width) >> 1);
+							curRect.topLeft.x = parentRect.topLeft.x + ((parentRect.GetWidth() - width + 1) >> 1);
 							curRect.bottomRight.x = curRect.topLeft.x + width;
 							break;
 
@@ -1176,7 +451,7 @@ CDisplayRegion::UpdateOrigins(
 							break;
 
 						case eOutside_AlignCenter:
-							curRect.topLeft.y = parentRect.topLeft.y + ((parentRect.GetHeight() - height) >> 1);
+							curRect.topLeft.y = parentRect.topLeft.y + ((parentRect.GetHeight() - height + 1) >> 1);
 							curRect.bottomRight.y = curRect.topLeft.y + height;
 							break;
 
@@ -1199,7 +474,7 @@ CDisplayRegion::UpdateOrigins(
 					break;
 
 				case eInside_Horiz_Center:
-					curRect.topLeft.x = parentRect.topLeft.x + ((parentRect.GetWidth() - width) >> 1);
+					curRect.topLeft.x = parentRect.topLeft.x + ((parentRect.GetWidth() - width + 1) >> 1);
 					curRect.bottomRight.x = curRect.topLeft.x + width;
 					break;
 
@@ -1218,7 +493,7 @@ CDisplayRegion::UpdateOrigins(
 					break;
 
 				case eInside_Vert_Center:
-					curRect.topLeft.y = parentRect.topLeft.y + ((parentRect.GetHeight() - height) >> 1);
+					curRect.topLeft.y = parentRect.topLeft.y + ((parentRect.GetHeight() - height + 1) >> 1);
 					curRect.bottomRight.y = curRect.topLeft.y + height;
 					break;
 
@@ -1269,6 +544,26 @@ CDisplayRegion::EraseOldRegions(
 					// the bottom side of the new rect has moved above the top side of the previous rect
 					gDisplayModule->GetDisplayDriver()->FillRect(SDisplayRect(SDisplayPoint(oldRect.topLeft.x, curRect.bottomRight.y), oldRect.bottomRight), SDisplayColor(0, 0, 0));
 				}
+
+				// Erase the borders
+				#if 0
+				if(borderLeft > 0)
+				{
+					gDisplayModule->GetDisplayDriver()->FillRect(SDisplayRect(SDisplayPoint(curRect.topLeft.x, curRect.topLeft.y), SDisplayPoint(curRect.topLeft.x + borderLeft, curRect.bottomRight.y)), SDisplayColor(0, 0, 0));
+				}
+				if(borderTop > 0)
+				{
+					gDisplayModule->GetDisplayDriver()->FillRect(SDisplayRect(SDisplayPoint(curRect.topLeft.x, curRect.topLeft.y), SDisplayPoint(curRect.bottomRight.x, curRect.topLeft.y + borderRight)), SDisplayColor(0, 0, 0));
+				}
+				if(borderRight > 0)
+				{
+					gDisplayModule->GetDisplayDriver()->FillRect(SDisplayRect(SDisplayPoint(curRect.bottomRight.x - borderRight, curRect.topLeft.y), SDisplayPoint(curRect.bottomRight.x, curRect.bottomRight.y)), SDisplayColor(0, 0, 0));
+				}
+				if(borderBottom > 0)
+				{
+					gDisplayModule->GetDisplayDriver()->FillRect(SDisplayRect(SDisplayPoint(curRect.topLeft.x, curRect.bottomRight.y - borderBottom), SDisplayPoint(curRect.bottomRight.x, curRect.bottomRight.y)), SDisplayColor(0, 0, 0));
+				}
+				#endif
 			}
 			else
 			{
@@ -1301,6 +596,13 @@ CDisplayRegion::Draw(
 		curRegion->Draw();
 		curRegion = curRegion->nextChild;
 	}
+
+	#if 1
+	if(parent != NULL)
+	{
+		gDisplayModule->GetDisplayDriver()->DrawRect(curRect, SDisplayColor(255, 255, 255));
+	}
+	#endif
 }
 
 void
@@ -1353,10 +655,10 @@ CDisplayRegion_Text::CDisplayRegion_Text(
 
 	int	newStrLen = strlen(buffer);
 	text = gDisplayModule->ReallocString(text, newStrLen + 1);
-
 	MReturnOnError(text == NULL);
-
 	strcpy(text, buffer);
+
+	fixedSize = true;
 }
 	
 CDisplayRegion_Text::~CDisplayRegion_Text(
@@ -1421,7 +723,7 @@ void
 CDisplayRegion_Text::Draw(
 	void)
 {
-	gDisplayModule->DrawText(text, curRect.topLeft + SDisplayPoint(borderLeft, borderTop), font, fgColor, bgColor);
+	gDisplayModule->DrawText(text, SDisplayRect(curRect.topLeft.x + borderLeft, curRect.topLeft.y + borderTop, width - borderLeft - borderRight, height - borderTop - borderBottom), font, fgColor, bgColor);
 	dirty = false;
 
 	CDisplayRegion*	curRegion = firstChild;
@@ -1435,8 +737,9 @@ CDisplayRegion_Text::UpdateDimensions(
 {
 	if(text != NULL && font != NULL)
 	{
-		width = gDisplayModule->GetTextWidth(text, font) + borderLeft + borderRight;
-		height = gDisplayModule->GetTextHeight(text, font) + borderTop + borderBottom;
+		SDisplayPoint	textDim = gDisplayModule->GetTextDimensions(text, font);
+		width = textDim.x + borderLeft + borderRight;
+		height = textDim.y + borderTop + borderBottom;
 	}
 
 	CDisplayRegion::UpdateDimensions();
@@ -1445,11 +748,60 @@ CDisplayRegion_Text::UpdateDimensions(
 CModule_Display::CModule_Display(
 	)
 	:
-	CModule("disp")
+	CModule("disp", 0, 0, NULL, 20000)
 {
 	displayDriver = NULL;
+	touchDriver = NULL;
 	gDisplayModule = this;
+	touchDown = false;
 	memset(stringTable, 0xFF, sizeof(stringTable));
+}
+
+void
+CModule_Display::Update(
+	uint32_t inDeltaTimeUS)
+{
+	if(touchDriver != NULL && topRegion != NULL)
+	{
+		bool			curTouchDown;
+		curTouchDown = touchDriver->GetTouch(touchLoc);
+
+		if(curTouchDown != touchDown)
+		{
+			if(curTouchDown)
+			{
+				topRegion->ProcessTouch(eTouchEvent_Down, touchLoc);
+				touchDown = true;
+			}
+			else if(touchDown)
+			{
+				topRegion->ProcessTouch(eTouchEvent_Up, touchLoc);
+				touchDown = false;
+			}
+		}
+	}
+}
+	
+int16_t
+CModule_Display::GetWidth(
+	void)
+{
+	if(displayDriver != NULL)
+	{
+		return displayDriver->GetWidth();
+	}
+	return 0;
+}
+	
+int16_t
+CModule_Display::GetHeight(
+	void)
+{
+	if(displayDriver != NULL)
+	{
+		return displayDriver->GetHeight();
+	}
+	return 0;
 }
 
 void
@@ -1458,6 +810,13 @@ CModule_Display::SetDisplayDriver(
 {
 	displayDriver = inDisplayDriver;
 	topRegion = new CDisplayRegion(SDisplayRect(0, 0, displayDriver->GetWidth(), displayDriver->GetHeight()), NULL);
+}
+
+void
+CModule_Display::SetTouchscreenDriver(
+	ITouchDriver*	inTouchDriver)
+{
+	touchDriver = inTouchDriver;
 }
 
 IDisplayDriver*
@@ -1475,12 +834,12 @@ CModule_Display::GetTopDisplayRegion(
 	return topRegion;
 }
 
-uint16_t
-CModule_Display::GetTextWidth(
+SDisplayPoint
+CModule_Display::GetTextDimensions(
 	char const*			inStr,
 	SFontData const*	inFont)
 {
-	uint16_t		result = 0;
+	SDisplayPoint		result(0, 0);
 	uint32_t		bitoffset;
 	const uint8_t*	data;
 	
@@ -1505,7 +864,7 @@ CModule_Display::GetTextWidth(
 		} 
 		else
 		{
-			return 0;
+			return result;
 		}
 
 		uint32_t	index = fetchbits_unsigned(inFont->index, bitoffset, inFont->bits_index);
@@ -1515,34 +874,43 @@ CModule_Display::GetTextWidth(
 		uint32_t encoding = fetchbits_unsigned(data, 0, 3);
 		if (encoding != 0)
 		{
-			return 0;
+			return result;
 		}
 
+		int16_t width = (int16_t)fetchbits_unsigned(data, 3, inFont->bits_width);
 		bitoffset = inFont->bits_width + 3;
+
+		int16_t	height = (int16_t)fetchbits_unsigned(data, bitoffset, inFont->bits_height);
 		bitoffset += inFont->bits_height;
+
+		int16_t xoffset = (int16_t)fetchbits_signed(data, bitoffset, inFont->bits_xoffset);
 		bitoffset += inFont->bits_xoffset;
+
+		int16_t yoffset = (int16_t)fetchbits_signed(data, bitoffset, inFont->bits_yoffset);
 		bitoffset += inFont->bits_yoffset;
 
-		uint32_t delta = fetchbits_unsigned(data, bitoffset, inFont->bits_delta);
+		int16_t delta = (int16_t)fetchbits_unsigned(data, bitoffset, inFont->bits_delta);
 
-		result += (uint16_t)delta;
+		result.x += delta;
+		int16_t	curHeight = height + yoffset;
+		if(curHeight > result.y)
+		{
+			result.y = curHeight;
+		}
+
+		if(*inStr == 0 && width + xoffset > delta)
+		{
+			result.x += width + xoffset - delta;
+		}
 	}
 
 	return result;
 }
 
-uint16_t
-CModule_Display::GetTextHeight(
-	char const*			inStr,
-	SFontData const*	inFont)
-{
-	return inFont->line_space;
-}
-
 int16_t
 CModule_Display::DrawChar(
 	char					inChar,
-	SDisplayPoint const&	inPoint,
+	SDisplayRect const&		inRect,
 	SFontData const*		inFont,
 	SDisplayColor const&	inForeground,
 	SDisplayColor const&	inBackground)
@@ -1593,10 +961,17 @@ CModule_Display::DrawChar(
 	int16_t delta = (int16_t)fetchbits_unsigned(data, bitoffset, inFont->bits_delta);
 	bitoffset += inFont->bits_delta;
 
-	displayDriver->DrawContinuousStart(SDisplayRect(inPoint.x, inPoint.y, MMax(delta, width + abs(xoffset)), inFont->line_space), inForeground, inBackground);
+	if(inRect.topLeft.x == inRect.bottomRight.x)
+	{
+		displayDriver->DrawContinuousStart(SDisplayRect(inRect.topLeft.x, inRect.topLeft.y, MMax(delta, width + abs(xoffset)), inRect.GetHeight()), inForeground, inBackground);
+	}
+	else
+	{
+		displayDriver->DrawContinuousStart(inRect, inForeground, inBackground);
+	}
 
 	int16_t	topLines = (int16_t)inFont->cap_height - height - yoffset;
-	int16_t	bottomLines = (int16_t)inFont->line_space - topLines - height;
+	int16_t	bottomLines = (int16_t)inRect.GetHeight() - topLines - height;
 
 	//SystemMsg("width=%d height=%d xoff=%d yoff=%d delta=%d line_space=%d cap_height=%d topLines=%d bottomLines=%d", width, height, xoffset, yoffset, delta, inFont->line_space, inFont->cap_height, topLines, bottomLines);
 
@@ -1661,13 +1036,14 @@ CModule_Display::DrawChar(
 void
 CModule_Display::DrawText(
 	char const*				inStr,
-	SDisplayPoint const&	inPoint,
+	SDisplayRect const&		inRect,
 	SFontData const*		inFont,
 	SDisplayColor const&	inForeground,
 	SDisplayColor const&	inBackground)
 {
-	SDisplayPoint	curPoint = inPoint;
+	SDisplayRect	curCharRect(inRect);
 
+	curCharRect.bottomRight.x = curCharRect.topLeft.x;
 	for(;;)
 	{
 		char c = *inStr++;
@@ -1677,8 +1053,9 @@ CModule_Display::DrawText(
 			break;
 		}
 
-		int16_t	charWidth = DrawChar(c, curPoint, inFont, inForeground, inBackground);
-		curPoint.x += charWidth;
+		int16_t	charWidth = DrawChar(c, curCharRect, inFont, inForeground, inBackground);
+		curCharRect.topLeft.x += charWidth;
+		curCharRect.bottomRight.x += charWidth;
 	}
 }
 
@@ -1744,6 +1121,15 @@ CModule_Display::ReallocString(
 	{
 		// there is room after the current string
 		return inStr;
+	}
+
+	// Return the old string back to the string pool
+	cp = (uint8_t*)inStr;
+	uint8_t*	sep = (uint8_t*)inStr + strLen;
+
+	while(cp < sep)
+	{
+		*cp++ = 0xFF;
 	}
 
 	cp = gDisplayModule->stringTable;
@@ -1848,3 +1234,63 @@ CModule_Display::FreeString(
 	}
 }
 
+#if 0
+void
+TestDisplay(
+	void)
+{
+	IDisplayDriver*	displayDriver = CreateILI9341Driver(eDisplayOrientation_LandscapeUpsideDown, eDisplay_CS, eDisplay_DC, eSPI_MOSI, eSPI_SCLK, eSPI_MISO);
+
+	gDisplayModule->SetDisplayDriver(displayDriver);
+
+	displayDriver->BeginDrawing();
+	displayDriver->FillScreen(SDisplayColor(0, 0, 0));
+	#if 0
+	//gDisplayModule->DrawText("$", SDisplayPoint(10, 10), &Arial_14, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0));
+	gDisplayModule->DrawText("abcdefghijklmnopqrstuvwxyz", SDisplayPoint(10, 10), &Arial_14, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0));
+	gDisplayModule->DrawText("ABCDEFGHIJKLMNOPQRSTUVWXYZ", SDisplayPoint(10, 30), &Arial_14, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0));
+	gDisplayModule->DrawText("0123456789", SDisplayPoint(10, 50), &Arial_14, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0));
+	gDisplayModule->DrawText("`~!@#$%^&*", SDisplayPoint(10, 70), &Arial_14, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0)); // %^&*
+	gDisplayModule->DrawText("*()_-+=[]{}\\|/?.>,<", SDisplayPoint(10, 90), &Arial_14, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0));
+	return;
+	#endif
+	displayDriver->EndDrawing();
+
+	// Build up the display graph
+	CDisplayRegion*	topRegion = gDisplayModule->GetTopDisplayRegion();
+
+	CDisplayRegion_Text*	curTimeRegionTL = new CDisplayRegion_Text(SPlacement::Inside(eInside_Horiz_Left, eInside_Vert_Top), topRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_14, "TopLeft");
+	CDisplayRegion_Text*	curTimeRegionBL = new CDisplayRegion_Text(SPlacement::Inside(eInside_Horiz_Left, eInside_Vert_Bottom), topRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_14, "BottomLeft");
+	CDisplayRegion_Text*	curTimeRegionTR = new CDisplayRegion_Text(SPlacement::Inside(eInside_Horiz_Right, eInside_Vert_Top), topRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_14, "TopRight");
+	CDisplayRegion_Text*	curTimeRegionTB = new CDisplayRegion_Text(SPlacement::Inside(eInside_Horiz_Right, eInside_Vert_Bottom), topRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_14, "BottomRight");
+	CDisplayRegion*			centerRegion = new CDisplayRegion(SPlacement::Inside(eInside_Horiz_Center, eInside_Vert_Center), topRegion);
+	CDisplayRegion_Text*	curTimeRegionCCTop = new CDisplayRegion_Text(SPlacement::Inside(eInside_Horiz_Center, eInside_Vert_Top), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_14, "Top");
+	CDisplayRegion_Text*	curTimeRegionCCMiddle = new CDisplayRegion_Text(SPlacement::Inside(eInside_Horiz_Center, eInside_Vert_Center), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_14, "Middle");
+	CDisplayRegion_Text*	curTimeRegionCCBottom = new CDisplayRegion_Text(SPlacement::Inside(eInside_Horiz_Center, eInside_Vert_Bottom), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_14, "Bottom");
+	CDisplayRegion_Text*	curTimeRegionOutsideLeftTop = new CDisplayRegion_Text(SPlacement::Outside(eOutside_SideLeft, eOutside_AlignTop), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "LeftTop");
+	CDisplayRegion_Text*	curTimeRegionOutsideLeftCenter = new CDisplayRegion_Text(SPlacement::Outside(eOutside_SideLeft, eOutside_AlignCenter), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "LeftCenter");
+	CDisplayRegion_Text*	curTimeRegionOutsideLeftBottom = new CDisplayRegion_Text(SPlacement::Outside(eOutside_SideLeft, eOutside_AlignBottom), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "LeftBottom");
+	CDisplayRegion_Text*	curTimeRegionOutsideRightTop = new CDisplayRegion_Text(SPlacement::Outside(eOutside_SideRight, eOutside_AlignTop), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "RightTop");
+	CDisplayRegion_Text*	curTimeRegionOutsideRightCenter = new CDisplayRegion_Text(SPlacement::Outside(eOutside_SideRight, eOutside_AlignCenter), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "RightCenter");
+	CDisplayRegion_Text*	curTimeRegionOutsideRightBottom = new CDisplayRegion_Text(SPlacement::Outside(eOutside_SideRight, eOutside_AlignBottom), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "RightBottom");
+	CDisplayRegion_Text*	curTimeRegionOutsideTopLeft = new CDisplayRegion_Text(SPlacement::Outside(eOutside_SideTop, eOutside_AlignLeft), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "TL");
+	CDisplayRegion_Text*	curTimeRegionOutsideTopCenter = new CDisplayRegion_Text(SPlacement::Outside(eOutside_SideTop, eOutside_AlignCenter), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "TC");
+	CDisplayRegion_Text*	curTimeRegionOutsideTopRight = new CDisplayRegion_Text(SPlacement::Outside(eOutside_SideTop, eOutside_AlignRight), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "TR");
+	CDisplayRegion_Text*	curTimeRegionOutsideBottomLeft = new CDisplayRegion_Text(SPlacement::Outside(eOutside_SideBottom, eOutside_AlignLeft), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "BL");
+	CDisplayRegion_Text*	curTimeRegionOutsideBottomCenter = new CDisplayRegion_Text(SPlacement::Outside(eOutside_SideBottom, eOutside_AlignCenter), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "BC");
+	CDisplayRegion_Text*	curTimeRegionOutsideBottomRight = new CDisplayRegion_Text(SPlacement::Outside(eOutside_SideBottom, eOutside_AlignRight), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "BR");
+
+	gDisplayModule->UpdateDisplay();
+
+	curTimeRegionTL->SetTextFont(Arial_10);
+	curTimeRegionBL->SetTextFont(Arial_10);
+	curTimeRegionTR->SetTextFont(Arial_10);
+	curTimeRegionTB->SetTextFont(Arial_10);
+	curTimeRegionCCTop->SetTextFont(Arial_24);
+	curTimeRegionCCMiddle->SetTextFont(Arial_24);
+	curTimeRegionCCBottom->SetTextFont(Arial_24);
+
+	gDisplayModule->UpdateDisplay();
+
+}
+#endif
