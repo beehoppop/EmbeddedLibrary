@@ -58,30 +58,33 @@ class CModule_Display;
 
 enum
 {
-	ePlace_Inside	= 0,				// Place the child box inside of the parent box
-	ePlace_Outside	= 1,				// Place the child box outside of the parent box
+	ePlacementType_Inside	= 0,		// Place the child box inside of the parent box
+	ePlacementType_Outside	= 1,		// Place the child box outside of the parent box
+	ePlacementType_Grid		= 2,		// Place the child box inside of the parent box as a grid
 
-	eInside_Horiz_Left		= 0,		// Place the child box inside in the left side of the parent box
+	eInside_Horiz_Left		= 0,		// Place the child box inside on the left side of the parent box
 	eInside_Horiz_Center	= 1,		// Place the child box inside in the horiz center of the parent box
-	eInside_Horiz_Right		= 2,		// Place the child box inside in the right side of the parent box
+	eInside_Horiz_Right		= 2,		// Place the child box inside on the right side of the parent box
 
-	eInside_Vert_Top		= 0,		// Place the child box inside in the top of the parent box
+	eInside_Vert_Top		= 0,		// Place the child box inside on the top of the parent box
 	eInside_Vert_Center		= 1,		// PLace the child box inside in the vertical center of the parent box
-	eInside_Vert_Bottom		= 2,		// Place the child box inside in the bottom of the parent box
+	eInside_Vert_Bottom		= 2,		// Place the child box inside on the bottom of the parent box
 
-	eOutside_SideTop			= 0,	// Place the child box outside on top of the parent box
-	eOutside_SideBottom			= 1,	// Place the child box outside on the bottom of the parent box
-	eOutside_SideLeft			= 2,	// Place the child box outside on the left of the parent box
-	eOutside_SideRight			= 3,	// Place the child box outside on the right of the parent box
+	eOutside_Side_Top			= 0,	// Place the child box outside on top of the parent box
+	eOutside_Side_Bottom		= 1,	// Place the child box outside on the bottom of the parent box
+	eOutside_Side_Left			= 2,	// Place the child box outside on the left of the parent box
+	eOutside_Side_Right			= 3,	// Place the child box outside on the right of the parent box
 
-	eOutside_AlignLeft			= 0,	// Place the child box outside on the left top or bottom side of the parent box
-	eOutside_AlignCenter		= 1,	// Place the child box outside in the center top, bottom, left, or side side of the parent box
-	eOutside_AlignRight			= 2,	// Place the child box outside on the right top or bottom side of the parent box
-	eOutside_AlignTop			= 0,	// Place the child box outside on the top left or right side of the parent box
-	eOutside_AlignBottom		= 2,	// Place the child box outside on the bottom left or right side of the parent box
+	eOutside_Align_Left			= 0,	// Place the child box outside on the left top or bottom side of the parent box
+	eOutside_Align_Center		= 1,	// Place the child box outside in the center top, bottom, left, or side side of the parent box
+	eOutside_Align_Right		= 2,	// Place the child box outside on the right top or bottom side of the parent box
+	eOutside_Align_Top			= 0,	// Place the child box outside on the top left or right side of the parent box
+	eOutside_Align_Bottom		= 2,	// Place the child box outside on the bottom left or right side of the parent box
 	
-	ePrimary_Any = 4,
-	eSecondary_Any = 3,
+	ePlacement_Any = 0x7F,
+
+	eGrid_MaxRows = 16,
+	eGrid_MaxCols = 16,
 
 	eStringTableSize = 1024,
 };
@@ -121,24 +124,34 @@ struct SFontData
 	unsigned char cap_height;
 };
 
-struct SPlacement	// This is used to organize the placement data of how to position a box relative to its parent
+// This is used to organize the placement data of how to position a box relative to its parent
+// The child defines how it is placed within the parent not the other way around. No enforcement is done on placement.
+// Use one of the static functions to construct the required variant, Inside, Outside, Grid
+struct SPlacement	
 {
-
+	// Create an inside my parent placement
 	static SPlacement
 	Inside(
-		uint8_t	inHoriz,
-		uint8_t	inVert);
-
+		uint8_t	inHoriz,	// eInside_Horiz_*
+		uint8_t	inVert);	// eInside_Vert_*
+	
+	// Create an outside my parent placement
 	static SPlacement
 	Outside(
-		uint8_t	inSide,
-		uint8_t	inAlignment);
+		uint8_t	inSide,			// eOutside_Side_*
+		uint8_t	inAlignment);	// eOutside_Align_*
 	
-	inline bool
-	GetPlace(
+	// Create a grid placement within my parent
+	static SPlacement
+	Grid(
+		uint8_t	inRowIndex,		// The row index
+		uint8_t	inColIndex);	// The col index
+	
+	inline uint8_t
+	GetPlacementType(
 		void)
 	{
-		return place;
+		return placementType;
 	}
 
 	inline uint8_t
@@ -169,21 +182,35 @@ struct SPlacement	// This is used to organize the placement data of how to posit
 		return secondary;
 	}
 
+	inline uint8_t
+	GetGridRow(
+		void)
+	{
+		return primary;
+	}
+
+	inline uint8_t
+	GetGridCol(
+		void)
+	{
+		return secondary;
+	}
+
 	inline bool
 	Match(
 		SPlacement	inPlacement)
 	{
-		if(place != inPlacement.place)
+		if(placementType != inPlacement.placementType)
 		{
 			return false;
 		}
 
-		if(inPlacement.primary != ePrimary_Any && primary != inPlacement.primary)
+		if(inPlacement.primary != ePlacement_Any && primary != inPlacement.primary)
 		{
 			return false;
 		}
 
-		if(inPlacement.secondary != eSecondary_Any && secondary != inPlacement.secondary)
+		if(inPlacement.secondary != ePlacement_Any && secondary != inPlacement.secondary)
 		{
 			return false;
 		}
@@ -198,15 +225,15 @@ private:
 		uint8_t	inPrimary,
 		uint8_t	inSecondary)
 		:
-		place(inPlace),
+		placementType(inPlace),
 		primary(inPrimary),
 		secondary(inSecondary)
 	{
 	}
 
-	uint8_t		place : 1,
-				primary : 3,
-				secondary : 2;
+	uint16_t	placementType : 2,
+				primary : 7,
+				secondary : 7;
 };
 
 struct SDisplayPoint
@@ -233,6 +260,15 @@ struct SDisplayPoint
 		void)
 	{
 		x = y = 0;
+	}
+
+	SDisplayPoint
+	operator +=(
+		SDisplayPoint const&	inRHS)
+	{
+		x += inRHS.x;
+		y += inRHS.y;
+		return *this;
 	}
 
 	inline bool
@@ -265,6 +301,14 @@ operator +(
 	SDisplayPoint const& inRHS)
 {
 	return SDisplayPoint(inLHS.x + inRHS.x, inLHS.y + inRHS.y);
+}
+
+inline SDisplayPoint
+operator -(
+	SDisplayPoint const& inLHS,
+	SDisplayPoint const& inRHS)
+{
+	return SDisplayPoint(inLHS.x - inRHS.x, inLHS.y - inRHS.y);
 }
 
 struct SDisplayRect
@@ -524,27 +568,27 @@ class CDisplayRegion
 public:
 	
 	CDisplayRegion(
-		SPlacement		inPlacement,
-		CDisplayRegion*	inParent);
+		CDisplayRegion*	inParent,
+		SPlacement		inPlacement);
 	
 	CDisplayRegion(
-		SDisplayRect const&	inRect,
-		CDisplayRegion*		inParent);
+		CDisplayRegion*		inParent,
+		SDisplayRect const&	inRect);
 
-	virtual int16_t
+	int16_t
 	GetWidth(
 		void);
 
-	virtual int16_t
+	int16_t
 	GetHeight(
 		void);
 
 	void
-	AddToGraph(
+	AddToParent(
 		CDisplayRegion*	inParent);
 
 	void
-	RemoveFromGraph(
+	RemoveFromParent(
 		void);
 
 	void
@@ -553,10 +597,10 @@ public:
 
 	void
 	SetBorder(
-		int16_t	inLeft,
-		int16_t	inRight,
-		int16_t	inTop,
-		int16_t	inBottom);
+		int8_t	inLeft,
+		int8_t	inRight,
+		int8_t	inTop,
+		int8_t	inBottom);
 
 	void
 	SetTouchHandler(
@@ -611,10 +655,10 @@ protected:
 
 	int16_t			width;
 	int16_t			height;
-	int16_t			borderLeft;
-	int16_t			borderRight;
-	int16_t			borderTop;
-	int16_t			borderBottom;
+	int8_t			borderLeft;
+	int8_t			borderRight;
+	int8_t			borderTop;
+	int8_t			borderBottom;
 	bool			fixedSize;
 
 	friend CModule_Display;
@@ -625,8 +669,8 @@ class CDisplayRegion_Text : public CDisplayRegion
 public:
 	
 	CDisplayRegion_Text(
-		SPlacement			inPlacement,
 		CDisplayRegion*		inParent,
+		SPlacement			inPlacement,
 		SDisplayColor		inFGColor,
 		SDisplayColor		inBGColor,
 		SFontData const&	inFont,
@@ -643,7 +687,8 @@ public:
 	
 	void
 	SetTextAlignment(
-		uint16_t	inAlignmentFlags);
+		uint8_t	inHorizAlignment,
+		uint8_t	inVertAlignment);
 
 	void
 	SetTextFont(
@@ -669,6 +714,8 @@ private:
 	SDisplayColor		bgColor;
 	SFontData const*	font;
 	bool				dirty;
+	uint8_t				horizAlign;
+	uint8_t				vertAlign;
 };
 
 class CModule_Display : public CModule
@@ -726,6 +773,13 @@ public:
 	void
 	UpdateDisplay(
 		void);
+
+	// Fill the parts of inRectB not intersecting inRectA
+	void
+	FillRectDiff(
+		SDisplayRect const&		inRectNew,
+		SDisplayRect const&		inRectOld,
+		SDisplayColor const&	inColor);
 
 private:
 
