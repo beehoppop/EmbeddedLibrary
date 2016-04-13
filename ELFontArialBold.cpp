@@ -87,7 +87,7 @@ static const unsigned char Arial_8_Bold_index[] = {
 };
 /* font index size: 119 bytes */
 
-const SFontData Arial_8_Bold = {
+const SFontData gArial_8_Bold = {
 	Arial_8_Bold_index,
 	0,
 	Arial_8_Bold_data,
@@ -207,7 +207,7 @@ static const unsigned char Arial_9_Bold_index[] = {
 };
 /* font index size: 119 bytes */
 
-const SFontData Arial_9_Bold = {
+const SFontData gArial_9_Bold = {
 	Arial_9_Bold_index,
 	0,
 	Arial_9_Bold_data,
@@ -339,7 +339,7 @@ static const unsigned char Arial_10_Bold_index[] = {
 };
 /* font index size: 119 bytes */
 
-const SFontData Arial_10_Bold = {
+const SFontData gArial_10_Bold = {
 	Arial_10_Bold_index,
 	0,
 	Arial_10_Bold_data,
@@ -477,7 +477,7 @@ static const unsigned char Arial_11_Bold_index[] = {
 };
 /* font index size: 119 bytes */
 
-const SFontData Arial_11_Bold = {
+const SFontData gArial_11_Bold = {
 	Arial_11_Bold_index,
 	0,
 	Arial_11_Bold_data,
@@ -634,7 +634,7 @@ static const unsigned char Arial_12_Bold_index[] = {
 };
 /* font index size: 131 bytes */
 
-const SFontData Arial_12_Bold = {
+const SFontData gArial_12_Bold = {
 	Arial_12_Bold_index,
 	0,
 	Arial_12_Bold_data,
@@ -803,7 +803,7 @@ static const unsigned char Arial_13_Bold_index[] = {
 };
 /* font index size: 131 bytes */
 
-const SFontData Arial_13_Bold = {
+const SFontData gArial_13_Bold = {
 	Arial_13_Bold_index,
 	0,
 	Arial_13_Bold_data,
@@ -982,7 +982,7 @@ static const unsigned char Arial_14_Bold_index[] = {
 };
 /* font index size: 131 bytes */
 
-const SFontData Arial_14_Bold = {
+const SFontData gArial_14_Bold = {
 	Arial_14_Bold_index,
 	0,
 	Arial_14_Bold_data,
@@ -1185,7 +1185,7 @@ static const unsigned char Arial_16_Bold_index[] = {
 };
 /* font index size: 131 bytes */
 
-const SFontData Arial_16_Bold = {
+const SFontData gArial_16_Bold = {
 	Arial_16_Bold_index,
 	0,
 	Arial_16_Bold_data,
@@ -1427,7 +1427,7 @@ static const unsigned char Arial_18_Bold_index[] = {
 };
 /* font index size: 131 bytes */
 
-const SFontData Arial_18_Bold = {
+const SFontData gArial_18_Bold = {
 	Arial_18_Bold_index,
 	0,
 	Arial_18_Bold_data,
@@ -1712,7 +1712,7 @@ static const unsigned char Arial_20_Bold_index[] = {
 };
 /* font index size: 143 bytes */
 
-const SFontData Arial_20_Bold = {
+const SFontData gArial_20_Bold = {
 	Arial_20_Bold_index,
 	0,
 	Arial_20_Bold_data,
@@ -2062,7 +2062,7 @@ static const unsigned char Arial_24_Bold_index[] = {
 };
 /* font index size: 143 bytes */
 
-const SFontData Arial_24_Bold = {
+const SFontData gArial_24_Bold = {
 	Arial_24_Bold_index,
 	0,
 	Arial_24_Bold_data,
@@ -2514,7 +2514,7 @@ static const unsigned char Arial_28_Bold_index[] = {
 };
 /* font index size: 143 bytes */
 
-const SFontData Arial_28_Bold = {
+const SFontData gArial_28_Bold = {
 	Arial_28_Bold_index,
 	0,
 	Arial_28_Bold_data,
@@ -3071,7 +3071,7 @@ static const unsigned char Arial_32_Bold_index[] = {
 };
 /* font index size: 155 bytes */
 
-const SFontData Arial_32_Bold = {
+const SFontData gArial_32_Bold = {
 	Arial_32_Bold_index,
 	0,
 	Arial_32_Bold_data,
@@ -3907,7 +3907,7 @@ static const unsigned char Arial_40_Bold_index[] = {
 };
 /* font index size: 155 bytes */
 
-const SFontData Arial_40_Bold = {
+const SFontData gArial_40_Bold = {
 	Arial_40_Bold_index,
 	0,
 	Arial_40_Bold_data,
@@ -5087,7 +5087,7 @@ static const unsigned char Arial_48_Bold_index[] = {
 };
 /* font index size: 167 bytes */
 
-const SFontData Arial_48_Bold = {
+const SFontData gArial_48_Bold = {
 	Arial_48_Bold_index,
 	0,
 	Arial_48_Bold_data,
@@ -6817,7 +6817,7 @@ static const unsigned char Arial_60_Bold_index[] = {
 };
 /* font index size: 179 bytes */
 
-const SFontData Arial_60_Bold = {
+const SFontData gArial_60_Bold = {
 	Arial_60_Bold_index,
 	0,
 	Arial_60_Bold_data,
@@ -9245,7 +9245,7 @@ static const unsigned char Arial_72_Bold_index[] = {
 };
 /* font index size: 179 bytes */
 
-const SFontData Arial_72_Bold = {
+const SFontData gArial_72_Bold = {
 	Arial_72_Bold_index,
 	0,
 	Arial_72_Bold_data,
@@ -13438,7 +13438,7 @@ static const unsigned char Arial_96_Bold_index[] = {
 };
 /* font index size: 190 bytes */
 
-const SFontData Arial_96_Bold = {
+const SFontData gArial_96_Bold = {
 	Arial_96_Bold_index,
 	0,
 	Arial_96_Bold_data,

@@ -46,6 +46,13 @@
 /*
 	ABOUT
 
+	This provides some simple but powerful layout mechanisms based on specifying relative positioning relationships.
+	There is a display graph for drawing objects to the screen. The top node of the graph is always the display screen
+	itself. Children are drawn relative to their parents. 
+	Each node determines its own size size and placement information (which it may delegate to its parent).
+	The parent determines the nodes relative placement to itself.
+	Each node has a draw size which is the actual dimensions of whatever it needs to draw
+	Each node has bounding rect that determines placement, accommodates border, and that the actual region size may be determined by the parent.
 */
 
 #include <ELModule.h>
@@ -55,31 +62,28 @@
 #define MMakeColor(r, g, b) ((((r) & 0x1f) << 11) | (((g) & 0x3f) << 5) | ((b) & 0x1F))
 
 class CModule_Display;
+class CDisplayRegion_Grid;
+class CDisplayRegion_Text;
 
 enum
 {
-	ePlacementType_Inside	= 0,		// Place the child box inside of the parent box
-	ePlacementType_Outside	= 1,		// Place the child box outside of the parent box
-	ePlacementType_Grid		= 2,		// Place the child box inside of the parent box as a grid
+	ePlacementType_Inside	= 0,	// Place the child box inside of the parent box
+	ePlacementType_Outside	= 1,	// Place the child box outside of the parent box
 
-	eInside_Horiz_Left		= 0,		// Place the child box inside on the left side of the parent box
-	eInside_Horiz_Center	= 1,		// Place the child box inside in the horiz center of the parent box
-	eInside_Horiz_Right		= 2,		// Place the child box inside on the right side of the parent box
+	eAlign_Horiz_Left		= 0,	// Place the child box inside on the left side of the parent box
+	eAlign_Horiz_Center		= 1,	// Place the child box inside in the horiz center of the parent box
+	eAlign_Horiz_Right		= 2,	// Place the child box inside on the right side of the parent box
+	eAlign_Horiz_Expand		= 3,	// The child box is the same horizontal size of the parent box
 
-	eInside_Vert_Top		= 0,		// Place the child box inside on the top of the parent box
-	eInside_Vert_Center		= 1,		// PLace the child box inside in the vertical center of the parent box
-	eInside_Vert_Bottom		= 2,		// Place the child box inside on the bottom of the parent box
+	eAlign_Vert_Top			= 0,	// Place the child box inside on the top of the parent box
+	eAlign_Vert_Center		= 1,	// PLace the child box inside in the vertical center of the parent box
+	eAlign_Vert_Bottom		= 2,	// Place the child box inside on the bottom of the parent box
+	eAlign_Vert_Expand		= 3,	// The child box is the same vertical size of the parent box
 
-	eOutside_Side_Top			= 0,	// Place the child box outside on top of the parent box
-	eOutside_Side_Bottom		= 1,	// Place the child box outside on the bottom of the parent box
-	eOutside_Side_Left			= 2,	// Place the child box outside on the left of the parent box
-	eOutside_Side_Right			= 3,	// Place the child box outside on the right of the parent box
-
-	eOutside_Align_Left			= 0,	// Place the child box outside on the left top or bottom side of the parent box
-	eOutside_Align_Center		= 1,	// Place the child box outside in the center top, bottom, left, or side side of the parent box
-	eOutside_Align_Right		= 2,	// Place the child box outside on the right top or bottom side of the parent box
-	eOutside_Align_Top			= 0,	// Place the child box outside on the top left or right side of the parent box
-	eOutside_Align_Bottom		= 2,	// Place the child box outside on the bottom left or right side of the parent box
+	eAlign_Side_Top			= 0,	// Place the child box outside on top of the parent box
+	eAlign_Side_Bottom		= 1,	// Place the child box outside on the bottom of the parent box
+	eAlign_Side_Left		= 2,	// Place the child box outside on the left of the parent box
+	eAlign_Side_Right		= 3,	// Place the child box outside on the right of the parent box
 	
 	ePlacement_Any = 0x7F,
 
@@ -129,23 +133,17 @@ struct SFontData
 // Use one of the static functions to construct the required variant, Inside, Outside, Grid
 struct SPlacement	
 {
-	// Create an inside my parent placement
+	// Create inside placement
 	static SPlacement
 	Inside(
-		uint8_t	inHoriz,	// eInside_Horiz_*
-		uint8_t	inVert);	// eInside_Vert_*
+		uint8_t	inHoriz,	// eAlign_Horiz_*
+		uint8_t	inVert);	// eAlign_Vert_*
 	
-	// Create an outside my parent placement
+	// Create outside placement
 	static SPlacement
 	Outside(
 		uint8_t	inSide,			// eOutside_Side_*
 		uint8_t	inAlignment);	// eOutside_Align_*
-	
-	// Create a grid placement within my parent
-	static SPlacement
-	Grid(
-		uint8_t	inRowIndex,		// The row index
-		uint8_t	inColIndex);	// The col index
 	
 	inline uint8_t
 	GetPlacementType(
@@ -182,19 +180,6 @@ struct SPlacement
 		return secondary;
 	}
 
-	inline uint8_t
-	GetGridRow(
-		void)
-	{
-		return primary;
-	}
-
-	inline uint8_t
-	GetGridCol(
-		void)
-	{
-		return secondary;
-	}
 
 	inline bool
 	Match(
@@ -221,11 +206,11 @@ struct SPlacement
 private:
 	
 	SPlacement(
-		uint8_t	inPlace,
+		uint8_t	inPlacementType,
 		uint8_t	inPrimary,
 		uint8_t	inSecondary)
 		:
-		placementType(inPlace),
+		placementType(inPlacementType),
 		primary(inPrimary),
 		secondary(inSecondary)
 	{
@@ -256,7 +241,7 @@ struct SDisplayPoint
 	}
 
 	inline void
-	Reset(
+	Clear(
 		void)
 	{
 		x = y = 0;
@@ -384,11 +369,11 @@ struct SDisplayRect
 	}
 
 	inline void
-	Reset(
+	Clear(
 		void)
 	{
-		topLeft.Reset();
-		bottomRight.Reset();
+		topLeft.Clear();
+		bottomRight.Clear();
 	}
 
 	inline void
@@ -569,11 +554,7 @@ public:
 	
 	CDisplayRegion(
 		CDisplayRegion*	inParent,
-		SPlacement		inPlacement);
-	
-	CDisplayRegion(
-		CDisplayRegion*		inParent,
-		SDisplayRect const&	inRect);
+		SPlacement		inPlacement);					// This determines how this region is placed relative to the parent
 
 	int16_t
 	GetWidth(
@@ -594,7 +575,8 @@ public:
 	void
 	SetPlacement(
 		SPlacement	inPlacement);
-
+	
+	// How much to extend the size of this region beyond the draw size
 	void
 	SetBorder(
 		int8_t	inLeft,
@@ -623,7 +605,7 @@ protected:
 	UpdateDimensions(
 		void);
 	
-	void
+	virtual void
 	UpdateOrigins(
 		void);
 
@@ -641,27 +623,70 @@ protected:
 		int16_t&		outHeight,
 		SPlacement		inPlacement,
 		CDisplayRegion*	inList);
+	
+	void
+	PlaceInRect(
+		int8_t				inBorderLeft,
+		int8_t				inBorderTop,
+		int8_t				inBorderRight,
+		int8_t				inBorderBottom,
+		SDisplayRect const&	inRect);
 
 	CDisplayRegion*	parent;
 	CDisplayRegion*	firstChild;
 	CDisplayRegion*	nextChild;
-	SPlacement		placement;
-	SDisplayRect	curRect;
-	SDisplayRect	oldRect;
+
+	SPlacement		placement;		// This defines how this region is placed in the parent
+	SDisplayRect	curRect;		// This is the current rect within my parent (in global coordinates)
+	SDisplayRect	oldRect;		// This was the rect from the last update (in global coordinates)
 
 	ITouchHandler*		touchObject;
 	TTouchHandlerMethod	touchMethod;
 	void*				touchRefCon;
 
-	int16_t			width;
-	int16_t			height;
 	int8_t			borderLeft;
 	int8_t			borderRight;
 	int8_t			borderTop;
 	int8_t			borderBottom;
-	bool			fixedSize;
 
 	friend CModule_Display;
+	friend CDisplayRegion_Grid;
+	friend CDisplayRegion_Text;
+};
+
+class CDisplayRegion_Grid : public CDisplayRegion
+{
+public:
+	
+	CDisplayRegion_Grid(
+		CDisplayRegion*	inParent,
+		SPlacement		inPlacement,
+		bool			inEqualCellDimensions,
+		uint8_t			inNumRows,
+		uint8_t			inNumCols);
+
+	void
+	SetCellRegion(
+		uint8_t			inRow,
+		uint8_t			inCol,
+		CDisplayRegion*	inDisplayRegion);
+
+protected:
+
+	virtual void
+	UpdateDimensions(
+		void);
+	
+	virtual void
+	UpdateOrigins(
+		void);
+
+	CDisplayRegion**	cellMatrix;
+	int16_t*			rowOffsets;
+	int16_t*			colOffsets;
+	bool				equalCellPlacement;
+	uint8_t				numRows;
+	uint8_t				numCols;
 };
 
 class CDisplayRegion_Text : public CDisplayRegion
@@ -684,11 +709,6 @@ public:
 	printf(
 		char const*	inFormat,
 		...);
-	
-	void
-	SetTextAlignment(
-		uint8_t	inHorizAlignment,
-		uint8_t	inVertAlignment);
 
 	void
 	SetTextFont(
@@ -698,6 +718,11 @@ public:
 	SetTextColor(
 		SDisplayColor const&	inFGColor,
 		SDisplayColor const&	inBGColor);
+	
+	void
+	SetTextAlignment(
+		uint8_t	inHorizAlignment,
+		uint8_t	inVertAlignment);
 
 private:
 
@@ -713,7 +738,6 @@ private:
 	SDisplayColor		fgColor;
 	SDisplayColor		bgColor;
 	SFontData const*	font;
-	bool				dirty;
 	uint8_t				horizAlign;
 	uint8_t				vertAlign;
 };

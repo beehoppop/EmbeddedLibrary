@@ -1,36 +1,46 @@
 
 
 /*
-This is the core graphics library for all our displays, providing a common
-set of graphics primitives (points, lines, circles, etc.).  It needs to be
-paired with a hardware-specific library for each display device we carry
-(to handle the lower-level functions).
+	Author: Brent Pease (embeddedlibraryfeedback@gmail.com)
 
-Adafruit invests time and resources providing this open source code, please
-support Adafruit & open-source hardware by purchasing products from Adafruit!
+	The MIT License (MIT)
 
-Copyright (c) 2013 Adafruit Industries.  All rights reserved.
+	Copyright (c) 2015-FOREVER Brent Pease
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
+	Permission is hereby granted, free of charge, to any person obtaining a copy
+	of this software and associated documentation files (the "Software"), to deal
+	in the Software without restriction, including without limitation the rights
+	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	copies of the Software, and to permit persons to whom the Software is
+	furnished to do so, subject to the following conditions:
 
-- Redistributions of source code must retain the above copyright notice,
-  this list of conditions and the following disclaimer.
-- Redistributions in binary form must reproduce the above copyright notice,
-  this list of conditions and the following disclaimer in the documentation
-  and/or other materials provided with the distribution.
+	The above copyright notice and this permission notice shall be included in all
+	copies or substantial portions of the Software.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-POSSIBILITY OF SUCH DAMAGE.
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+	SOFTWARE.
+
+
+	Parts based on AdaFruit ILI9341 library:
+
+	This is our library for the Adafruit ILI9341 Breakout and Shield
+	----> http://www.adafruit.com/products/1651
+
+	Check out the links above for our tutorials and wiring diagrams
+	These displays use SPI to communicate, 4 or 5 pins are required to
+	interface (RST is optional)
+	Adafruit invests time and resources providing this open source code,
+	please support Adafruit and open-source hardware by purchasing
+	products from Adafruit!
+
+	Written by Limor Fried/Ladyada for Adafruit Industries.
+	MIT license, all text above must be included in any redistribution
+
 */
 
 
@@ -65,14 +75,6 @@ SPlacement::Inside(
 	uint8_t	inVert)
 {
 	return SPlacement(ePlacementType_Inside, inHoriz, inVert);
-}
-
-SPlacement
-SPlacement::Grid(
-	uint8_t	inRowIndex,
-	uint8_t	inColIndex)
-{
-	return SPlacement(ePlacementType_Grid, inRowIndex, inColIndex);
 }
 
 IDisplayDriver*
@@ -155,13 +157,10 @@ CDisplayRegion::CDisplayRegion(
 	placement(inPlacement),
 	curRect(0, 0, 0, 0),
 	oldRect(0, 0, 0, 0),
-	width(0),
-	height(0),
 	borderLeft(0),
 	borderRight(0),
 	borderTop(0),
-	borderBottom(0),
-	fixedSize(false)
+	borderBottom(0)
 {
 	touchObject = NULL;
 
@@ -171,44 +170,19 @@ CDisplayRegion::CDisplayRegion(
 	}
 }
 	
-CDisplayRegion::CDisplayRegion(
-	CDisplayRegion*		inParent,
-	SDisplayRect const&	inRect)
-	:
-	parent(NULL),
-	firstChild(NULL),
-	nextChild(NULL),
-	placement(SPlacement::Inside(eInside_Horiz_Left, eInside_Vert_Top)),
-	curRect(inRect),
-	oldRect(inRect),
-	width(0),
-	height(0),
-	borderLeft(0),
-	borderRight(0),
-	borderTop(0),
-	borderBottom(0),
-	fixedSize(false)
-{
-	touchObject = NULL;
-
-	if(inParent != NULL)
-	{
-		AddToParent(inParent);
-	}
-}
 
 int16_t
 CDisplayRegion::GetWidth(
 	void)
 {
-	return width;
+	return curRect.GetWidth();;
 }
 
 int16_t
 CDisplayRegion::GetHeight(
 	void)
 {
-	return height;
+	return curRect.GetHeight();
 }
 
 void
@@ -244,6 +218,7 @@ CDisplayRegion::RemoveFromParent(
 
 	if(prevRegion == NULL)
 	{
+		MAssert(parent->firstChild != NULL);
 		parent->firstChild = parent->firstChild->nextChild;
 	}
 	else
@@ -258,8 +233,6 @@ void
 CDisplayRegion::SetPlacement(
 	SPlacement	inPlacement)
 {
-	CDisplayRegion*	savedParent = parent;
-
 	placement = inPlacement;
 }
 
@@ -313,9 +286,11 @@ CDisplayRegion::StartUpdate(
 {
 	oldRect = curRect;
 
-	if(parent != NULL)
+	curRect.Clear();
+	if(parent == NULL)
 	{
-		curRect.Reset();
+		curRect.bottomRight.x = gDisplayModule->GetWidth();
+		curRect.bottomRight.y = gDisplayModule->GetHeight();
 	}
 
 	CDisplayRegion*	curRegion = firstChild;
@@ -342,127 +317,55 @@ CDisplayRegion::UpdateDimensions(
 			curRegion = curRegion->nextChild;
 		}
 
-		if(fixedSize == false)
+		int16_t	curWidth;
+		int16_t	curHeight;
+		if(placement.GetPlacementType() == ePlacementType_Outside || placement.GetInsideHoriz() != eAlign_Horiz_Expand)
 		{
-			// compute the width and height of this region
 			int16_t	maxWidth  = 0;
+
+			SumRegionList(curWidth, curHeight, SPlacement::Inside(ePlacement_Any, eAlign_Vert_Top), firstChild);
+			if(curWidth > maxWidth)
+			{
+				maxWidth = curWidth;
+			}
+
+			SumRegionList(curWidth, curHeight, SPlacement::Inside(ePlacement_Any, eAlign_Vert_Center), firstChild);
+			if(curWidth > maxWidth)
+			{
+				maxWidth = curWidth;
+			}
+
+			SumRegionList(curWidth, curHeight, SPlacement::Inside(ePlacement_Any, eAlign_Vert_Bottom), firstChild);
+			if(curWidth > maxWidth)
+			{
+				maxWidth = curWidth;
+			}
+
+			curRect.bottomRight.x = maxWidth + borderLeft + borderRight;
+		}
+
+		if(placement.GetPlacementType() == ePlacementType_Outside || placement.GetInsideVert() != eAlign_Vert_Expand)
+		{
 			int16_t	maxHeight = 0;
-			int16_t	curWidth;
-			int16_t	curHeight;
-
-			// Children with outside placement do not contribute to the parents width and height
-
-			// Look for children with inside placement at the various placements to compute width and height
-			SumRegionList(curWidth, curHeight, SPlacement::Inside(eInside_Horiz_Left, ePlacement_Any), firstChild);
+			SumRegionList(curWidth, curHeight, SPlacement::Inside(eAlign_Horiz_Left, ePlacement_Any), firstChild);
 			if(curHeight > maxHeight)
 			{
 				maxHeight = curHeight;
 			}
 
-			SumRegionList(curWidth, curHeight, SPlacement::Inside(eInside_Horiz_Center, ePlacement_Any), firstChild);
+			SumRegionList(curWidth, curHeight, SPlacement::Inside(eAlign_Horiz_Center, ePlacement_Any), firstChild);
 			if(curHeight > maxHeight)
 			{
 				maxHeight = curHeight;
 			}
 
-			SumRegionList(curWidth, curHeight, SPlacement::Inside(eInside_Horiz_Right, ePlacement_Any), firstChild);
+			SumRegionList(curWidth, curHeight, SPlacement::Inside(eAlign_Horiz_Right, ePlacement_Any), firstChild);
 			if(curHeight > maxHeight)
 			{
 				maxHeight = curHeight;
 			}
 
-			SumRegionList(curWidth, curHeight, SPlacement::Inside(ePlacement_Any, eInside_Vert_Top), firstChild);
-			if(curWidth > maxWidth)
-			{
-				maxWidth = curWidth;
-			}
-
-			SumRegionList(curWidth, curHeight, SPlacement::Inside(ePlacement_Any, eInside_Vert_Center), firstChild);
-			if(curWidth > maxWidth)
-			{
-				maxWidth = curWidth;
-			}
-
-			SumRegionList(curWidth, curHeight, SPlacement::Inside(ePlacement_Any, eInside_Vert_Bottom), firstChild);
-			if(curWidth > maxWidth)
-			{
-				maxWidth = curWidth;
-			}
-
-			// Look for children with grid placement to compute the column and row placement, one pass is needed to compute rows and another pass for columns
-			// This algorithm requires that children are ordered by rows and then columns
-
-			int16_t	rowHeights[eGrid_MaxRows + 1];
-			int16_t	colWidths[eGrid_MaxCols + 1];
-			memset(rowHeights, 0, sizeof(rowHeights));
-			memset(colWidths, 0, sizeof(colWidths));
-
-			for(curRegion = firstChild; curRegion != NULL; curRegion = curRegion->nextChild)
-			{
-				if(curRegion->placement.GetPlacementType() != ePlacementType_Grid)
-				{
-					continue;
-				}
-
-				int16_t	thisCol = curRegion->placement.GetGridCol();
-				int16_t	thisRow = curRegion->placement.GetGridRow();
-
-				if(curRegion->height > rowHeights[thisRow])
-				{
-					rowHeights[thisRow] = curRegion->height;
-				}
-
-				if(curRegion->width > colWidths[thisCol])
-				{
-					colWidths[thisCol] = curRegion->width;
-				}
-			}
-
-			int16_t	gridHeightTotal = 0;
-			int16_t	gridWidthTotal = 0;
-			for(int i = 0; i < eGrid_MaxCols; ++i)
-			{
-				int16_t	curWidth = colWidths[i];
-				colWidths[i] = gridWidthTotal;
-				gridWidthTotal += curWidth;
-			}
-			colWidths[eGrid_MaxCols] = gridWidthTotal;
-
-			for(int i = 0; i < eGrid_MaxRows; ++i)
-			{
-				int16_t	curHeight = rowHeights[i];
-				rowHeights[i] = gridHeightTotal;
-				gridHeightTotal += curHeight;
-			}
-			rowHeights[eGrid_MaxRows] = gridHeightTotal;
-
-			for(curRegion = firstChild; curRegion != NULL; curRegion = curRegion->nextChild)
-			{
-				if(curRegion->placement.GetPlacementType() != ePlacementType_Grid)
-				{
-					continue;
-				}
-
-				int16_t	thisCol = curRegion->placement.GetGridCol();
-				int16_t	thisRow = curRegion->placement.GetGridRow();
-
-				curRegion->curRect.topLeft.y = rowHeights[thisRow];
-				curRegion->curRect.topLeft.x = colWidths[thisCol];
-				curRegion->curRect.bottomRight.y = rowHeights[thisRow + 1];
-				curRegion->curRect.bottomRight.x = colWidths[thisCol + 1];
-			}
-
-			if(gridWidthTotal > maxWidth)
-			{
-				maxWidth = gridWidthTotal;
-			}
-			if(gridHeightTotal > maxHeight)
-			{
-				maxHeight = gridHeightTotal;
-			}
-
-			width = maxWidth;
-			height = maxHeight;
+			curRect.bottomRight.y = maxHeight + borderTop + borderBottom;
 		}
 	}
 }
@@ -471,138 +374,168 @@ void
 CDisplayRegion::UpdateOrigins(
 	void)
 {
-	if(parent != NULL)
-	{
-		SDisplayRect const&	parentRect = parent->curRect;
-
-		switch(placement.GetPlacementType())
-		{
-			case ePlacementType_Inside:
-				switch(placement.GetInsideHoriz())
-				{
-					case eInside_Horiz_Left:
-						curRect.topLeft.x = parentRect.topLeft.x;
-						curRect.bottomRight.x = parentRect.topLeft.x + width;
-						break;
-
-					case eInside_Horiz_Center:
-						curRect.topLeft.x = parentRect.topLeft.x + ((parentRect.GetWidth() - width + 1) >> 1);
-						curRect.bottomRight.x = curRect.topLeft.x + width;
-						break;
-
-					case eInside_Horiz_Right:
-						curRect.topLeft.x = parentRect.bottomRight.x - width;
-						curRect.bottomRight.x = parentRect.bottomRight.x;
-						break;
-
-				}
-
-				switch(placement.GetInsideVert())
-				{
-					case eInside_Vert_Top:
-						curRect.topLeft.y = parentRect.topLeft.y;
-						curRect.bottomRight.y = parentRect.topLeft.y + height;
-						break;
-
-					case eInside_Vert_Center:
-						curRect.topLeft.y = parentRect.topLeft.y + ((parentRect.GetHeight() - height + 1) >> 1);
-						curRect.bottomRight.y = curRect.topLeft.y + height;
-						break;
-
-					case eInside_Vert_Bottom:
-						curRect.topLeft.y = parentRect.bottomRight.y - height;
-						curRect.bottomRight.y = parentRect.bottomRight.y;
-						break;
-
-				}
-				break;
-
-			case ePlacementType_Outside:
-				switch(placement.GetOutsideSide())
-				{
-					case eOutside_Side_Top:
-					case eOutside_Side_Bottom:
-					
-						if(placement.GetOutsideSide() == eOutside_Side_Top)
-						{
-							curRect.topLeft.y = parentRect.topLeft.y - height;
-							curRect.bottomRight.y = parentRect.topLeft.y;
-						}
-						else
-						{
-							curRect.topLeft.y = parentRect.bottomRight.y;
-							curRect.bottomRight.y = parentRect.bottomRight.y + height;
-						}
-
-						switch(placement.GetOutsideAlign())
-						{
-							case eOutside_Align_Left:
-								curRect.topLeft.x = parentRect.topLeft.x;
-								curRect.bottomRight.x = parentRect.topLeft.x + width;
-								break;
-
-							case eOutside_Align_Center:
-								curRect.topLeft.x = parentRect.topLeft.x + ((parentRect.GetWidth() - width + 1) >> 1);
-								curRect.bottomRight.x = curRect.topLeft.x + width;
-								break;
-
-							case eOutside_Align_Right:
-								curRect.topLeft.x = parentRect.bottomRight.x - width;
-								curRect.bottomRight.x = parentRect.bottomRight.x;
-								break;
-
-						}
-
-						break;
-
-					case eOutside_Side_Left:
-					case eOutside_Side_Right:
-						if(placement.GetOutsideSide() == eOutside_Side_Left)
-						{
-							curRect.topLeft.x = parentRect.topLeft.x - width;
-							curRect.bottomRight.x = parentRect.topLeft.x;
-						}
-						else
-						{
-							curRect.topLeft.x = parentRect.bottomRight.x;
-							curRect.bottomRight.x = parentRect.bottomRight.x + width;
-						}
-
-						switch(placement.GetOutsideAlign())
-						{
-							case eOutside_Align_Top:
-								curRect.topLeft.y = parentRect.topLeft.y;
-								curRect.bottomRight.y = parentRect.topLeft.y + height;
-								break;
-
-							case eOutside_Align_Center:
-								curRect.topLeft.y = parentRect.topLeft.y + ((parentRect.GetHeight() - height + 1) >> 1);
-								curRect.bottomRight.y = curRect.topLeft.y + height;
-								break;
-
-							case eOutside_Align_Bottom:
-								curRect.topLeft.y = parentRect.bottomRight.y - height;
-								curRect.bottomRight.y = parentRect.bottomRight.y;
-								break;
-
-						}
-						break;
-				}
-				break;
-
-			case ePlacementType_Grid:
-				curRect.topLeft += parentRect.topLeft;
-				curRect.bottomRight += parentRect.topLeft;
-				break;
-		}
-	}
-
 	CDisplayRegion*	curRegion = firstChild;
 
 	while(curRegion != NULL)
 	{
+		curRegion->PlaceInRect(borderLeft, borderTop, borderRight, borderBottom, curRect);
 		curRegion->UpdateOrigins();
 		curRegion = curRegion->nextChild;
+	}
+}
+	
+void
+CDisplayRegion::PlaceInRect(
+	int8_t				inBorderLeft,
+	int8_t				inBorderTop,
+	int8_t				inBorderRight,
+	int8_t				inBorderBottom,
+	SDisplayRect const&	inRect)
+{
+	int16_t	offset;
+
+	if(placement.GetPlacementType() == ePlacementType_Inside)
+	{
+		switch(placement.GetInsideHoriz())
+		{
+			case eAlign_Horiz_Left:
+				offset = inRect.topLeft.x + inBorderLeft;
+				curRect.topLeft.x += offset;
+				curRect.bottomRight.x += offset;
+				break;
+
+			case eAlign_Horiz_Center:
+				offset = inRect.topLeft.x + inBorderLeft + ((inRect.GetWidth() - inBorderLeft - inBorderRight - curRect.GetWidth()) >> 1);
+				curRect.topLeft.x += offset;
+				curRect.bottomRight.x += offset;
+				break;
+
+			case eAlign_Horiz_Right:
+				offset = inRect.bottomRight.x - inBorderRight - curRect.GetWidth();
+				curRect.topLeft.x += offset;
+				curRect.bottomRight.x += offset;
+				break;
+
+			case eAlign_Horiz_Expand:
+				curRect.topLeft.x = inRect.topLeft.x + inBorderLeft;
+				curRect.bottomRight.x = inRect.bottomRight.x - inBorderRight;
+				break;
+		}
+
+		switch(placement.GetInsideVert())
+		{
+			case eAlign_Vert_Top:
+				offset = inRect.topLeft.y + inBorderTop;
+				curRect.topLeft.y += offset;
+				curRect.bottomRight.y += offset;
+				break;
+
+			case eAlign_Vert_Center:
+				offset = inRect.topLeft.y + inBorderTop + ((inRect.GetHeight() - inBorderTop - inBorderBottom - curRect.GetHeight()) >> 1);
+				curRect.topLeft.y += offset;
+				curRect.bottomRight.y += offset;
+				break;
+
+			case eAlign_Vert_Bottom:
+				offset = inRect.bottomRight.y - inBorderBottom - curRect.GetHeight();
+				curRect.topLeft.y += offset;
+				curRect.bottomRight.y += offset;
+				break;
+
+			case eAlign_Vert_Expand:
+				curRect.topLeft.y = inRect.topLeft.y + inBorderTop;
+				curRect.bottomRight.y = inRect.bottomRight.y - inBorderBottom;
+				break;
+		}
+	}
+	else
+	{
+		switch(placement.GetOutsideSide())
+		{
+			case eAlign_Side_Top:
+			case eAlign_Side_Bottom:
+					
+				if(placement.GetOutsideSide() == eAlign_Side_Top)
+				{
+					offset = inRect.topLeft.y - curRect.GetHeight();
+				}
+				else
+				{
+					offset = inRect.bottomRight.y;
+				}
+
+				curRect.topLeft.y += offset; 
+				curRect.bottomRight.y += offset; 
+
+				switch(placement.GetOutsideAlign())
+				{
+					case eAlign_Horiz_Left:
+						offset = inRect.topLeft.x;
+						curRect.topLeft.x += offset;
+						curRect.bottomRight.x += offset;
+						break;
+
+					case eAlign_Horiz_Center:
+						offset = inRect.topLeft.x + ((inRect.GetWidth() - curRect.GetWidth()) >> 1);
+						curRect.topLeft.x += offset;
+						curRect.bottomRight.x += offset;
+						break;
+
+					case eAlign_Horiz_Right:
+						offset = inRect.bottomRight.x - curRect.GetWidth();
+						curRect.topLeft.x += offset;
+						curRect.bottomRight.x += offset;
+						break;
+
+					case eAlign_Horiz_Expand:
+						curRect.topLeft.x = inRect.topLeft.x;
+						curRect.bottomRight.x = inRect.bottomRight.x;
+						break;
+				}
+
+				break;
+
+			case eAlign_Side_Left:
+			case eAlign_Side_Right:
+				if(placement.GetOutsideSide() == eAlign_Side_Left)
+				{
+					offset = inRect.topLeft.x - curRect.GetWidth();
+				}
+				else
+				{
+					offset = inRect.bottomRight.x;
+				}
+
+				curRect.topLeft.x += offset; 
+				curRect.bottomRight.x += offset; 
+
+				switch(placement.GetOutsideAlign())
+				{
+					case eAlign_Vert_Top:
+						offset = inRect.topLeft.y;
+						curRect.topLeft.y += offset;
+						curRect.bottomRight.y += offset;
+						break;
+
+					case eAlign_Vert_Center:
+						offset = inRect.topLeft.y + ((inRect.GetHeight() - curRect.GetHeight()) >> 1);
+						curRect.topLeft.y += offset;
+						curRect.bottomRight.y += offset;
+						break;
+
+					case eAlign_Vert_Bottom:
+						offset = inRect.bottomRight.y - curRect.GetHeight();
+						curRect.topLeft.y += offset;
+						curRect.bottomRight.y += offset;
+						break;
+
+					case eAlign_Vert_Expand:
+						curRect.topLeft.y = inRect.topLeft.y;
+						curRect.bottomRight.y = inRect.bottomRight.y;
+						break;
+				}
+				break;
+		}
 	}
 }
 
@@ -612,28 +545,7 @@ CDisplayRegion::EraseOldRegions(
 {
 	if(firstChild == NULL)
 	{
-		gDisplayModule->FillRectDiff(curRect, oldRect, SDisplayColor(0, 0, 0));
-		
-		if(borderLeft > 0)
-		{
-			gDisplayModule->GetDisplayDriver()->FillRect(SDisplayRect(SDisplayPoint(curRect.topLeft.x, curRect.topLeft.y), SDisplayPoint(curRect.topLeft.x + borderLeft, curRect.bottomRight.y)), SDisplayColor(0, 0, 0));
-		}
-		
-		if(borderTop > 0)
-		{
-			gDisplayModule->GetDisplayDriver()->FillRect(SDisplayRect(SDisplayPoint(curRect.topLeft.x, curRect.topLeft.y), SDisplayPoint(curRect.bottomRight.x, curRect.topLeft.y + borderTop)), SDisplayColor(0, 0, 0));
-		}
-		
-		if(borderRight > 0)
-		{
-			gDisplayModule->GetDisplayDriver()->FillRect(SDisplayRect(SDisplayPoint(curRect.bottomRight.x - borderRight, curRect.topLeft.y), SDisplayPoint(curRect.bottomRight.x, curRect.bottomRight.y)), SDisplayColor(0, 0, 0));
-		}
-		
-		if(borderBottom > 0)
-		{
-			gDisplayModule->GetDisplayDriver()->FillRect(SDisplayRect(SDisplayPoint(curRect.topLeft.x, curRect.bottomRight.y - borderBottom), SDisplayPoint(curRect.bottomRight.x, curRect.bottomRight.y)), SDisplayColor(0, 0, 0));
-		}
-
+		gDisplayModule->FillRectDiff(curRect, oldRect, SDisplayColor(0, 255, 0));
 	}
 	else
 	{
@@ -656,7 +568,10 @@ CDisplayRegion::Draw(
 	// update all of the children
 	while(curRegion != NULL)
 	{
+		// Draw this region
 		curRegion->Draw();
+
+		// Advance to next child
 		curRegion = curRegion->nextChild;
 	}
 
@@ -684,9 +599,152 @@ CDisplayRegion::SumRegionList(
 	{
 		if(curRegion->placement.Match(inPlacement))
 		{
-			outWidth += curRegion->width;
-			outHeight += curRegion->height;
+			outWidth += curRegion->curRect.GetWidth();
+			outHeight += curRegion->GetHeight();
 		}
+
+		curRegion = curRegion->nextChild;
+	}
+}
+
+CDisplayRegion_Grid::CDisplayRegion_Grid(
+	CDisplayRegion*	inParent,
+	SPlacement		inPlacement,
+	bool			inEqualCellDimensions,
+	uint8_t			inNumRows,
+	uint8_t			inNumCols)
+	:
+	CDisplayRegion(inParent, inPlacement),
+	equalCellPlacement(inEqualCellDimensions),
+	numRows(inNumRows),
+	numCols(inNumCols)
+{
+	cellMatrix = (CDisplayRegion**)malloc(numRows * numCols * sizeof(CDisplayRegion*));
+	MAssert(cellMatrix != NULL);
+	memset(cellMatrix, 0, numRows * numCols * sizeof(CDisplayRegion*));
+
+	rowOffsets = (int16_t*)malloc((numRows + 1) * sizeof(int16_t));
+	MAssert(rowOffsets != NULL);
+
+	colOffsets = (int16_t*)malloc((numCols + 1) * sizeof(int16_t));
+	MAssert(colOffsets != NULL);
+
+}
+
+void
+CDisplayRegion_Grid::SetCellRegion(
+	uint8_t			inRow,
+	uint8_t			inCol,
+	CDisplayRegion*	inDisplayRegion)
+{
+	MAssert(inRow < numRows && inCol < numCols);
+	cellMatrix[inRow * numCols + inCol] = inDisplayRegion;
+}
+
+void
+CDisplayRegion_Grid::UpdateDimensions(
+	void)
+{
+	CDisplayRegion*	curRegion = firstChild;
+
+	while(curRegion != NULL)
+	{
+		curRegion->UpdateDimensions();
+
+		curRegion = curRegion->nextChild;
+	}
+	
+	memset(rowOffsets, 0, (numRows + 1) * sizeof(int16_t));
+	memset(colOffsets, 0, (numCols + 1) * sizeof(int16_t));
+	for(uint8_t	y = 0; y < numRows; ++y)
+	{
+		for(uint8_t x = 0; x < numCols; ++x)
+		{
+			CDisplayRegion*	curRegion = cellMatrix[y * numCols + x];
+
+			if(curRegion != NULL)
+			{
+				int16_t	curRegionWidth = curRegion->curRect.GetWidth();
+				int16_t	curRegionHeight = curRegion->curRect.GetHeight();
+
+				if(curRegionWidth > colOffsets[x])
+				{
+					colOffsets[x] = curRegionWidth;
+				}
+
+				if(curRegionHeight > rowOffsets[y])
+				{
+					rowOffsets[y] = curRegionHeight;
+				}
+			}
+		}
+	}
+
+	int16_t	gridHeightTotal = 0;
+	int16_t	gridWidthTotal = 0;
+	for(int i = 0; i < numCols; ++i)
+	{
+		int16_t	curWidth = colOffsets[i];
+		colOffsets[i] = gridWidthTotal;
+		gridWidthTotal += curWidth;
+	}
+	colOffsets[numCols] = gridWidthTotal;
+
+	for(int i = 0; i < numRows; ++i)
+	{
+		int16_t	curHeight = rowOffsets[i];
+		rowOffsets[i] = gridHeightTotal;
+		gridHeightTotal += curHeight;
+	}
+	rowOffsets[numRows] = gridHeightTotal;
+	
+	curRect.bottomRight.x = gridWidthTotal + borderLeft + borderRight;
+	curRect.bottomRight.y = gridHeightTotal + borderTop + borderBottom;
+}
+
+void
+CDisplayRegion_Grid::UpdateOrigins(
+	void)
+{
+	CDisplayRegion*	curRegion;
+
+	if(equalCellPlacement)
+	{
+		int16_t	gridWidth = curRect.GetWidth() - borderLeft - borderRight;
+		int16_t	gridHeight = curRect.GetHeight() - borderTop - borderBottom;
+
+		for(uint8_t x = 0; x <= numCols; ++x)
+		{
+			colOffsets[x] = x * gridWidth / numCols;
+		}
+
+		for(uint8_t	y = 0; y <= numRows; ++y)
+		{
+			rowOffsets[y] = y * gridHeight / numRows;
+		}
+	}
+
+	int16_t	gridLeft = curRect.topLeft.x + borderLeft;
+	int16_t	gridTop = curRect.topLeft.y + borderTop;
+	for(uint8_t	y = 0; y < numRows; ++y)
+	{
+		for(uint8_t x = 0; x < numCols; ++x)
+		{
+			curRegion = cellMatrix[y * numCols + x];
+
+			if(curRegion != NULL)
+			{
+				SDisplayRect	rect(SDisplayPoint(gridLeft + colOffsets[x], gridTop + rowOffsets[y]), SDisplayPoint(gridLeft + colOffsets[x + 1], gridTop + rowOffsets[y + 1]));
+				curRegion->PlaceInRect(0, 0, 0, 0, rect);
+			}
+		}
+	}
+
+	curRegion = firstChild;
+
+	while(curRegion != NULL)
+	{
+		curRegion->UpdateOrigins();
 
 		curRegion = curRegion->nextChild;
 	}
@@ -703,7 +761,6 @@ CDisplayRegion_Text::CDisplayRegion_Text(
 	:
 	CDisplayRegion(inParent, inPlacement),
 	text(NULL),
-	dirty(true),
 	fgColor(inFGColor),
 	bgColor(inBGColor),
 	font(&inFont)
@@ -721,10 +778,8 @@ CDisplayRegion_Text::CDisplayRegion_Text(
 	MReturnOnError(text == NULL);
 	strcpy(text, buffer);
 
-	horizAlign = eInside_Horiz_Left;
-	vertAlign = eInside_Vert_Top;
-
-	fixedSize = true;
+	horizAlign = eAlign_Horiz_Left;
+	vertAlign = eAlign_Vert_Top;
 }
 	
 CDisplayRegion_Text::~CDisplayRegion_Text(
@@ -755,8 +810,22 @@ CDisplayRegion_Text::printf(
 	MReturnOnError(text == NULL);
 
 	strcpy(text, buffer);
+}
 
-	dirty = true;
+void
+CDisplayRegion_Text::SetTextFont(
+	SFontData const&	inFont)
+{
+	font = &inFont;
+}
+
+void
+CDisplayRegion_Text::SetTextColor(
+	SDisplayColor const&	inFGColor,
+	SDisplayColor const&	inBGColor)
+{
+	fgColor = inFGColor;
+	bgColor = inBGColor;
 }
 	
 void
@@ -769,68 +838,10 @@ CDisplayRegion_Text::SetTextAlignment(
 }
 
 void
-CDisplayRegion_Text::SetTextFont(
-	SFontData const&	inFont)
-{
-	font = &inFont;
-
-	dirty = true;
-}
-
-void
-CDisplayRegion_Text::SetTextColor(
-	SDisplayColor const&	inFGColor,
-	SDisplayColor const&	inBGColor)
-{
-	dirty = true;
-	fgColor = inFGColor;
-	bgColor = inBGColor;
-}
-
-void
 CDisplayRegion_Text::Draw(
 	void)
 {
-	int16_t	x, y;
-
-	uint16_t	textWidth = width - borderLeft - borderRight;
-	uint16_t	textHeight = height - borderTop - borderBottom;
-	uint16_t	regionWidth = curRect.GetWidth() - borderLeft - borderRight;
-	uint16_t	regionHeight = curRect.GetHeight() - borderTop - borderBottom;
-
-	switch(horizAlign)
-	{
-		case eInside_Horiz_Left:
-			x = curRect.topLeft.x + borderLeft;
-			break;
-		case eInside_Horiz_Center:
-			x = curRect.topLeft.x + borderLeft + ((regionWidth - textWidth) >> 1);
-			break;
-		case eInside_Horiz_Right:
-			x = curRect.bottomRight.x - borderRight - textWidth;
-			break;
-	}
-
-	switch(vertAlign)
-	{
-		case eInside_Vert_Top:
-			y = curRect.topLeft.y + borderTop;
-			break;
-		case eInside_Vert_Center:
-			y = curRect.topLeft.y + borderTop + ((regionHeight - textHeight) >> 1);
-			break;
-		case eInside_Vert_Bottom:
-			y = curRect.bottomRight.y - borderBottom - textHeight;
-			break;
-	}
-
-	SDisplayRect	regionRect(SDisplayPoint(curRect.topLeft.x + borderLeft, curRect.topLeft.y + borderTop), SDisplayPoint(curRect.bottomRight.x - borderRight, curRect.bottomRight.y - borderBottom));
-	SDisplayRect	textRect(x, y, textWidth, textHeight);
-
-	gDisplayModule->FillRectDiff(textRect, regionRect, SDisplayColor(0, 0, 0));
-
-	gDisplayModule->DrawText(text, textRect, font, fgColor, bgColor);
-	dirty = false;
+	gDisplayModule->DrawText(text, SDisplayRect(SDisplayPoint(curRect.topLeft.x + borderLeft, curRect.topLeft.y + borderTop), SDisplayPoint(curRect.bottomRight.x - borderRight, curRect.bottomRight.y - borderBottom)), font, fgColor, bgColor);
 
 	CDisplayRegion::Draw();
 }
@@ -841,12 +852,19 @@ CDisplayRegion_Text::UpdateDimensions(
 {
 	if(text != NULL && font != NULL)
 	{
-		SDisplayPoint	textDim = gDisplayModule->GetTextDimensions(text, font);
-		width = textDim.x + borderLeft + borderRight;
-		height = textDim.y + borderTop + borderBottom;
+		curRect.bottomRight = gDisplayModule->GetTextDimensions(text, font);
+		curRect.bottomRight.x += borderLeft + borderRight;
+		curRect.bottomRight.y += borderTop + borderBottom;
 	}
 
-	CDisplayRegion::UpdateDimensions();
+	CDisplayRegion*	curRegion = firstChild;
+
+	// update all of the children
+	while(curRegion != NULL)
+	{
+		curRegion->UpdateDimensions();
+		curRegion = curRegion->nextChild;
+	}
 }
 
 CModule_Display::CModule_Display(
@@ -858,6 +876,7 @@ CModule_Display::CModule_Display(
 	touchDriver = NULL;
 	gDisplayModule = this;
 	touchDown = false;
+	topRegion = NULL;
 	memset(stringTable, 0xFF, sizeof(stringTable));
 }
 
@@ -865,7 +884,7 @@ void
 CModule_Display::Update(
 	uint32_t inDeltaTimeUS)
 {
-	if(touchDriver != NULL && topRegion != NULL)
+	if(touchDriver != NULL)
 	{
 		bool			curTouchDown;
 		curTouchDown = touchDriver->GetTouch(touchLoc);
@@ -874,12 +893,19 @@ CModule_Display::Update(
 		{
 			if(curTouchDown)
 			{
-				topRegion->ProcessTouch(eTouchEvent_Down, touchLoc);
+				if(topRegion != NULL)
+				{
+					topRegion->ProcessTouch(eTouchEvent_Down, touchLoc);
+				}
 				touchDown = true;
 			}
 			else if(touchDown)
 			{
-				topRegion->ProcessTouch(eTouchEvent_Up, touchLoc);
+				if(topRegion != NULL)
+				{
+					topRegion->ProcessTouch(eTouchEvent_Up, touchLoc);
+				}
+
 				touchDown = false;
 			}
 		}
@@ -913,7 +939,7 @@ CModule_Display::SetDisplayDriver(
 	IDisplayDriver*	inDisplayDriver)
 {
 	displayDriver = inDisplayDriver;
-	topRegion = new CDisplayRegion(NULL, SDisplayRect(0, 0, displayDriver->GetWidth(), displayDriver->GetHeight()));
+	topRegion = new CDisplayRegion(NULL, SPlacement::Inside(eAlign_Horiz_Expand, eAlign_Vert_Expand));
 }
 
 void
@@ -1167,6 +1193,11 @@ void
 CModule_Display::UpdateDisplay(
 	void)
 {
+	if(displayDriver == NULL)
+	{
+		return;
+	}
+
 	topRegion->StartUpdate();
 	topRegion->UpdateDimensions();
 	topRegion->UpdateOrigins();
@@ -1406,26 +1437,26 @@ TestDisplay(
 	// Build up the display graph
 	CDisplayRegion*	topRegion = gDisplayModule->GetTopDisplayRegion();
 
-	CDisplayRegion_Text*	curTimeRegionTL = new CDisplayRegion_Text(SPlacement::Inside(eInside_Horiz_Left, eInside_Vert_Top), topRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_14, "TopLeft");
-	CDisplayRegion_Text*	curTimeRegionBL = new CDisplayRegion_Text(SPlacement::Inside(eInside_Horiz_Left, eInside_Vert_Bottom), topRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_14, "BottomLeft");
-	CDisplayRegion_Text*	curTimeRegionTR = new CDisplayRegion_Text(SPlacement::Inside(eInside_Horiz_Right, eInside_Vert_Top), topRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_14, "TopRight");
-	CDisplayRegion_Text*	curTimeRegionTB = new CDisplayRegion_Text(SPlacement::Inside(eInside_Horiz_Right, eInside_Vert_Bottom), topRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_14, "BottomRight");
-	CDisplayRegion*			centerRegion = new CDisplayRegion(SPlacement::Inside(eInside_Horiz_Center, eInside_Vert_Center), topRegion);
-	CDisplayRegion_Text*	curTimeRegionCCTop = new CDisplayRegion_Text(SPlacement::Inside(eInside_Horiz_Center, eInside_Vert_Top), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_14, "Top");
-	CDisplayRegion_Text*	curTimeRegionCCMiddle = new CDisplayRegion_Text(SPlacement::Inside(eInside_Horiz_Center, eInside_Vert_Center), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_14, "Middle");
-	CDisplayRegion_Text*	curTimeRegionCCBottom = new CDisplayRegion_Text(SPlacement::Inside(eInside_Horiz_Center, eInside_Vert_Bottom), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_14, "Bottom");
-	CDisplayRegion_Text*	curTimeRegionOutsideLeftTop = new CDisplayRegion_Text(SPlacement::Outside(eOutside_Side_Left, eOutside_Align_Top), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "LeftTop");
-	CDisplayRegion_Text*	curTimeRegionOutsideLeftCenter = new CDisplayRegion_Text(SPlacement::Outside(eOutside_Side_Left, eOutside_Align_Center), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "LeftCenter");
-	CDisplayRegion_Text*	curTimeRegionOutsideLeftBottom = new CDisplayRegion_Text(SPlacement::Outside(eOutside_Side_Left, eOutside_Align_Bottom), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "LeftBottom");
-	CDisplayRegion_Text*	curTimeRegionOutsideRightTop = new CDisplayRegion_Text(SPlacement::Outside(eOutside_Side_Right, eOutside_Align_Top), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "RightTop");
-	CDisplayRegion_Text*	curTimeRegionOutsideRightCenter = new CDisplayRegion_Text(SPlacement::Outside(eOutside_Side_Right, eOutside_Align_Center), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "RightCenter");
-	CDisplayRegion_Text*	curTimeRegionOutsideRightBottom = new CDisplayRegion_Text(SPlacement::Outside(eOutside_Side_Right, eOutside_Align_Bottom), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "RightBottom");
-	CDisplayRegion_Text*	curTimeRegionOutsideTopLeft = new CDisplayRegion_Text(SPlacement::Outside(eOutside_Side_Top, eOutside_Align_Left), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "TL");
-	CDisplayRegion_Text*	curTimeRegionOutsideTopCenter = new CDisplayRegion_Text(SPlacement::Outside(eOutside_Side_Top, eOutside_Align_Center), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "TC");
-	CDisplayRegion_Text*	curTimeRegionOutsideTopRight = new CDisplayRegion_Text(SPlacement::Outside(eOutside_Side_Top, eOutside_Align_Right), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "TR");
-	CDisplayRegion_Text*	curTimeRegionOutsideBottomLeft = new CDisplayRegion_Text(SPlacement::Outside(eOutside_Side_Bottom, eOutside_Align_Left), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "BL");
-	CDisplayRegion_Text*	curTimeRegionOutsideBottomCenter = new CDisplayRegion_Text(SPlacement::Outside(eOutside_Side_Bottom, eOutside_Align_Center), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "BC");
-	CDisplayRegion_Text*	curTimeRegionOutsideBottomRight = new CDisplayRegion_Text(SPlacement::Outside(eOutside_Side_Bottom, eOutside_Align_Right), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "BR");
+	CDisplayRegion_Text*	curTimeRegionTL = new CDisplayRegion_Text(SPlacement::Inside(eAlign_Horiz_Left, eAlign_Vert_Top), topRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_14, "TopLeft");
+	CDisplayRegion_Text*	curTimeRegionBL = new CDisplayRegion_Text(SPlacement::Inside(eAlign_Horiz_Left, eAlign_Vert_Bottom), topRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_14, "BottomLeft");
+	CDisplayRegion_Text*	curTimeRegionTR = new CDisplayRegion_Text(SPlacement::Inside(eAlign_Horiz_Right, eAlign_Vert_Top), topRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_14, "TopRight");
+	CDisplayRegion_Text*	curTimeRegionTB = new CDisplayRegion_Text(SPlacement::Inside(eAlign_Horiz_Right, eAlign_Vert_Bottom), topRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_14, "BottomRight");
+	CDisplayRegion*			centerRegion = new CDisplayRegion(SPlacement::Inside(eAlign_Horiz_Center, eAlign_Vert_Center), topRegion);
+	CDisplayRegion_Text*	curTimeRegionCCTop = new CDisplayRegion_Text(SPlacement::Inside(eAlign_Horiz_Center, eAlign_Vert_Top), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_14, "Top");
+	CDisplayRegion_Text*	curTimeRegionCCMiddle = new CDisplayRegion_Text(SPlacement::Inside(eAlign_Horiz_Center, eAlign_Vert_Center), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_14, "Middle");
+	CDisplayRegion_Text*	curTimeRegionCCBottom = new CDisplayRegion_Text(SPlacement::Inside(eAlign_Horiz_Center, eAlign_Vert_Bottom), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_14, "Bottom");
+	CDisplayRegion_Text*	curTimeRegionOutsideLeftTop = new CDisplayRegion_Text(SPlacement::Outside(eAlign_Side_Left, eAlign_Vert_Top), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "LeftTop");
+	CDisplayRegion_Text*	curTimeRegionOutsideLeftCenter = new CDisplayRegion_Text(SPlacement::Outside(eAlign_Side_Left, eAlign_Vert_Center), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "LeftCenter");
+	CDisplayRegion_Text*	curTimeRegionOutsideLeftBottom = new CDisplayRegion_Text(SPlacement::Outside(eAlign_Side_Left, eAlign_Vert_Bottom), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "LeftBottom");
+	CDisplayRegion_Text*	curTimeRegionOutsideRightTop = new CDisplayRegion_Text(SPlacement::Outside(eAlign_Side_Right, eAlign_Vert_Top), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "RightTop");
+	CDisplayRegion_Text*	curTimeRegionOutsideRightCenter = new CDisplayRegion_Text(SPlacement::Outside(eAlign_Side_Right, eAlign_Vert_Center), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "RightCenter");
+	CDisplayRegion_Text*	curTimeRegionOutsideRightBottom = new CDisplayRegion_Text(SPlacement::Outside(eAlign_Side_Right, eAlign_Vert_Bottom), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "RightBottom");
+	CDisplayRegion_Text*	curTimeRegionOutsideTopLeft = new CDisplayRegion_Text(SPlacement::Outside(eAlign_Side_Top, eAlign_Horiz_Left), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "TL");
+	CDisplayRegion_Text*	curTimeRegionOutsideTopCenter = new CDisplayRegion_Text(SPlacement::Outside(eAlign_Side_Top, eAlign_Horiz_Center), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "TC");
+	CDisplayRegion_Text*	curTimeRegionOutsideTopRight = new CDisplayRegion_Text(SPlacement::Outside(eAlign_Side_Top, eAlign_Horiz_Right), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "TR");
+	CDisplayRegion_Text*	curTimeRegionOutsideBottomLeft = new CDisplayRegion_Text(SPlacement::Outside(eAlign_Side_Bottom, eAlign_Horiz_Left), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "BL");
+	CDisplayRegion_Text*	curTimeRegionOutsideBottomCenter = new CDisplayRegion_Text(SPlacement::Outside(eAlign_Side_Bottom, eAlign_Horiz_Center), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "BC");
+	CDisplayRegion_Text*	curTimeRegionOutsideBottomRight = new CDisplayRegion_Text(SPlacement::Outside(eAlign_Side_Bottom, eAlign_Horiz_Right), centerRegion, SDisplayColor(255, 255, 255), SDisplayColor(0, 0, 0), Arial_8, "BR");
 
 	gDisplayModule->UpdateDisplay();
 

@@ -86,7 +86,7 @@ static const unsigned char Arial_8_index[] = {
 };
 /* font index size: 119 bytes */
 
-const SFontData Arial_8 = {
+const SFontData gArial_8 = {
 	Arial_8_index,
 	0,
 	Arial_8_data,
@@ -205,7 +205,7 @@ static const unsigned char Arial_9_index[] = {
 };
 /* font index size: 119 bytes */
 
-const SFontData Arial_9 = {
+const SFontData gArial_9 = {
 	Arial_9_index,
 	0,
 	Arial_9_data,
@@ -328,7 +328,7 @@ static const unsigned char Arial_10_index[] = {
 };
 /* font index size: 119 bytes */
 
-const SFontData Arial_10 = {
+const SFontData gArial_10 = {
 	Arial_10_index,
 	0,
 	Arial_10_data,
@@ -456,7 +456,7 @@ static const unsigned char Arial_11_index[] = {
 };
 /* font index size: 119 bytes */
 
-const SFontData Arial_11 = {
+const SFontData gArial_11 = {
 	Arial_11_index,
 	0,
 	Arial_11_data,
@@ -599,7 +599,7 @@ static const unsigned char Arial_12_index[] = {
 };
 /* font index size: 119 bytes */
 
-const SFontData Arial_12 = {
+const SFontData gArial_12 = {
 	Arial_12_index,
 	0,
 	Arial_12_data,
@@ -765,7 +765,7 @@ static const unsigned char Arial_13_index[] = {
 };
 /* font index size: 131 bytes */
 
-const SFontData Arial_13 = {
+const SFontData gArial_13 = {
 	Arial_13_index,
 	0,
 	Arial_13_data,
@@ -940,7 +940,7 @@ static const unsigned char Arial_14_index[] = {
 };
 /* font index size: 131 bytes */
 
-const SFontData Arial_14 = {
+const SFontData gArial_14 = {
 	Arial_14_index,
 	0,
 	Arial_14_data,
@@ -1139,7 +1139,7 @@ static const unsigned char Arial_16_index[] = {
 };
 /* font index size: 131 bytes */
 
-const SFontData Arial_16 = {
+const SFontData gArial_16 = {
 	Arial_16_index,
 	0,
 	Arial_16_data,
@@ -1371,7 +1371,7 @@ static const unsigned char Arial_18_index[] = {
 };
 /* font index size: 131 bytes */
 
-const SFontData Arial_18 = {
+const SFontData gArial_18 = {
 	Arial_18_index,
 	0,
 	Arial_18_data,
@@ -1644,7 +1644,7 @@ static const unsigned char Arial_20_index[] = {
 };
 /* font index size: 143 bytes */
 
-const SFontData Arial_20 = {
+const SFontData gArial_20 = {
 	Arial_20_index,
 	0,
 	Arial_20_data,
@@ -1985,7 +1985,7 @@ static const unsigned char Arial_24_index[] = {
 };
 /* font index size: 143 bytes */
 
-const SFontData Arial_24 = {
+const SFontData gArial_24 = {
 	Arial_24_index,
 	0,
 	Arial_24_data,
@@ -2428,7 +2428,7 @@ static const unsigned char Arial_28_index[] = {
 };
 /* font index size: 143 bytes */
 
-const SFontData Arial_28 = {
+const SFontData gArial_28 = {
 	Arial_28_index,
 	0,
 	Arial_28_data,
@@ -2971,7 +2971,7 @@ static const unsigned char Arial_32_index[] = {
 };
 /* font index size: 155 bytes */
 
-const SFontData Arial_32 = {
+const SFontData gArial_32 = {
 	Arial_32_index,
 	0,
 	Arial_32_data,
@@ -3765,7 +3765,7 @@ static const unsigned char Arial_40_index[] = {
 };
 /* font index size: 155 bytes */
 
-const SFontData Arial_40 = {
+const SFontData gArial_40 = {
 	Arial_40_index,
 	0,
 	Arial_40_data,
@@ -4881,7 +4881,7 @@ static const unsigned char Arial_48_index[] = {
 };
 /* font index size: 167 bytes */
 
-const SFontData Arial_48 = {
+const SFontData gArial_48 = {
 	Arial_48_index,
 	0,
 	Arial_48_data,
@@ -6536,7 +6536,7 @@ static const unsigned char Arial_60_index[] = {
 };
 /* font index size: 167 bytes */
 
-const SFontData Arial_60 = {
+const SFontData gArial_60 = {
 	Arial_60_index,
 	0,
 	Arial_60_data,
@@ -8884,7 +8884,7 @@ static const unsigned char Arial_72_index[] = {
 };
 /* font index size: 179 bytes */
 
-const SFontData Arial_72 = {
+const SFontData gArial_72 = {
 	Arial_72_index,
 	0,
 	Arial_72_data,
@@ -12969,7 +12969,7 @@ static const unsigned char Arial_96_index[] = {
 };
 /* font index size: 190 bytes */
 
-const SFontData Arial_96 = {
+const SFontData gArial_96 = {
 	Arial_96_index,
 	0,
 	Arial_96_data,

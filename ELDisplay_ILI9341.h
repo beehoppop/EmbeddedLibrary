@@ -2,6 +2,37 @@
 #ifndef _ELDISPLAY_ILI9341_
 #define _ELDISPLAY_ILI9341_
 
+// https://github.com/PaulStoffregen/ILI9341_t3
+// http://forum.pjrc.com/threads/26305-Highly-optimized-ILI9341-(320x240-TFT-color-display)-library
+
+/***************************************************
+  This is our library for the Adafruit  ILI9341 Breakout and Shield
+  ----> http://www.adafruit.com/products/1651
+
+  Check out the links above for our tutorials and wiring diagrams
+  These displays use SPI to communicate, 4 or 5 pins are required to
+  interface (RST is optional)
+  Adafruit invests time and resources providing this open source code,
+  please support Adafruit and open-source hardware by purchasing
+  products from Adafruit!
+
+  Written by Limor Fried/Ladyada for Adafruit Industries.
+  MIT license, all text above must be included in any redistribution
+ ****************************************************/
+
+/*
+	I had plans to try and optimize this code some more
+		- clearing the rcv fifo instead of incrementally draining it
+		- Checking for room on the fifo before adding to it instead of after
+		- Simplifying the cont/last functions
+	I had this all working just fine with the ILI9341 itself but it looks like
+	somehow these things left the SPI hardware in a bad state so using other
+	devices started to fail... I really wish that SPI.begin() would put
+	the hardware into a know working state but it doesn't - maybe one day I will 
+	try to write a better SPI api and implementation
+
+*/
+
 #include <XPT2046_Touchscreen.h>
 
 #include "ELDisplay.h"
@@ -119,16 +150,18 @@ public:
 	GetTouch(
 		SDisplayPoint&	outTouchLoc)
 	{
-		if(touchscreen.touched())
+		bool	result = touchscreen.touched();
+
+		if(result)
 		{
 			TS_Point	touch = touchscreen.getPoint();
 			outTouchLoc.x = (int16_t)map(touch.x, TS_MINX, TS_MAXX, gDisplayModule->GetWidth(), 0);
 			outTouchLoc.y = (int16_t)map(touch.y, TS_MINY, TS_MAXY, gDisplayModule->GetHeight(), 0);
 
-			return true;
+			Serial.printf("%d %d\n", outTouchLoc.x, outTouchLoc.y);
 		}
 
-		return false;
+		return result;
 	}
 
 	XPT2046_Touchscreen	touchscreen;
@@ -138,6 +171,8 @@ class CDisplayDriver_ILI9341 : public IDisplayDriver
 {
 public:
 
+	#if 0
+	// sigh...
 	inline void
 	WaitFIFOReady(
 		void)
@@ -150,7 +185,8 @@ public:
 	}
 
 	inline void
-	WaitFIFOEmpty(void)
+	WaitFIFOEmpty(
+		void)
 	{
 		uint32_t sr;
 		volatile uint32_t MUNUSED tmp;
@@ -159,42 +195,203 @@ public:
 		} while (sr > 0);
 	}
 
-	inline void 
-	WriteCommand(
-		uint8_t inCommand)
+	inline void
+	WaitEOQ(
+		void)
 	{
-		WaitFIFOReady();
-		KINETISK_SPI0.PUSHR = inCommand | (pcs_command << 16) | SPI_PUSHR_CTAS(0) | SPI_PUSHR_CONT;
+		uint32_t sr;
+		volatile uint32_t MUNUSED tmp;
+		do {
+			sr = KINETISK_SPI0.SR;
+		} while (!(sr & SPI_SR_EOQF));
+		KINETISK_SPI0.SR = SPI_SR_EOQF;
 	}
 
 	inline void 
-	WriteData8(uint8_t inData)
+	WriteCommand(
+		uint8_t inCommand,
+		bool	inEOQ = false)
 	{
 		WaitFIFOReady();
-		KINETISK_SPI0.PUSHR = inData | (pcs_data << 16) | SPI_PUSHR_CTAS(0) | SPI_PUSHR_CONT;
+		if(inEOQ)
+		{
+			KINETISK_SPI0.PUSHR = inCommand | (pcs_command << 16) | SPI_PUSHR_CTAS(0) | SPI_PUSHR_EOQ;
+		}
+		else
+		{
+			KINETISK_SPI0.PUSHR = inCommand | (pcs_command << 16) | SPI_PUSHR_CTAS(0) | SPI_PUSHR_CONT;
+		}
+	}
+
+	inline void 
+	WriteData8(
+		uint8_t	inData,
+		bool	inEOQ = false)
+	{
+		WaitFIFOReady();
+		if(inEOQ)
+		{
+			KINETISK_SPI0.PUSHR = inData | (pcs_data << 16) | SPI_PUSHR_CTAS(0) | SPI_PUSHR_EOQ;
+		}
+		else
+		{
+			KINETISK_SPI0.PUSHR = inData | (pcs_data << 16) | SPI_PUSHR_CTAS(0) | SPI_PUSHR_CONT;
+		}
 	}
 
 	inline void 
 	WriteData16(
-		uint16_t inData)
+		uint16_t	inData,
+		bool		inEOQ = false)
 	{
 		WaitFIFOReady();
-		KINETISK_SPI0.PUSHR = inData | (pcs_data << 16) | SPI_PUSHR_CTAS(1) | SPI_PUSHR_CONT;
+		if(inEOQ)
+		{
+			KINETISK_SPI0.PUSHR = inData | (pcs_data << 16) | SPI_PUSHR_CTAS(1) | SPI_PUSHR_EOQ;
+		}
+		else
+		{
+			KINETISK_SPI0.PUSHR = inData | (pcs_data << 16) | SPI_PUSHR_CTAS(1) | SPI_PUSHR_CONT;
+		}
+	}
+
+	inline void
+	BeginTransaction(
+		void)
+	{
+		SPI.beginTransaction(SPISettings(SPICLOCK, MSBFIRST, SPI_MODE0));
+		savedSPIMCR = SPI0_MCR;
+	}
+
+	inline void
+	EndTransaction(
+		void)
+	{
+		SPI0_MCR = savedSPIMCR | SPI_MCR_CLR_RXF;
+		SPI.endTransaction();
+	}
+	#endif
+
+	inline void 
+	WaitFifoNotFull(
+		void) 
+	{
+		uint32_t sr;
+		uint32_t tmp __attribute__((unused));
+		do {
+			sr = KINETISK_SPI0.SR;
+			if (sr & 0xF0) tmp = KINETISK_SPI0.POPR;  // drain RX FIFO
+		} while ((sr & (15 << 12)) > (3 << 12));
 	}
 
 	inline void 
-	setAddr(
+	WaitFifoEmpty(
+		void) 
+	{
+		uint32_t sr;
+		uint32_t tmp __attribute__((unused));
+		do {
+			sr = KINETISK_SPI0.SR;
+			if (sr & 0xF0) tmp = KINETISK_SPI0.POPR;  // drain RX FIFO
+		} while ((sr & 0xF0F0) > 0);             // wait both RX & TX empty
+	}
+
+	inline void 
+	WaitTransmitComplete(
+		void)
+	{
+		uint32_t tmp __attribute__((unused));
+		while (!(KINETISK_SPI0.SR & SPI_SR_TCF)) ; // wait until final output done
+		tmp = KINETISK_SPI0.POPR;                  // drain the final RX FIFO word
+	}
+
+	inline void 
+	WaitTransmitComplete(
+		uint32_t inMCR)
+	{
+		uint32_t tmp __attribute__((unused));
+		while (1) 
+		{
+			uint32_t sr = KINETISK_SPI0.SR;
+			if (sr & SPI_SR_EOQF) break;  // wait for last transmit
+			if (sr &  0xF0) tmp = KINETISK_SPI0.POPR;
+		}
+		KINETISK_SPI0.SR = SPI_SR_EOQF;
+		SPI0_MCR = inMCR;
+		while (KINETISK_SPI0.SR & 0xF0) 
+		{
+			tmp = KINETISK_SPI0.POPR;
+		}
+	}
+
+	inline void 
+	WriteCommand(
+		uint8_t inCommand,
+		bool	inLast)
+	{
+		if(inLast)
+		{
+		uint32_t mcr = SPI0_MCR;
+		KINETISK_SPI0.PUSHR = inCommand | (pcs_command << 16) | SPI_PUSHR_CTAS(0) | SPI_PUSHR_EOQ;
+		WaitTransmitComplete(mcr);
+		}
+		else
+		{
+			KINETISK_SPI0.PUSHR = inCommand | (pcs_command << 16) | SPI_PUSHR_CTAS(0) | SPI_PUSHR_CONT;
+			WaitFifoNotFull();
+		}
+	}
+
+	inline void 
+	WriteData8(
+		uint8_t inData8,
+		bool	inLast)
+	{
+		if(inLast)
+		{
+			uint32_t mcr = SPI0_MCR;
+			KINETISK_SPI0.PUSHR = inData8 | (pcs_data << 16) | SPI_PUSHR_CTAS(0) | SPI_PUSHR_EOQ;
+			WaitTransmitComplete(mcr);
+		}
+		else
+		{
+			KINETISK_SPI0.PUSHR = inData8 | (pcs_data << 16) | SPI_PUSHR_CTAS(0) | SPI_PUSHR_CONT;
+			WaitFifoNotFull();
+		}
+	}
+
+	inline void 
+	WriteData16(
+		uint16_t	inData16,
+		bool		inLast)
+	{
+		if(inLast)
+		{
+			uint32_t mcr = SPI0_MCR;
+			KINETISK_SPI0.PUSHR = inData16 | (pcs_data << 16) | SPI_PUSHR_CTAS(1) | SPI_PUSHR_EOQ;
+			WaitTransmitComplete(mcr);
+		}
+		else
+		{
+			KINETISK_SPI0.PUSHR = inData16 | (pcs_data << 16) | SPI_PUSHR_CTAS(1) | SPI_PUSHR_CONT;
+			WaitFifoNotFull();
+		}
+	}
+
+	inline void 
+	SetAddr(
 		uint16_t x0, 
 		uint16_t y0, 
 		uint16_t x1, 
 		uint16_t y1)
 	{
-		WriteCommand(ILI9341_CASET); // Column addr set
-		WriteData16(x0);   // XSTART
-		WriteData16(x1);   // XEND
-		WriteCommand(ILI9341_PASET); // Row addr set
-		WriteData16(y0);   // YSTART
-		WriteData16(y1);   // YEND
+		WriteCommand(ILI9341_CASET, false); // Column addr set
+		WriteData16(x0, false);   // XSTART
+		WriteData16(x1, false);   // XEND
+		WriteCommand(ILI9341_PASET, false); // Row addr set
+		WriteData16(y0, false);   // YSTART
+		WriteData16(y1, false);   // YEND
+		pixelCount = (x1 - x0 + 1) * (y1 - y0 + 1);
 	}
 
 	CDisplayDriver_ILI9341(
@@ -226,54 +423,52 @@ public:
 			{
 				break;
 			}
-			WriteCommand(*addr++);
+			WriteCommand(*addr++, false);
 			while (count-- > 0)
 			{
-				WriteData8(*addr++);
+				WriteCommand(*addr++, false);
 			}
+			break;
 		}
-		WriteCommand(ILI9341_SLPOUT);    // Exit Sleep
-		WaitFIFOEmpty();
+
+		WriteCommand(ILI9341_SLPOUT, true);    // Exit Sleep
 
 		delay(120); 		
-		WriteCommand(ILI9341_DISPON);    // Display on
-		WaitFIFOEmpty();
+		WriteCommand(ILI9341_DISPON, false);    // Display on
 
-		WriteCommand(ILI9341_MADCTL);
+		WriteCommand(ILI9341_MADCTL, false);
 		switch(displayOrientation)
 		{
 			case eDisplayOrientation_LandscapeUpside:
 				displayWidth = ILI9341_TFTHEIGHT;
 				displayHeight = ILI9341_TFTWIDTH;
-				WriteData8(MADCTL_MV | MADCTL_BGR);
+				WriteData8(MADCTL_MV | MADCTL_BGR, true);
 				break;
 
 			case eDisplayOrientation_LandscapeUpsideDown:
 				displayWidth = ILI9341_TFTHEIGHT;
 				displayHeight = ILI9341_TFTWIDTH;
-				WriteData8(MADCTL_MX | MADCTL_MY | MADCTL_MV | MADCTL_BGR);
+				WriteData8(MADCTL_MX | MADCTL_MY | MADCTL_MV | MADCTL_BGR, true);
 				break;
 
 			case eDisplayOrientation_PortraitUpside:
 				displayWidth = ILI9341_TFTWIDTH;
 				displayHeight = ILI9341_TFTHEIGHT;
-				WriteData8(MADCTL_MX | MADCTL_BGR);
+				WriteData8(MADCTL_MX | MADCTL_BGR, true);
 				break;
 
 			case eDisplayOrientation_PortraitUpsideDown:
-				WriteData8(MADCTL_MY | MADCTL_BGR);
+				WriteData8(MADCTL_MY | MADCTL_BGR, true);
 				displayWidth = ILI9341_TFTWIDTH;
 				displayHeight = ILI9341_TFTHEIGHT;
 				break;
 
 			default:
-				WriteData8(MADCTL_MV | MADCTL_BGR);
+				WriteData8(MADCTL_MV | MADCTL_BGR, true);
 				SystemMsg("Unknown orientation");
 		}
-		WaitFIFOEmpty();
 
 		SPI.endTransaction();
-		SPI.end();
 
 		displayPort.topLeft.x = 0;
 		displayPort.topLeft.y = 0;
@@ -302,7 +497,6 @@ public:
 		void)
 	{
 		drawingActive = true;
-		SPI.begin();
 	}
 
 	virtual void
@@ -310,7 +504,6 @@ public:
 		void)
 	{
 		drawingActive = false;
-		SPI.end();
 	}
 	
 	virtual void
@@ -320,15 +513,16 @@ public:
 		MReturnOnError(!drawingActive);
 
 		SPI.beginTransaction(SPISettings(SPICLOCK, MSBFIRST, SPI_MODE0));
-		setAddr(0, 0, displayWidth - 1, displayHeight - 1);
-		WriteCommand(ILI9341_RAMWR);
+		SetAddr(0, 0, displayWidth - 1, displayHeight - 1);
+		WriteCommand(ILI9341_RAMWR, false);
 
 		uint16_t	color = inColor.GetRGB565();
-		for(int32_t y = displayWidth * displayHeight; y > 0; y--)
+		for(int32_t y = displayWidth * displayHeight; y > 1; y--)
 		{
-			WriteData16(color);
+			WriteData16(color, false);
 		}
-		WaitFIFOEmpty();
+		WriteData16(color, true);
+
 		SPI.endTransaction();
 	}
 	
@@ -349,16 +543,18 @@ public:
 		}
 
 		SPI.beginTransaction(SPISettings(SPICLOCK, MSBFIRST, SPI_MODE0));
-		setAddr(clippedRect.topLeft.x, clippedRect.topLeft.y, clippedRect.bottomRight.x - 1, clippedRect.bottomRight.y - 1);
-		WriteCommand(ILI9341_RAMWR);
+
+		SetAddr(clippedRect.topLeft.x, clippedRect.topLeft.y, clippedRect.bottomRight.x - 1, clippedRect.bottomRight.y - 1);
+		WriteCommand(ILI9341_RAMWR, false);
 
 		SDisplayPoint dimensions = clippedRect.GetDimensions();
 		uint16_t	color = inColor.GetRGB565();
-		for(int32_t y = dimensions.y * dimensions.x; y > 0; y--)
+		for(int32_t y = dimensions.y * dimensions.x; y > 1; y--)
 		{
-			WriteData16(color);
+			WriteData16(color, false);
 		}
-		WaitFIFOEmpty();
+		WriteData16(color, true);
+
 		SPI.endTransaction();
 	}
 
@@ -367,7 +563,19 @@ public:
 		SDisplayRect const&		inRect,
 		SDisplayColor const&	inColor)
 	{
+		DrawHLine(inRect.topLeft, inRect.GetWidth(), inColor);
+		DrawHLine(SDisplayPoint(inRect.topLeft.x, inRect.bottomRight.y - 1), inRect.GetWidth(), inColor);
+		DrawVLine(inRect.topLeft, inRect.GetHeight(), inColor);
+		DrawVLine(SDisplayPoint(inRect.bottomRight.x - 1, inRect.topLeft.y), inRect.GetHeight(), inColor);
+	}
 
+	virtual void
+	DrawLine(
+		SDisplayPoint const&	inPointA,
+		SDisplayPoint const&	inPointB,
+		SDisplayColor const&	inColor)
+	{
+		
 	}
 
 	virtual void
@@ -404,8 +612,8 @@ public:
 		continuousY = inRect.topLeft.y;
 
 		SPI.beginTransaction(SPISettings(SPICLOCK, MSBFIRST, SPI_MODE0));
-		setAddr(clippedRect.topLeft.x, clippedRect.topLeft.y, clippedRect.bottomRight.x - 1, clippedRect.bottomRight.y - 1);
-		WriteCommand(ILI9341_RAMWR);
+		SetAddr(clippedRect.topLeft.x, clippedRect.topLeft.y, clippedRect.bottomRight.x - 1, clippedRect.bottomRight.y - 1);
+		WriteCommand(ILI9341_RAMWR, false);
 	}
 
 	virtual void
@@ -427,12 +635,13 @@ public:
 			{
 				if(inSrcBitData[inSrcBitStartIndex >> 3] & (1 << (7 - (inSrcBitStartIndex & 0x7))))
 				{
-					WriteData16(fgColor);
+					WriteData16(fgColor, pixelCount == 1);
 				}
 				else
 				{
-					WriteData16(bgColor);
+					WriteData16(bgColor, pixelCount == 1);
 				}
+				--pixelCount;
 			}
 
 			++continuousX;
@@ -463,12 +672,13 @@ public:
 			{
 				if(inUseForeground)
 				{
-					WriteData16(fgColor);
+					WriteData16(fgColor, pixelCount == 1);
 				}
 				else
 				{
-					WriteData16(bgColor);
+					WriteData16(bgColor, pixelCount == 1);
 				}
+				--pixelCount;
 			}
 
 			++continuousX;
@@ -491,7 +701,90 @@ public:
 			return;
 		}
 
-		WaitFIFOEmpty();
+		SPI.endTransaction();
+	}
+
+	void
+	DrawHLine(
+		SDisplayPoint const&	inStart,
+		int16_t					inPixelsRight,
+		SDisplayColor const&	inColor)
+	{
+		if(inStart.y < 0 || inStart.y >= displayHeight)
+		{
+			return;
+		}
+
+		int16_t	startX = inStart.x;
+		int16_t	endX = startX + inPixelsRight;
+		if(startX < 0)
+		{
+			startX = 0;
+		}
+
+		if(endX >= displayWidth)
+		{
+			endX = displayWidth;
+		}
+
+		if(startX >= endX)
+		{
+			return;
+		}
+
+		SPI.beginTransaction(SPISettings(SPICLOCK, MSBFIRST, SPI_MODE0));
+		SetAddr(startX, inStart.y, endX - 1, inStart.y);
+		WriteCommand(ILI9341_RAMWR, false);
+
+		uint16_t	color = inColor.GetRGB565();
+		for(int i = 0; i < endX - startX - 1; ++i)
+		{
+			WriteData16(color, false);
+		}
+
+		WriteData16(color, true);
+		SPI.endTransaction();
+	}
+
+	void
+	DrawVLine(
+		SDisplayPoint const&	inStart,
+		int16_t					inPixelsDown,
+		SDisplayColor const&	inColor)
+	{
+		if(inStart.x < 0 || inStart.x >= displayWidth)
+		{
+			return;
+		}
+
+		int16_t	startY = inStart.y;
+		int16_t	endY = startY + inPixelsDown;
+		if(startY < 0)
+		{
+			startY = 0;
+		}
+
+		if(endY >= displayHeight)
+		{
+			endY = displayHeight;
+		}
+
+		if(startY >= endY)
+		{
+			return;
+		}
+
+		SPI.beginTransaction(SPISettings(SPICLOCK, MSBFIRST, SPI_MODE0));
+		SetAddr(inStart.x, startY, inStart.x, endY - 1);
+		WriteCommand(ILI9341_RAMWR, false);
+
+		uint16_t	color = inColor.GetRGB565();
+		for(int i = 0; i < endY - startY - 1; ++i)
+		{
+			WriteData16(color, false);
+		}
+
+		WriteData16(color, true);
 		SPI.endTransaction();
 	}
 
@@ -511,6 +804,8 @@ public:
 	SDisplayRect	continuousRect;
 	uint16_t		fgColor;
 	uint16_t		bgColor;
+
+	int32_t			pixelCount;
 };
 
 #endif

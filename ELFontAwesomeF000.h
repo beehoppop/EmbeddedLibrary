@@ -3,23 +3,23 @@
 
 #include <ELDisplay.h>
 
-extern const SFontData AwesomeF000_8;
-extern const SFontData AwesomeF000_9;
-extern const SFontData AwesomeF000_10;
-extern const SFontData AwesomeF000_11;
-extern const SFontData AwesomeF000_12;
-extern const SFontData AwesomeF000_13;
-extern const SFontData AwesomeF000_14;
-extern const SFontData AwesomeF000_16;
-extern const SFontData AwesomeF000_18;
-extern const SFontData AwesomeF000_20;
-extern const SFontData AwesomeF000_24;
-extern const SFontData AwesomeF000_28;
-extern const SFontData AwesomeF000_32;
-extern const SFontData AwesomeF000_40;
-extern const SFontData AwesomeF000_48;
-extern const SFontData AwesomeF000_60;
-extern const SFontData AwesomeF000_72;
-extern const SFontData AwesomeF000_96;
+extern const SFontData gAwesomeF000_8;
+extern const SFontData gAwesomeF000_9;
+extern const SFontData gAwesomeF000_10;
+extern const SFontData gAwesomeF000_11;
+extern const SFontData gAwesomeF000_12;
+extern const SFontData gAwesomeF000_13;
+extern const SFontData gAwesomeF000_14;
+extern const SFontData gAwesomeF000_16;
+extern const SFontData gAwesomeF000_18;
+extern const SFontData gAwesomeF000_20;
+extern const SFontData gAwesomeF000_24;
+extern const SFontData gAwesomeF000_28;
+extern const SFontData gAwesomeF000_32;
+extern const SFontData gAwesomeF000_40;
+extern const SFontData gAwesomeF000_48;
+extern const SFontData gAwesomeF000_60;
+extern const SFontData gAwesomeF000_72;
+extern const SFontData gAwesomeF000_96;
 
 #endif

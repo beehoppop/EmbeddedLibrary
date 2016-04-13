@@ -3,23 +3,23 @@
 
 #include "ELDisplay.h"
 
-extern const SFontData Arial_8;
-extern const SFontData Arial_9;
-extern const SFontData Arial_10;
-extern const SFontData Arial_11;
-extern const SFontData Arial_12;
-extern const SFontData Arial_13;
-extern const SFontData Arial_14;
-extern const SFontData Arial_16;
-extern const SFontData Arial_18;
-extern const SFontData Arial_20;
-extern const SFontData Arial_24;
-extern const SFontData Arial_28;
-extern const SFontData Arial_32;
-extern const SFontData Arial_40;
-extern const SFontData Arial_48;
-extern const SFontData Arial_60;
-extern const SFontData Arial_72;
-extern const SFontData Arial_96;
+extern const SFontData gArial_8;
+extern const SFontData gArial_9;
+extern const SFontData gArial_10;
+extern const SFontData gArial_11;
+extern const SFontData gArial_12;
+extern const SFontData gArial_13;
+extern const SFontData gArial_14;
+extern const SFontData gArial_16;
+extern const SFontData gArial_18;
+extern const SFontData gArial_20;
+extern const SFontData gArial_24;
+extern const SFontData gArial_28;
+extern const SFontData gArial_32;
+extern const SFontData gArial_40;
+extern const SFontData gArial_48;
+extern const SFontData gArial_60;
+extern const SFontData gArial_72;
+extern const SFontData gArial_96;
 
 #endif
