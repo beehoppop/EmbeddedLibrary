@@ -543,19 +543,18 @@ void
 CDisplayRegion::EraseOldRegions(
 	void)
 {
-	if(firstChild == NULL)
-	{
-		gDisplayModule->FillRectDiff(curRect, oldRect, SDisplayColor(0, 255, 0));
-	}
-	else
-	{
-		CDisplayRegion*	curRegion = firstChild;
+	gDisplayModule->FillRectDiff(curRect, oldRect, SDisplayColor(0, 0, 0));
 
-		while(curRegion != NULL)
-		{
-			curRegion->EraseOldRegions();
-			curRegion = curRegion->nextChild;
-		}
+	if(borderRight > 0)
+	{
+		//gDisplayModule->FillRect(
+	}
+
+	CDisplayRegion*	curRegion = firstChild;
+	while(curRegion != NULL)
+	{
+		curRegion->EraseOldRegions();
+		curRegion = curRegion->nextChild;
 	}
 }
 

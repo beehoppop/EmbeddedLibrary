@@ -65,7 +65,7 @@ protected:
 		uint16_t	inEEPROMVersion = 0,	// This is the version number of the eeprom (so the system can reinitialize eeprom when the version number changes)
 		void*		inEEPROMData = NULL,	// A pointer to the local eeprom data storage
 		uint32_t	inUpdateTimeUS = 0,		// The period between Update() calles
-		uint8_t		inPriority = 0,			// This is the priority for initializing the module, higher priority modules are initialized before lower priority ones)
+		int8_t		inPriority = 0,			// This is the priority for initializing the module, higher priority modules are initialized before lower priority ones)
 		bool		inEnabled = true);		// This is the initial enabled state for the module
 	
 	// Override this to setup the initial state of the module
@@ -107,7 +107,7 @@ private:
 	void*			eepromData;
 	uint32_t		updateTimeUS;
 	uint64_t		lastUpdateUS;
-	uint8_t			priority;
+	int8_t			priority;
 	bool			enabled;
 	bool			hasBeenSetup;
 

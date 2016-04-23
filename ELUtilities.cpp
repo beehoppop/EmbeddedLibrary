@@ -25,6 +25,7 @@
 */ 
 
 #include <ctype.h>
+#include <math.h>
 
 #include "ELUtilities.h"
 
@@ -217,5 +218,64 @@ WaitForSerialPort(
 		}
 		delay(1000);
 	}
+}
+
+float
+GetRandomFloat(
+	float	inMin,
+	float	inMax)
+{
+	float	ranf = (float)rand() / (float)RAND_MAX;
+
+	return inMin + ranf * (inMax - inMin);
+}
+
+int32_t
+GetRandomInt(
+	int32_t	inMin,
+	int32_t	inMax)
+{
+	return (rand() % (inMax - inMin)) + inMin;
+}
+
+float
+GetRandomFloatGuassian(
+	float	inMean,
+	float	inStandardDeviation)
+{
+/* boxmuller.c           Implements the Polar form of the Box-Muller
+                         Transformation
+
+                      (c) Copyright 1994, Everett F. Carter Jr.
+                          Permission is granted by the author to use
+			  this software for any application provided this
+			  copyright notice is preserved.
+
+*/
+
+	float x1, x2, w, y1;
+	static float y2;
+	static int use_last = 0;
+
+	if (use_last)		        /* use value from previous call */
+	{
+		y1 = y2;
+		use_last = 0;
+	}
+	else
+	{
+		do {
+			x1 = 2.0f * GetRandomFloat(0.0f, 1.0f) - 1.0f;
+			x2 = 2.0f * GetRandomFloat(0.0f, 1.0f) - 1.0f;
+			w = x1 * x1 + x2 * x2;
+		} while ( w >= 1.0 );
+
+		w = (float)sqrt( (-2.0 * log( w ) ) / w );
+		y1 = x1 * w;
+		y2 = x2 * w;
+		use_last = 1;
+	}
+
+	return inMean + y1 * inStandardDeviation;
 }
 

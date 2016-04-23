@@ -104,7 +104,7 @@ CModule_SysMsgSerialHandler::CModule_SysMsgSerialHandler(
 		0,
 		NULL,
 		0,
-		255)
+		127)
 {
 	gSerialOut = this;
 }
@@ -148,6 +148,7 @@ DebugMsgVA(
 
 	char	vabuffer[256];
 	vsnprintf(vabuffer, sizeof(vabuffer), inMsg, inVAList);
+	vabuffer[sizeof(vabuffer) - 1] = 0;
 
 	char	timestamp[32];
 	uint32_t	remaining = uint32_t(gCurLocalMS / 1000);
@@ -158,6 +159,7 @@ DebugMsgVA(
 	uint32_t	secs = remaining;
 
 	snprintf(timestamp, sizeof(timestamp), "%02lu:%02lu:%02lu:%03lu", hours, mins, secs, uint32_t(gCurLocalMS) % 1000);
+	timestamp[sizeof(timestamp) - 1] = 0;
 
 	char finalBuffer[256];
 	snprintf(finalBuffer, sizeof(finalBuffer) - 1, "[%s] %s", timestamp, vabuffer);

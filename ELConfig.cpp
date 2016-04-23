@@ -34,7 +34,7 @@ CModule_Config*	gConfig;
 CModule_Config::CModule_Config(
 	)
 	:
-	CModule("cnfg", sizeof(configVars), 1, configVars, 0, 255)
+	CModule("cnfg", sizeof(configVars), 1, configVars, 0, 127)
 {
 	memset(configVars, 0, sizeof(configVars));
 	memset(configVarUsed, 0, sizeof(configVarUsed));

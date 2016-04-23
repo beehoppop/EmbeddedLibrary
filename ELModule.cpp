@@ -77,7 +77,7 @@ public:
 	CModuleManager(
 		)
 		:
-		CModule("mdmg", 0, 0, 0, 0, 253)
+		CModule("mdmg", 0, 0, 0, 0, 123)
 	{
 	}
 
@@ -110,7 +110,7 @@ CModule::CModule(
 	uint16_t	inEEPROMVersion,
 	void*		inEEPROMData,
 	uint32_t	inUpdateTimeUS,
-	uint8_t		inPriority,
+	int8_t		inPriority,
 	bool		inEnabled)
 	:
 	uid((inUID[0] << 24) | (inUID[1] << 16) | (inUID[2] << 8) | inUID[3]),
@@ -335,7 +335,7 @@ CModule::SetupAll(
 	gCurLocalMS = millis();
 	gCurLocalUS = micros();
 
-	for(int priorityItr = 256; priorityItr-- > 0;)
+	for(int priorityItr = MAXINT8 + 1; priorityItr-- > MININT8;)
 	{
 		for(int i = 0; i < gModuleCount; ++i)
 		{

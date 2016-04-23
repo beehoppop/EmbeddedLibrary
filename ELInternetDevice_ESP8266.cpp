@@ -373,7 +373,7 @@ public:
 					else
 					{
 						// the connection was closed so just send a 0 to terminate the send
-						serialPort->write(0);
+						serialPort->write((uint8_t)0);
 					}
 					// Tail is advanced after SEND OK has been received
 					serialInputBufferLength = 0;

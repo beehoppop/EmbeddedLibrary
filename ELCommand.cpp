@@ -38,7 +38,7 @@ CModule_Command*	gCommand;
 CModule_SerialCmdHandler::CModule_SerialCmdHandler(
 	)
 	:
-	CModule("srlc", 0, 0, NULL, 100000, 254)
+	CModule("srlc", 0, 0, NULL, 100000, 126)
 {
 	curIndex = 0;
 }
@@ -85,7 +85,7 @@ CModule_SerialCmdHandler::Update(
 CModule_Command::CModule_Command(
 	)
 	:
-	CModule("cmnd", 0, 0, NULL, 0, 254)
+	CModule("cmnd", 0, 0, NULL, 0, 126)
 {
 	gCommand = this;
 	handlerCount = 0;

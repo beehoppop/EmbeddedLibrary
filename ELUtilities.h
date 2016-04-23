@@ -77,4 +77,19 @@ void
 WaitForSerialPort(
 	void);
 
+float
+GetRandomFloat(
+	float	inMin,
+	float	inMax);
+
+int32_t
+GetRandomInt(
+	int32_t	inMin,
+	int32_t	inMax);
+
+float
+GetRandomFloatGuassian(
+	float	inMean,
+	float	inStandardDeviation);
+
 #endif /* _ELUTILITIES_H_ */

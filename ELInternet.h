@@ -50,15 +50,25 @@ enum
 	ePortState_HasIncommingData	= 1 << 2,
 	ePortState_Failure			= 1 << 3,
 
+
 };
-	
+
+enum EConnectionResponse
+{
+	eConnectionResponse_Opened,
+	eConnectionResponse_Closed,
+	eConnectionResponse_Data,
+	eConnectionResponse_Error,
+};
+
 enum EWirelessPWEnc
 {
 	eWirelessPWEnc_Open,
 	eWirelessPWEnc_WEP,
 	eWirelessPWEnc_WPA2Personal,
-
 };
+
+class CModule_Internet;
 
 class IInternetHandler
 {
@@ -72,18 +82,107 @@ typedef void
 	int					inDataSize,
 	char const*			inData);
 
-// This will be called when a client connection receives response data from a server, if this is called with inDataSize of 0 and inDat is NULL that means an error occured
+// This will be called when a client connection receives response data from a server, if this is called with inDataSize of 0 and inDat is NULL that means an error occurred
 typedef void
 (IInternetHandler::*TInternetResponseHandlerMethod)(
+	EConnectionResponse	inResponse,
 	uint16_t			inLocalPort,
 	int					inDataSize,
 	char const*			inData);
 
-// This will be called when an open connection request has completed (either successfully or not)
+// This will be called when a HTTP connection receives response data from a server
 typedef void
-(IInternetHandler::*TInternetOpenConnectionHandlerMethod)(
-	bool				inSuccess,
-	uint16_t			inLocalPort);
+(IInternetHandler::*THTTPResponseHandlerMethod)(
+	uint16_t			inHTTPReturnCode,
+	int					inDataSize,
+	char const*			inData);
+
+class CHTTPConnection : public IInternetHandler
+{
+public:
+	
+	void
+	StartRequest(
+		char const*	inVerb,
+		char const*	inURL);
+
+	void
+	SendHeaders(
+		int	inHeaderCount,
+		...);					// Variable length string headers header name and header value times inHeaderCount
+
+	void
+	SendParameters(
+		int	inParameterCount,
+		...);					// Variable length string parameters param name and param value times inParameterCount
+
+	void
+	SendBody(
+		char const*	inBody);
+
+	void
+	Close(
+		void);
+
+private:
+	
+	enum
+	{
+		eResponseState_HTTP,
+		eResponseState_Headers,
+		eResponseState_Body,
+		eResponseState_Done,
+	};
+
+	CHTTPConnection(
+		char const*							inServer,
+		uint16_t							inPort,
+		IInternetHandler*					inInternetHandler,
+		THTTPResponseHandlerMethod			inResponseMethod);
+
+	void
+	ResponseHandlerMethod(
+		EConnectionResponse	inResponse,
+		uint16_t			inLocalPort,
+		int					inDataSize,
+		char const*			inData);
+
+	void
+	SendData(
+		char const*	inData);
+	
+	void
+	ProcessResponseData(
+		int			inDataSize,
+		char const*	inData);
+	
+	void
+	ProcessResponseLine(
+		void);
+	
+	void
+	FinishResponse(
+		void);
+
+	IInternetHandler*					internetHandler;
+	THTTPResponseHandlerMethod			responseMethod;
+
+	char		serverAddress[64];
+	uint16_t	serverPort;
+	uint16_t	localPort;
+
+	uint16_t	requestIndex;
+	char		buffer[512];
+
+	uint16_t	responseContentSize;
+	uint16_t	responseContentIndex;
+	uint16_t	responseHTTPCode;
+	uint8_t		responseState;
+	bool		waitingOnResponse;
+	bool		openInProgress;
+
+	friend class CModule_Internet;
+};
 
 class IInternetDevice
 {
@@ -178,26 +277,32 @@ public:
 	OpenConnection(
 		uint16_t								inServerPort,
 		char const*								inServerAddress,
-		IInternetHandler*						inInternetHandler,	// The object of the handler
-		TInternetOpenConnectionHandlerMethod	inMethod);			// The method of the handler
+		IInternetHandler*						inInternetHandler,			// The object of the handlers
+		TInternetResponseHandlerMethod			inResponseMethod);			// The response handler
+	
+	// The OpenConnection completion method must have been called before calling SendData
+	bool
+	SendData(
+		uint16_t						inLocalPort,
+		size_t							inDataSize,
+		char const*						inData);
 
 	void
 	CloseConnection(
 		uint16_t	inLocalPort);
-	
-	// The OpenConnection completion method must have been called before calling InitiateRequest
-	bool
-	InitiateRequest(
-		uint16_t						inLocalPort,
-		size_t							inDataSize,
-		char const*						inData,
-		IInternetHandler*				inInternetHandler,	// The object of the handler
-		TInternetResponseHandlerMethod	inMethod);			// The method of the handler
 
 	// Configure the internet connection to serve commands on the given port
 	void
 	ServeCommands(
 		uint16_t	inPort);
+
+	// Higher level HTTP service
+	CHTTPConnection*
+	CreateHTTPConnection(
+		char const*							inServer,
+		uint16_t							inPort,
+		IInternetHandler*					inInternetHandler,	// The object of the handler
+		THTTPResponseHandlerMethod			inResponseMethod);	// The method of the response handler
 
 private:
 
@@ -255,7 +360,6 @@ private:
 
 		IInternetHandler*						handlerObject;
 		TInternetResponseHandlerMethod			handlerResponseMethod;
-		TInternetOpenConnectionHandlerMethod	handlerConnectionMethod;
 	};
 
 	struct SSettings

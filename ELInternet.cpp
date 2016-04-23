@@ -10,6 +10,338 @@ static char const*	gCmdHomePageGet = "GET / HTTP";
 static char const*	gCmdProcessPageGet = "GET /cmd_data.asp?Command=";
 static char const*	gReplyStringPreOutput = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE html><html><body><form action=\"cmd_data.asp\">Command: <input type=\"text\" name=\"Command\"<br><input type=\"submit\" value=\"Submit\"></form><p>Click the \"Submit\" button and the command will be sent to the server.</p><code>";
 static char const*	gReplyStringPostOutput = "</code></body></html>";
+	
+CHTTPConnection::CHTTPConnection(
+	char const*							inServer,
+	uint16_t							inPort,
+	IInternetHandler*					inInternetHandler,
+	THTTPResponseHandlerMethod			inResponseMethod)
+{
+	internetHandler = inInternetHandler;
+	responseMethod = inResponseMethod;
+	strncpy(serverAddress, inServer, sizeof(serverAddress) - 1);
+	serverAddress[sizeof(serverAddress) - 1] = 0;
+	serverPort = inPort;
+	localPort = 0xFF;
+	openInProgress = false;
+	waitingOnResponse = false;
+	requestIndex = 0;
+}
+
+void
+CHTTPConnection::StartRequest(
+	char const*	inVerb,
+	char const*	inURL)
+{
+	char buffer[128];
+
+	MReturnOnError(waitingOnResponse);
+
+	snprintf(buffer, sizeof(buffer), "%s %s HTTP/1.1\r\n", inVerb, inURL);
+	buffer[sizeof(buffer) - 1] = 0;
+
+	SendData(buffer);
+}
+
+void
+CHTTPConnection::SendHeaders(
+	int	inHeaderCount,
+	...)
+{
+	char buffer[256];
+	char*	cp = buffer;
+	char*	ep = cp + sizeof(buffer);
+
+	MReturnOnError(waitingOnResponse);
+
+	va_list	valist;
+
+	va_start(valist, inHeaderCount);
+	
+	for(int i = 0; i < inHeaderCount && cp < ep; ++i)
+	{
+		char const*	key = va_arg(valist, char const*);
+		char const* value = va_arg(valist, char const*);
+
+		strncpy(cp, key, ep - cp);
+		cp += strlen(key);
+		if(ep - cp > 2)
+		{
+			*cp++ = ':';
+			*cp++ = ' ';
+		}
+		strncpy(cp, value, ep - cp);
+		cp += strlen(value);
+		if(ep - cp > 3)
+		{
+			*cp++ = '\r';
+			*cp++ = '\n';
+		}
+	}
+	*cp++ = 0;
+
+	va_end(valist);
+
+	SendData(buffer);
+}
+
+void
+CHTTPConnection::SendParameters(
+	int	inParameterCount,
+	...)
+{
+	char buffer[256];
+	char*	cp = buffer;
+	char*	ep = cp + sizeof(buffer);
+
+	MReturnOnError(waitingOnResponse);
+
+	va_list	valist;
+
+	va_start(valist, inParameterCount);
+	
+	for(int i = 0; i < inParameterCount && cp < ep; ++i)
+	{
+		char const*	key = va_arg(valist, char const*);
+		char const* value = va_arg(valist, char const*);
+
+		strncpy(cp, key, ep - cp);
+		cp += strlen(key);
+		if(ep - cp > 2)
+		{
+			*cp++ = ':';
+			*cp++ = ' ';
+		}
+		strncpy(cp, value, ep - cp);
+		cp += strlen(value);
+		if(ep - cp > 2)
+		{
+			*cp++ = '\r';
+			*cp++ = '\n';
+		}
+	}
+	buffer[sizeof(buffer) - 1] = 0;
+
+	va_end(valist);
+
+	SendBody(buffer);
+}
+
+void
+CHTTPConnection::SendBody(
+	char const*	inBody)
+{
+	MReturnOnError(waitingOnResponse);
+
+	int	bodyLen = strlen(inBody);
+	char blBuffer[32];
+
+	// Add the Content-Length header
+	SendHeaders(4, "Content-Length", _itoa(bodyLen, blBuffer, 10), "User-Agent", "EmbeddedLibrary", "Host", serverAddress, "Accept", "*/*"); 
+
+	// Add a blank line
+	SendData("\r\n");
+	SendData(inBody);
+
+	waitingOnResponse = true;
+	responseContentSize = 0;
+	responseState = eResponseState_HTTP;
+	responseHTTPCode = 0;
+	responseContentIndex = 0;
+}
+
+void
+CHTTPConnection::Close(
+	void)
+{
+	if(localPort != 0)
+	{
+		gInternet->CloseConnection(localPort);
+	}
+
+	delete this;
+}
+
+void
+CHTTPConnection::ResponseHandlerMethod(
+	EConnectionResponse	inResponse,
+	uint16_t			inLocalPort,
+	int					inDataSize,
+	char const*			inData)
+{
+	switch(inResponse)
+	{
+		case eConnectionResponse_Opened:
+			openInProgress = false;
+			localPort = inLocalPort;
+			if(requestIndex > 0)
+			{
+				gInternet->SendData(localPort, requestIndex, buffer);
+				requestIndex = 0;
+			}
+			break;
+
+		case eConnectionResponse_Closed:
+		case eConnectionResponse_Error:
+			gInternet->CloseConnection(localPort);
+			openInProgress = false;
+			waitingOnResponse = false;
+			localPort = 0xFF;
+			break;
+
+		case eConnectionResponse_Data:
+			if(waitingOnResponse)
+			{
+				ProcessResponseData(inDataSize, inData);
+			}
+			break;
+			
+	}
+}
+
+void
+CHTTPConnection::SendData(
+	char const*	inData)
+{
+	if(localPort != 0xFF)
+	{
+		gInternet->SendData(localPort, strlen(inData), inData);
+	}
+	else
+	{
+		if(!openInProgress)
+		{
+			// Start an open request
+			gInternet->OpenConnection(serverPort, serverAddress, this, static_cast<TInternetResponseHandlerMethod>(&CHTTPConnection::ResponseHandlerMethod));
+			openInProgress = true;
+		}
+
+		int	dataLen = strlen(inData);
+		if(requestIndex + dataLen > sizeof(buffer))
+		{
+			dataLen = sizeof(buffer) - requestIndex;
+		}
+
+		memcpy(buffer + requestIndex, inData, dataLen);
+		requestIndex += dataLen;
+	}
+}
+	
+void
+CHTTPConnection::ProcessResponseData(
+	int			inDataSize,
+	char const*	inData)
+{
+	char const*	cp = inData;
+	char const*	ep = cp + inDataSize;
+
+	while(cp < ep)
+	{
+		char c = *cp++;
+		if(responseState == eResponseState_Body)
+		{
+			buffer[responseContentIndex++] = c;
+			if(responseContentIndex >= responseContentSize)
+			{
+				FinishResponse();
+				return;
+			}
+		}
+		else
+		{
+			if(c == '\r' || responseContentIndex >= sizeof(buffer) - 1)
+			{
+				buffer[responseContentIndex++] = 0;
+				ProcessResponseLine();
+				responseContentIndex = 0;
+				if(*cp == '\n')
+				{
+					++cp;
+				}
+				continue;
+			}
+
+			buffer[responseContentIndex++] = c;
+		}
+	}
+}
+	
+void
+CHTTPConnection::ProcessResponseLine(
+	void)
+{
+	if(buffer[0] == 0)
+	{
+		if(responseContentSize > 0)
+		{
+			responseState = eResponseState_Body;
+		}
+		else
+		{
+			FinishResponse();
+		}
+		return;
+	}
+
+	if(responseState == eResponseState_HTTP)
+	{
+		if(strncmp(buffer, "HTTP", 4) == 0)
+		{
+			char*	codeStr = buffer;
+			while(!isspace(*codeStr))
+			{
+				++codeStr;
+			}
+
+			while(!isdigit(*codeStr))
+			{
+				++codeStr;
+			}
+			char* endCodeStr = codeStr;
+			while(isdigit(*endCodeStr))
+			{
+				++endCodeStr;
+			}
+			*endCodeStr = 0;
+
+			responseHTTPCode = atoi(codeStr);
+
+			responseState = eResponseState_Headers;
+		}
+	}
+	else
+	{
+		char*	valuePtr = strchr(buffer, ':');
+		if(valuePtr == NULL)
+		{
+			return;
+		}
+		*valuePtr = 0;
+		++valuePtr;
+		while(isspace(*valuePtr))
+		{
+			++valuePtr;
+		} 
+
+		if(strcmp(buffer, "Content-Length") == 0)
+		{
+			responseContentSize = atoi(valuePtr);
+		}
+		else
+		{
+			// Don't parse any other headers for now
+		}
+	}
+}
+
+void
+CHTTPConnection::FinishResponse(
+	void)
+{
+	responseState = eResponseState_Done;
+	waitingOnResponse = false;
+	(internetHandler->*responseMethod)(responseHTTPCode, responseContentSize, buffer);
+}
 
 CModule_Internet::CModule_Internet(
 	)
@@ -31,6 +363,7 @@ CModule_Internet::CModule_Internet(
 	for(int i = 0; i < eMaxConnectionsCount; ++i, ++cur)
 	{
 		cur->openRef = -1;
+		cur->localPort = 0xFF;
 	}
 }
 
@@ -108,7 +441,7 @@ CModule_Internet::OpenConnection(
 	uint16_t								inServerPort,
 	char const*								inServerAddress,
 	IInternetHandler*						inInternetHandler,
-	TInternetOpenConnectionHandlerMethod	inMethod)
+	TInternetResponseHandlerMethod			inResponseMethod)
 {
 	MReturnOnError(internetDevice == NULL);
 	MReturnOnError(strlen(inServerAddress) > eServerMaxAddressLength);
@@ -133,12 +466,12 @@ CModule_Internet::OpenConnection(
 	target->openRef = internetDevice->Client_RequestOpen(inServerPort, inServerAddress);
 	if(target->openRef < 0)
 	{
-		(inInternetHandler->*inMethod)(false, -1);
+		(inInternetHandler->*inResponseMethod)(eConnectionResponse_Error, 0, 0, NULL);
 		return;
 	}
 
 	target->handlerObject = inInternetHandler;
-	target->handlerConnectionMethod = inMethod;
+	target->handlerResponseMethod = inResponseMethod;
 	target->serverPort = inServerPort;
 	strcpy(target->serverAddress, inServerAddress);
 }
@@ -152,10 +485,9 @@ CModule_Internet::CloseConnection(
 	{
 		if(cur->localPort == inLocalPort)
 		{
-			cur->localPort = 0;
+			cur->localPort = 0xFF;
 			cur->serverPort = 0;
 			cur->serverAddress[0] = 0;
-			cur->handlerConnectionMethod = NULL;
 			cur->handlerResponseMethod = NULL;
 			cur->handlerObject = NULL;
 			cur->openRef = -1;
@@ -166,12 +498,10 @@ CModule_Internet::CloseConnection(
 }
 
 bool
-CModule_Internet::InitiateRequest(
+CModule_Internet::SendData(
 	uint16_t						inLocalPort,
 	size_t							inDataSize,
-	char const*						inData,
-	IInternetHandler*				inInternetHandler,
-	TInternetResponseHandlerMethod	inMethod)
+	char const*						inData)
 {
 	SConnection*	target = NULL;
 	SConnection*	curConnection = connectionList;
@@ -184,10 +514,7 @@ CModule_Internet::InitiateRequest(
 		}
 	}
 
-	MReturnOnError(target == NULL || target->openRef < 0, false);
-
-	target->handlerObject = inInternetHandler;
-	target->handlerResponseMethod = inMethod;
+	MReturnOnError(target == NULL || target->openRef > 0, false);
 
 	if(internetDevice->SendData(inLocalPort, inDataSize, inData, true) == false)
 	{
@@ -205,6 +532,17 @@ CModule_Internet::ServeCommands(
 	MReturnOnError(internetDevice == NULL);
 	commandServerPort = inPort;
 	internetDevice->Server_Open(inPort);
+}
+
+CHTTPConnection*
+CModule_Internet::CreateHTTPConnection(
+	char const*							inServer,
+	uint16_t							inPort,
+	IInternetHandler*					inInternetHandler,
+	THTTPResponseHandlerMethod			inResponseMethod)
+{
+	MReturnOnError(internetDevice == NULL, NULL);
+	return new CHTTPConnection(inServer, inPort, inInternetHandler, inResponseMethod);
 }
 
 void
@@ -239,8 +577,8 @@ CModule_Internet::Update(
 			if(internetDevice->Client_OpenCompleted(curConnection->openRef, successfulyOpened, curConnection->localPort))
 			{
 				// call completion
-				(curConnection->handlerObject->*curConnection->handlerConnectionMethod)(successfulyOpened, curConnection->localPort);
 				curConnection->openRef = -1;
+				(curConnection->handlerObject->*curConnection->handlerResponseMethod)(eConnectionResponse_Opened, curConnection->localPort, 0, NULL);
 			}
 		}
 	}
@@ -347,15 +685,31 @@ CModule_Internet::Update(
 		{
 			uint32_t	portState = internetDevice->GetPortState(curConnection->localPort);
 
-			if(curConnection->localPort == localPort && bufferSize > 0)
+			if(bufferSize > 0 && curConnection->localPort == localPort)
 			{
-				(curConnection->handlerObject->*curConnection->handlerResponseMethod)(curConnection->localPort, bufferSize, buffer);
+				(curConnection->handlerObject->*curConnection->handlerResponseMethod)(eConnectionResponse_Data, curConnection->localPort, bufferSize, buffer);
 			}
-			else if(curConnection->localPort > 0 && ((portState & ePortState_Failure) || !(portState & ePortState_IsOpen)))
+			else if(curConnection->localPort != 0xFF)
 			{
-				(curConnection->handlerObject->*curConnection->handlerResponseMethod)(curConnection->localPort, 0, NULL);
-				internetDevice->CloseConnection(curConnection->localPort);
-				curConnection->handlerObject = NULL;
+				if(portState & ePortState_Failure)
+				{
+					(curConnection->handlerObject->*curConnection->handlerResponseMethod)(eConnectionResponse_Error, curConnection->localPort, 0, NULL);
+					if(curConnection->localPort != 0xFF)
+					{
+						internetDevice->CloseConnection(curConnection->localPort);
+						curConnection->handlerObject = NULL;
+					}
+				}
+
+				if(curConnection->openRef < 0 && !(portState & ePortState_IsOpen))
+				{
+					(curConnection->handlerObject->*curConnection->handlerResponseMethod)(eConnectionResponse_Closed, curConnection->localPort, 0, NULL);
+					if(curConnection->localPort != 0xFF)
+					{
+						internetDevice->CloseConnection(curConnection->localPort);
+						curConnection->handlerObject = NULL;
+					}
+				}
 			}
 		}
 	}
