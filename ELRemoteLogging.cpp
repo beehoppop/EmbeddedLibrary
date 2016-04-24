@@ -75,7 +75,30 @@ CModule_Loggly::Update(
 		connection->StartRequest("POST", url);
 		connection->SendHeaders(1, "content-type", "text/plain");
 
-		// build the tags
+		char*	cmp = msgBuffer;
+		char*	emp = cmp + sizeof(msgBuffer) - 1;
+		
+		if(buffer[tail % sizeof(buffer)] == '[')
+		{
+			while(tail < head)
+			{
+				char c = buffer[tail++ % sizeof(buffer)];
+				if(c == 0)
+				{
+					break;
+				}
+
+				if(cmp < emp)
+				{
+					*cmp++ = c;
+				}
+			
+				if(c == ' ')
+				{
+					break;
+				}
+			}
+		}
 
 		// Check to see if there are tags
 		bool	hasTags = false;
@@ -97,15 +120,15 @@ CModule_Loggly::Update(
 
 		if(hasTags || globalTags[0] != 0)
 		{
-			char*	cp = tagsBuffer;
-			char*	ep = cp + sizeof(tagsBuffer) - 1;
-			strncpy(cp, globalTags, sizeof(tagsBuffer));
+			char*	ctp = tagsBuffer;
+			char*	etp = ctp + sizeof(tagsBuffer) - 1;
+			strncpy(ctp, globalTags, sizeof(tagsBuffer));
 			tagsBuffer[sizeof(tagsBuffer) - 1] = 0;
-			cp += strlen(tagsBuffer);
+			ctp += strlen(tagsBuffer);
 
-			if(hasTags && cp < ep)
+			if(hasTags && ctp < etp)
 			{
-				*cp++ = ',';
+				*ctp++ = ',';
 				for(;;)
 				{
 					char c = buffer[tail++ % sizeof(buffer)];
@@ -115,19 +138,17 @@ CModule_Loggly::Update(
 						break;
 					}
 
-					if(cp < ep)
+					if(ctp < etp)
 					{
-						*cp++ = c;
+						*ctp++ = c;
 					}
 				}
 			}
-			*cp++ = 0;
+			*ctp++ = 0;
 
 			connection->SendHeaders(1, "X-LOGGLY-TAG", tagsBuffer);
 		}
 
-		char*	cp = msgBuffer;
-		char*	ep = cp + sizeof(msgBuffer) - 1;
 		for(;;)
 		{
 			char c = buffer[tail++ % sizeof(buffer)];
@@ -136,12 +157,12 @@ CModule_Loggly::Update(
 				break;
 			}
 
-			if(cp < ep)
+			if(cmp < emp)
 			{
-				*cp++ = c;
+				*cmp++ = c;
 			}
 		}
-		*cp++ = 0;
+		*cmp++ = 0;
 
 		connection->SendBody(msgBuffer);
 

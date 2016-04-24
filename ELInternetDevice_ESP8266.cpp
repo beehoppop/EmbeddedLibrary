@@ -9,7 +9,7 @@
 #include <ELInternetDevice_ESP8266.h>
 
 #if 0
-#define MESPDebugMsg(...) DebugMsgLocal(__VA_ARGS__)
+#define MESPDebugMsg(...) SystemMsg(__VA_ARGS__)
 #else
 #define MESPDebugMsg(...)
 #endif

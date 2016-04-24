@@ -137,7 +137,7 @@ CHTTPConnection::SendBody(
 	char blBuffer[32];
 
 	// Add the Content-Length header
-	SendHeaders(4, "Content-Length", _itoa(bodyLen, blBuffer, 10), "User-Agent", "EmbeddedLibrary", "Host", serverAddress, "Accept", "*/*"); 
+	SendHeaders(4, "Content-Length", itoa(bodyLen, blBuffer, 10), "User-Agent", "EmbeddedLibrary", "Host", serverAddress, "Accept", "*/*"); 
 
 	// Add a blank line
 	SendData("\r\n");
@@ -217,7 +217,7 @@ CHTTPConnection::SendData(
 		}
 
 		int	dataLen = strlen(inData);
-		if(requestIndex + dataLen > sizeof(buffer))
+		if(requestIndex + dataLen > (int)sizeof(buffer))
 		{
 			dataLen = sizeof(buffer) - requestIndex;
 		}

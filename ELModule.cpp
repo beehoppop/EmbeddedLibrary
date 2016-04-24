@@ -226,17 +226,12 @@ CModule::SetupAll(
 		digitalWrite(13, 1);
 	}
 
-	while(!Serial)
-	{
-		delay(1);
-	}
-
 	new CModuleManager();
 	new CModule_SysMsgSerialHandler();
 	new CModule_Config();
 	new CModule_Command();
 
-	SystemMsg(eMsgLevel_Basic, "Module count=%d\n", gModuleCount);
+	SystemMsg(eMsgLevel_Basic, "Module: count=%d\n", gModuleCount);
 
 	MAssert(gTooManyModules == false);
 
@@ -264,12 +259,12 @@ CModule::SetupAll(
 
 			if(target == NULL)
 			{
-				SystemMsg(eMsgLevel_Medium, "Module %s: no eeprom entry\n", StringizeUInt32(curModule->uid));
+				SystemMsg(eMsgLevel_Basic, "Module %s: no eeprom entry\n", StringizeUInt32(curModule->uid));
 				changes = true;
 			}
 			else if(target->size != curModule->eepromSize || target->version != curModule->eepromVersion)
 			{
-				SystemMsg(eMsgLevel_Medium, "Module %s: eeprom changed version or size\n", StringizeUInt32(curModule->uid));
+				SystemMsg(eMsgLevel_Basic, "Module %s: eeprom changed version or size\n", StringizeUInt32(curModule->uid));
 				changes = true;
 			}
 			else
@@ -312,7 +307,7 @@ CModule::SetupAll(
 			curEEPROM->version = curModule->eepromVersion;
 			if(!curEEPROM->inUse)
 			{
-				SystemMsg(eMsgLevel_Medium, "Module %s: Initializing eeprom\n", StringizeUInt32(curModule->uid));
+				SystemMsg(eMsgLevel_Basic, "Module %s: Initializing eeprom\n", StringizeUInt32(curModule->uid));
 				curModule->EEPROMInitialize();
 			}
 			WriteDataToEEPROM(curModule->eepromData, curOffset, curModule->eepromSize);
