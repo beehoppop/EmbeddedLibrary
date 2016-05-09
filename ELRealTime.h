@@ -302,7 +302,7 @@ public:
 	// Register a alarm handler to be called at the specified time or interval
 	void
 	RegisterAlarm(
-		char const*			inAlarmName,	// All alarms are referred to by a unique name
+		char const*			inAlarmName,	// All alarms are referred to by a unique name, this must be a static string
 		int					inYear,			// xxxx 4 digit year or eAlarm_Any
 		int					inMonth,		// 1 to 12 or eAlarm_Any
 		int					inDayOfMonth,	// 1 to 31 or eAlarm_Any
@@ -323,7 +323,7 @@ public:
 	// Register an event to be called in the given time or for the given periodic interval
 	void
 	RegisterEvent(
-		char const*			inEventName,	// All events have a unique name
+		char const*			inEventName,	// All events have a unique name, this must be a static string
 		uint64_t			inPeriodUS,		// The period for which to call
 		bool				inOnlyOnce,		// True if the event is only called once
 		IRealTimeHandler*	inObject,		// The object on which the method below lives
@@ -338,7 +338,7 @@ public:
 	// Register a handler for when time has changed
 	void
 	RegisterTimeChangeHandler(
-		char const*				inName,	// All handlers have a unique name
+		char const*				inName,	// All handlers have a unique name, this must be a static string
 		IRealTimeHandler*		inObject,
 		TRealTimeChangeMethod	inMethod);
 	
@@ -400,7 +400,7 @@ private:
 
 	struct SAlarm
 	{
-		char				name[eRealTime_MaxNameLength + 1];
+		char const*			name;
 		int					year;
 		int					month;
 		int					dayOfMonth;
@@ -418,7 +418,7 @@ private:
 	
 	struct SEvent
 	{
-		char				name[eRealTime_MaxNameLength + 1];
+		char const*			name;
 		uint64_t			periodUS;
 		bool				onceOnly;
 		uint64_t			lastFireTime;
@@ -429,7 +429,7 @@ private:
 
 	struct STimeChangeHandler
 	{
-		char					name[eRealTime_MaxNameLength + 1];
+		char const*				name;
 		IRealTimeHandler*		object;
 		TRealTimeChangeMethod	method;
 	};

@@ -90,22 +90,46 @@ CModule_Command::CModule_Command(
 	gCommand = this;
 	handlerCount = 0;
 	memset(commandList, 0, sizeof(commandList));
+
+	RegisterCommand(
+		"help",
+		this,
+		static_cast<TCmdHandlerMethod>(&CModule_Command::HelpCommand),
+		"List the available commands and descriptions");
+}
+
+uint8_t
+CModule_Command::HelpCommand(
+	IOutputDirector*	inOutput,
+	int					inArgC,
+	char const*			inArgV[])
+{
+	SCommand*	curCmd = commandList;
+
+	for(int i = 0; i < handlerCount; ++i, ++curCmd)
+	{
+		inOutput->printf("%s: %s\n", curCmd->name, curCmd->description != NULL ? curCmd->description : "(N/A)");
+	}
+
+	return eCmd_Succeeded;
 }
 
 void
 CModule_Command::RegisterCommand(
 	char const*			inCmdName, 
 	ICmdHandler*		inCmdHandler,
-	TCmdHandlerMethod	inMethod)
+	TCmdHandlerMethod	inMethod,
+	char const*			inDescription)
 {
+	MReturnOnError(inCmdName == NULL || strlen(inCmdName) == 0);
 	MReturnOnError(handlerCount >= eCmd_MaxCommands);
-	MReturnOnError(strlen(inCmdName) > eCmd_MaxNameLen);
 
 	SCommand*	newCommand = commandList + handlerCount++;
 
+	newCommand->name = inCmdName;
+	newCommand->description = inDescription;
 	newCommand->handler = inCmdHandler;
 	newCommand->method = inMethod;
-	strncpy(newCommand->name, inCmdName, sizeof(newCommand->name));
 }
 
 uint8_t

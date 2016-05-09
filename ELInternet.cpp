@@ -8,7 +8,12 @@ CModule_Internet*	gInternet;
 
 static char const*	gCmdHomePageGet = "GET / HTTP";
 static char const*	gCmdProcessPageGet = "GET /cmd_data.asp?Command=";
-static char const*	gReplyStringPreOutput = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE html><html><body><form action=\"cmd_data.asp\">Command: <input type=\"text\" name=\"Command\"<br><input type=\"submit\" value=\"Submit\"></form><p>Click the \"Submit\" button and the command will be sent to the server.</p><code>";
+static char const*	gReplyStringPreOutput = 
+	"HTTP/1.1 200 OK\r\n"
+	"Content-Type: text/html\r\n\r\n"
+	"<!DOCTYPE html><html><body>"
+	"<form action=\"cmd_data.asp\">Command: <input type=\"text\" name=\"Command\"<br><input type=\"submit\" value=\"Submit\"></form><p>Click the \"Submit\" button and the command will be sent to the server.</p><code>"
+	;
 static char const*	gReplyStringPostOutput = "</code></body></html>";
 	
 CHTTPConnection::CHTTPConnection(
@@ -527,10 +532,14 @@ CModule_Internet::SendData(
 
 void
 CModule_Internet::ServeCommands(
-	uint16_t	inPort)
+	uint16_t						inPort,
+	IInternetHandler*				inHandlerObject,			// The object of the handlers
+	TInternetServerHandlerMethod	inHandlerMethod)
 {
 	MReturnOnError(internetDevice == NULL);
 	commandServerPort = inPort;
+	commandServerObject = inHandlerObject;
+	commandServerMethod = inHandlerMethod;
 	internetDevice->Server_Open(inPort);
 }
 
@@ -549,10 +558,10 @@ void
 CModule_Internet::Setup(
 	void)
 {
-	gCommand->RegisterCommand("wireless_set", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_WirelessSet));
-	gCommand->RegisterCommand("wireless_get", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_WirelessGet));
-	gCommand->RegisterCommand("ipaddr_set", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_IPAddrSet));
-	gCommand->RegisterCommand("ipaddr_get", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_IPAddrGet));
+	gCommand->RegisterCommand("wireless_set", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_WirelessSet), "Set the wireless configuration, \"[ssid] [pw] [wpa2|wep|open]\"");
+	gCommand->RegisterCommand("wireless_get", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_WirelessGet), "Get the wireless configuration");
+	gCommand->RegisterCommand("ip_set", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_IPAddrSet), "Set the ip configuration, \"[ip addr] [gateway addr] [subnet mask]\"");
+	gCommand->RegisterCommand("ip_get", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_IPAddrGet), "Gett the ip configuration");
 }
 
 void
@@ -597,6 +606,16 @@ CModule_Internet::Update(
 			if(strncmp(buffer, gCmdHomePageGet, strlen(gCmdHomePageGet)) == 0)
 			{
 				internetDevice->SendData(replyPort, strlen(gReplyStringPreOutput), gReplyStringPreOutput);
+
+				if(commandServerObject != NULL && commandServerMethod != NULL)
+				{
+					// Allow the application to send html code back to the client for a custom home page
+					respondingServer = true;
+					respondingServerPort = commandServerPort;
+					respondingReplyPort = replyPort;
+					(commandServerObject->*commandServerMethod)(this, 0, NULL);
+				}
+
 				internetDevice->SendData(replyPort, strlen(gReplyStringPostOutput), gReplyStringPostOutput);
 				internetDevice->CloseConnection(replyPort);
 			}
@@ -648,6 +667,12 @@ CModule_Internet::Update(
 
 				// Call command
 				gCommand->ProcessCommand(this, argIndex, argList);
+
+				if(commandServerObject != NULL && commandServerMethod != NULL)
+				{
+					// Allow the application to send html code back to the client for a custom home page
+					(commandServerObject->*commandServerMethod)(this, 0, NULL);
+				}
 
 				internetDevice->SendData(replyPort, strlen(gReplyStringPostOutput), gReplyStringPostOutput);
 				internetDevice->CloseConnection(replyPort);

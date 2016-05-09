@@ -76,7 +76,7 @@ private:
 };
 
 
-class CModule_Command : public CModule
+class CModule_Command : public CModule, public ICmdHandler
 {
 public:
 	
@@ -86,9 +86,10 @@ public:
 	// Register a command handler
 	void
 	RegisterCommand(
-		char const*			inCmdName,		// The name of the command
-		ICmdHandler*		inCmdHandler,	// The object of the command handler
-		TCmdHandlerMethod	inMethod);		// The method of the command handler
+		char const*			inCmdName,				// The name of the command, must be a static string
+		ICmdHandler*		inCmdHandler,			// The object of the command handler
+		TCmdHandlerMethod	inMethod,				// The method of the command handler
+		char const*			inDescription = NULL);	// An optional description, must be a static string
 
 	// This will process the given command args
 	uint8_t
@@ -104,10 +105,17 @@ public:
 		char*				inCmdStr);	// This input command string must be writable in order to break up into discrete arg strings
 
 private:
+
+	uint8_t
+	HelpCommand(
+		IOutputDirector*	inOutput,
+		int					inArgC,
+		char const*			inArgV[]);
 	
 	struct SCommand
 	{
-		char				name[eCmd_MaxNameLen + 1];
+		char const*			name;
+		char const*			description;
 		ICmdHandler*		handler;
 		TCmdHandlerMethod	method;
 	};

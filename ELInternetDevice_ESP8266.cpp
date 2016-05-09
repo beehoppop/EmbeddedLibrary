@@ -109,27 +109,32 @@ public:
 	};
 
 	CModule_ESP8266(
-		)
+		HardwareSerial*	inSerialPort,
+		uint8_t	inRstPin,
+		uint8_t	inChPDPin,
+		uint8_t	inGPIO0,
+		uint8_t	inGPIO2)
 		:
-		CModule("8266", 0, 0, NULL, 1000, 2, false)
+		CModule("8266", 0, 0, NULL, 1000, 2, true),
+		serialPort(inSerialPort),
+		rstPin(inRstPin),
+		chPDPin(inChPDPin),
+		gpio0Pin(inGPIO0),
+		gpio2Pin(inGPIO2),
+		curIPDChannel(NULL),
+		ipdParsing(false),
+		commandHead(0),
+		commandTail(0),
+		serialInputBufferLength(0),
+		serverPort(0)
 	{
-		serialPort = NULL;
-		rstPin = 0;
-		chPDPin = 0;
-		gpio0Pin = 0;
-		gpio2Pin = 0;
-		curIPDChannel = NULL;
-		ipdParsing = false;
-		commandHead = 0;
-		commandTail = 0;
 		memset(commandQueue, 0, sizeof(commandQueue));
-		serialInputBufferLength = 0;
-		serverPort = 0;
 		memset(channelArray, 0, sizeof(channelArray));
 		for(int i = 0; i < eMaxLinks; ++i)
 		{
 			channelArray[i].linkIndex = -1;
 		}
+		CheckSetupNow();
 	}
 
 	virtual void
@@ -828,21 +833,6 @@ public:
 	}
 
 	void
-	Configure(
-		HardwareSerial*	inSerialPort,
-		uint8_t	inRstPin,
-		uint8_t	inChPDPin,
-		uint8_t	inGPIO0,
-		uint8_t	inGPIO2)
-	{
-		serialPort = inSerialPort;
-		rstPin = inRstPin;
-		chPDPin = inChPDPin;
-		gpio0Pin = inGPIO0;
-		gpio2Pin = inGPIO2;
-	}
-
-	void
 	IssueCommand(
 		char const*	inCommand,
 		SChannel*	inChannel,
@@ -1003,9 +993,7 @@ GetInternetDevice_ESP8266(
 
 	if(esp8266 == NULL)
 	{
-		esp8266 = new CModule_ESP8266();
-		esp8266->Configure(inSerialPort, inRstPin, inChPDPin, inGPIO0, inGPIO2);
-		esp8266->SetEnabledState(true);
+		esp8266 = new CModule_ESP8266(inSerialPort, inRstPin, inChPDPin, inGPIO0, inGPIO2);
 	}
 
 	return esp8266;

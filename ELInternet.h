@@ -277,8 +277,8 @@ public:
 	OpenConnection(
 		uint16_t								inServerPort,
 		char const*								inServerAddress,
-		IInternetHandler*						inInternetHandler,			// The object of the handlers
-		TInternetResponseHandlerMethod			inResponseMethod);			// The response handler
+		IInternetHandler*						inHandlerObject,			// The object of the handlers
+		TInternetResponseHandlerMethod			inHandlerMethod);			// The response handler
 	
 	// The OpenConnection completion method must have been called before calling SendData
 	bool
@@ -294,7 +294,9 @@ public:
 	// Configure the internet connection to serve commands on the given port
 	void
 	ServeCommands(
-		uint16_t	inPort);
+		uint16_t						inPort,
+		IInternetHandler*				inInternetHandler = NULL,			// The object of the handlers
+		TInternetServerHandlerMethod	inMethod = NULL);					// This method will be called when a client connects to the server, use the inOutput parameter to send html code to the client
 
 	// Higher level HTTP service
 	CHTTPConnection*
@@ -378,7 +380,9 @@ private:
 
 	SSettings	settings;
 
-	uint16_t	commandServerPort;
+	uint16_t						commandServerPort;
+	IInternetHandler*				commandServerObject;
+	TInternetServerHandlerMethod	commandServerMethod;
 
 	bool		respondingServer;
 	uint16_t	respondingServerPort;

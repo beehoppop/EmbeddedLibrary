@@ -64,6 +64,8 @@ static uint32_t		gLastMicros;
 static bool			gFlashLED;
 static int			gBlinkLEDIndex;		// config index for blink LED config var
 static bool			gSetupFinished;
+static bool			gSetupStarted;
+static int			gCurSetupLevel;
 
 uint64_t	gCurLocalMS;
 uint64_t	gCurLocalUS;
@@ -129,6 +131,20 @@ CModule::CModule(
 	}
 
 	gModuleList[gModuleCount++] = this;
+
+}
+
+void
+CModule::CheckSetupNow(
+	void)
+{
+	if(gSetupStarted && priority >= gCurSetupLevel)
+	{
+		// Set this module up now
+		Setup();
+		lastUpdateUS = gCurLocalUS;
+		hasBeenSetup = true;
+	}
 }
 
 void
@@ -327,11 +343,15 @@ CModule::SetupAll(
 		}
 	#endif
 
+	gSetupStarted = true;
+
 	gCurLocalMS = millis();
 	gCurLocalUS = micros();
 
 	for(int priorityItr = MAXINT8 + 1; priorityItr-- > MININT8;)
 	{
+		gCurSetupLevel = priorityItr;
+
 		for(int i = 0; i < gModuleCount; ++i)
 		{
 			CModule*	curModule = gModuleList[i];
@@ -340,6 +360,12 @@ CModule::SetupAll(
 				if(!curModule->enabled)
 				{
 					// Don't try to setup modules that are not enabled
+					continue;
+				}
+
+				if(curModule->hasBeenSetup)
+				{
+					// Don't try to setup modules that are already setup
 					continue;
 				}
 

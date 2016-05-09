@@ -47,8 +47,8 @@ CModule_Config::Setup(
 	gConfig = this;
 	MAssert(eepromOffset > 0);
 
-	gCommand->RegisterCommand("config_set", this, static_cast<TCmdHandlerMethod>(&CModule_Config::SetConfig));
-	gCommand->RegisterCommand("config_get", this, static_cast<TCmdHandlerMethod>(&CModule_Config::GetConfig));
+	gCommand->RegisterCommand("config_set", this, static_cast<TCmdHandlerMethod>(&CModule_Config::SetConfig), "Set a 8-bit config value");
+	gCommand->RegisterCommand("config_get", this, static_cast<TCmdHandlerMethod>(&CModule_Config::GetConfig), "Get a 8-bit config value");
 
 	nodeIDIndex = RegisterConfigVar("node_id");
 	debugLevelIndex = RegisterConfigVar("debug_level");

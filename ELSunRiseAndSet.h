@@ -100,7 +100,7 @@ public:
 
 	void
 	RegisterSunriseEvent(
-		char const*					inEventName,
+		char const*					inEventName,	// Must be a static string
 		int							inYear,			// The specific year for the event or eAlarm_Any
 		int							inMonth,		// The specific month for the event or eAlarm_Any
 		int							inDay,			// The specific day for the event or eAlarm_Any
@@ -113,7 +113,7 @@ public:
 
 	void
 	RegisterSunsetEvent(
-		char const*					inEventName,
+		char const*					inEventName,	// Must be a static string
 		int							inYear,			// The specific year for the event or eAlarm_Any
 		int							inMonth,		// The specific month for the event or eAlarm_Any
 		int							inDay,			// The specific day for the event or eAlarm_Any
@@ -218,15 +218,15 @@ private:
 
 	struct SEvent
 	{
-		char	name[eRealTime_MaxNameLength + 1];
-		bool	sunRise;
-		int		year;
-		int		month;
-		int		day;
-		int		dow;
-		double	sunOffset;
-		int		sunRelativePosition;
-		bool	utc;
+		char const*	name;
+		bool		sunRise;
+		int			year;
+		int			month;
+		int			day;
+		int			dow;
+		double		sunOffset;
+		int			sunRelativePosition;
+		bool		utc;
 		ISunRiseAndSetEventHandler*	cmdHandler;
 		TSunRiseAndSetEventMethod	method;
 	};

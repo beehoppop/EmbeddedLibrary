@@ -98,6 +98,11 @@ protected:
 	EEPROMSave(
 		void);
 	
+	// Call this in the modules constructor to check if Setup() should happen now for modules that can be loaded during another modules Setup() method
+	void
+	CheckSetupNow(
+		void);
+
 	uint16_t		eepromOffset;
 
 private:

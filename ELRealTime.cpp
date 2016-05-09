@@ -342,7 +342,7 @@ CModule_RealTime::Update(
 	SAlarm* curAlarm = alarmArray;
 	for(int alarmItr = 0; alarmItr < eAlarm_MaxActive; ++alarmItr, ++curAlarm)
 	{
-		if(curAlarm->name[0] == 0)
+		if(curAlarm->name == NULL)
 		{
 			continue;
 		}
@@ -360,7 +360,7 @@ CModule_RealTime::Update(
 			else if(curAlarm->nextTriggerTimeUTC == 0)
 			{
 				// if the alarm has not been rescheduled by the event handler method cancel it here so it does not fire repeatedly
-				curAlarm->name[0] = 0;
+				curAlarm->name = NULL;
 			}
 		}
 	}
@@ -369,7 +369,7 @@ CModule_RealTime::Update(
 	SEvent*	curEvent = eventArray;
 	for(int itr = 0; itr < eEvent_MaxActive; ++itr, ++curEvent)
 	{
-		if(curEvent->name[0] == 0)
+		if(curEvent->name == NULL)
 		{
 			continue;
 		}
@@ -382,7 +382,7 @@ CModule_RealTime::Update(
 			//SystemMsg("Done");
 			if(curEvent->onceOnly)
 			{
-				curEvent->name[0] = 0;
+				curEvent->name = NULL;
 			}
 		}
 	}
@@ -403,7 +403,7 @@ CModule_RealTime::SetTimeZone(
 	STimeChangeHandler*	curHandler = timeChangeHandlerArray;
 	for(int i = 0; i < eTimeChangeHandler_MaxCount; ++i, ++curHandler)
 	{
-		if(curHandler->name[0] != 0 && curHandler->object != NULL)
+		if(curHandler->name != NULL && curHandler->object != NULL)
 		{
 			(curHandler->object->*curHandler->method)(curHandler->name, true);
 		}
@@ -462,7 +462,7 @@ CModule_RealTime::SetEpochTime(
 		STimeChangeHandler*	curHandler = timeChangeHandlerArray;
 		for(int i = 0; i < eTimeChangeHandler_MaxCount; ++i, ++curHandler)
 		{
-			if(curHandler->name[0] != 0 && curHandler->object != NULL)
+			if(curHandler->name != NULL && curHandler->object != NULL)
 			{
 				(curHandler->object->*curHandler->method)(curHandler->name, false);
 			}
@@ -919,7 +919,7 @@ CModule_RealTime::RegisterAlarm(
 	void*				inReference,
 	bool				inUTC)
 {
-	MReturnOnError(strlen(inAlarmName) == 0 || strlen(inAlarmName) >= eRealTime_MaxNameLength);
+	MReturnOnError(inAlarmName == NULL || strlen(inAlarmName) == 0);
 
 	SAlarm*	targetAlarm = FindAlarmByName(inAlarmName);
 
@@ -930,7 +930,7 @@ CModule_RealTime::RegisterAlarm(
 		MReturnOnError(targetAlarm == NULL);
 	}
 
-	strncpy(targetAlarm->name, inAlarmName, sizeof(targetAlarm->name));
+	targetAlarm->name = inAlarmName;
 
 	targetAlarm->year = inYear;
 	targetAlarm->month = inMonth;
@@ -954,7 +954,7 @@ CModule_RealTime::CancelAlarm(
 	SAlarm*	targetAlarm = FindAlarmByName(inAlarmName);
 	if(targetAlarm != NULL)
 	{
-		targetAlarm->name[0] = 0;
+		targetAlarm->name = NULL;
 	}
 }
 
@@ -967,7 +967,7 @@ CModule_RealTime::RegisterEvent(
 	TRealTimeEventMethod	inMethod,		// The method on the above object
 	void*				inReference)	// The reference value passed into the above method
 {
-	MReturnOnError(strlen(inEventName) == 0 || strlen(inEventName) >= eRealTime_MaxNameLength);
+	MReturnOnError(inEventName == NULL || strlen(inEventName) == 0);
 
 	SEvent*	targetEvent = FindEventByName(inEventName);
 
@@ -978,7 +978,7 @@ CModule_RealTime::RegisterEvent(
 		MReturnOnError(targetEvent == NULL);
 	}
 
-	strncpy(targetEvent->name, inEventName, sizeof(targetEvent->name));
+	targetEvent->name = inEventName;
 
 	targetEvent->periodUS = inPeriodUS;
 	targetEvent->onceOnly = inOnlyOnce;
@@ -995,7 +995,7 @@ CModule_RealTime::CancelEvent(
 	SEvent*	targetEvent = FindEventByName(inEventName);
 	if(targetEvent != NULL)
 	{
-		targetEvent->name[0] = 0;
+		targetEvent->name = NULL;
 	}
 }
 
@@ -1005,7 +1005,7 @@ CModule_RealTime::RegisterTimeChangeHandler(
 	IRealTimeHandler*		inObject,
 	TRealTimeChangeMethod	inMethod)
 {
-	MReturnOnError(strlen(inName) == 0 || strlen(inName) >= eRealTime_MaxNameLength);
+	MReturnOnError(inName == NULL || strlen(inName) == 0);
 
 	STimeChangeHandler*	targetHandler = FindTimeChangeHandlerByName(inName);
 
@@ -1016,7 +1016,7 @@ CModule_RealTime::RegisterTimeChangeHandler(
 		MReturnOnError(targetHandler == NULL);
 	}
 
-	strncpy(targetHandler->name, inName, sizeof(targetHandler->name));
+	targetHandler->name = inName;
 	targetHandler->object = inObject;
 	targetHandler->method = inMethod;
 }
@@ -1028,7 +1028,7 @@ CModule_RealTime::CancelTimeChangeHandler(
 	STimeChangeHandler*	targetHandler = FindTimeChangeHandlerByName(inName);
 	if(targetHandler != NULL)
 	{
-		targetHandler->name[0] = 0;
+		targetHandler->name = NULL;
 	}
 }
 
@@ -1053,7 +1053,7 @@ CModule_RealTime::FindAlarmByName(
 {
 	for(int i = 0; i < eAlarm_MaxActive; ++i)
 	{
-		if(strcmp(inName, alarmArray[i].name) == 0)
+		if(alarmArray[i].name != NULL && strcmp(inName, alarmArray[i].name) == 0)
 		{
 			return alarmArray + i;
 		}
@@ -1068,7 +1068,7 @@ CModule_RealTime::FindAlarmFirstEmpty(
 {
 	for(int i = 0; i < eAlarm_MaxActive; ++i)
 	{
-		if(alarmArray[i].name[0] == 0)
+		if(alarmArray[i].name == NULL)
 		{
 			return alarmArray + i;
 		}
@@ -1083,7 +1083,7 @@ CModule_RealTime::FindEventByName(
 {
 	for(int i = 0; i < eEvent_MaxActive; ++i)
 	{
-		if(strcmp(inName, eventArray[i].name) == 0)
+		if(eventArray[i].name != NULL && strcmp(inName, eventArray[i].name) == 0)
 		{
 			return eventArray + i;
 		}
@@ -1098,7 +1098,7 @@ CModule_RealTime::FindEventFirstEmpty(
 {
 	for(int i = 0; i < eEvent_MaxActive; ++i)
 	{
-		if(eventArray[i].name[0] == 0)
+		if(eventArray[i].name == NULL)
 		{
 			return eventArray + i;
 		}
@@ -1113,7 +1113,7 @@ CModule_RealTime::FindTimeChangeHandlerByName(
 {
 	for(int i = 0; i < eTimeChangeHandler_MaxCount; ++i)
 	{
-		if(strcmp(inName, timeChangeHandlerArray[i].name) == 0)
+		if(timeChangeHandlerArray[i].name != NULL && strcmp(inName, timeChangeHandlerArray[i].name) == 0)
 		{
 			return timeChangeHandlerArray + i;
 		}
@@ -1128,7 +1128,7 @@ CModule_RealTime::FindTimeChangeHandlerFirstEmpty(
 {
 	for(int i = 0; i < eTimeChangeHandler_MaxCount; ++i)
 	{
-		if(timeChangeHandlerArray[i].name[0] == 0)
+		if(timeChangeHandlerArray[i].name == NULL)
 		{
 			return timeChangeHandlerArray + i;
 		}
@@ -1209,7 +1209,7 @@ CModule_RealTime::ScheduleAlarm(
 		SystemMsg(eMsgLevel_Medium, "  target was %02d/%02d/%04d %02d:%02d:%02d", inAlarm->month, inAlarm->dayOfMonth, inAlarm->year, inAlarm->hour, inAlarm->minute, inAlarm->second);
 		GetComponentsFromEpochTime(GetEpochTime(inAlarm->utc), year, month, day, dow, hour, min, sec);
 		SystemMsg(eMsgLevel_Medium, "  now is %02d/%02d/%04d %02d:%02d:%02d", month, day, year, hour, min, sec);
-		inAlarm->name[0] = 0;
+		inAlarm->name = NULL;
 	}
 }
 
@@ -1436,7 +1436,7 @@ CModule_RealTime::SerialDumpTable(
 	SAlarm* curAlarm = alarmArray;
 	for(int alarmItr = 0; alarmItr < eAlarm_MaxActive; ++alarmItr, ++curAlarm)
 	{
-		if(curAlarm->name[0] == 0)
+		if(curAlarm->name == NULL)
 		{
 			continue;
 		}

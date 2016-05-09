@@ -93,8 +93,8 @@ CSunRiseAndSetModule::Setup(
 {
 	MAssert(gRealTime != NULL);
 
-	gCommand->RegisterCommand("lonlat_set", this, static_cast<TCmdHandlerMethod>(&CSunRiseAndSetModule::SerialSetLonLat));
-	gCommand->RegisterCommand("lonlat_get", this, static_cast<TCmdHandlerMethod>(&CSunRiseAndSetModule::SerialGetLonLat));
+	gCommand->RegisterCommand("lonlat_set", this, static_cast<TCmdHandlerMethod>(&CSunRiseAndSetModule::SerialSetLonLat), "Set longitude and latitude, \"[lon] [lat]\"");
+	gCommand->RegisterCommand("lonlat_get", this, static_cast<TCmdHandlerMethod>(&CSunRiseAndSetModule::SerialGetLonLat), "get longitude and latutude");
 	gRealTime->RegisterTimeChangeHandler("ssar", this, static_cast<TRealTimeChangeMethod>(&CSunRiseAndSetModule::RealTimeChangeHandler));
 }
 
@@ -134,7 +134,7 @@ CSunRiseAndSetModule::RegisterSunriseEvent(
 	int							inSunRelativePosition,
 	bool						inUTC)
 {
-	MReturnOnError(strlen(inEventName) == 0 || strlen(inEventName) > eRealTime_MaxNameLength);
+	MReturnOnError(inEventName == NULL || strlen(inEventName) == 0);
 
 	SEvent*	newEvent = FindEvent(inEventName);
 	if(newEvent == NULL)
@@ -143,7 +143,7 @@ CSunRiseAndSetModule::RegisterSunriseEvent(
 		MReturnOnError(newEvent == NULL);
 	}
 
-	strcpy(newEvent->name, inEventName);
+	newEvent->name = inEventName;
 	newEvent->year = inYear;
 	newEvent->month = inMonth;
 	newEvent->day = inDay;
@@ -180,7 +180,7 @@ CSunRiseAndSetModule::RegisterSunsetEvent(
 		MReturnOnError(newEvent == NULL);
 	}
 
-	strcpy(newEvent->name, inEventName);
+	newEvent->name = inEventName;
 	newEvent->year = inYear;
 	newEvent->month = inMonth;
 	newEvent->day = inDay;
@@ -206,7 +206,7 @@ CSunRiseAndSetModule::CancelEvent(
 	}
 
 	gRealTime->CancelAlarm(inEventName);
-	targetEvent->name[0] = 0;
+	targetEvent->name = NULL;
 }
 
 uint8_t
@@ -244,7 +244,7 @@ CSunRiseAndSetModule::FindEvent(
 {
 	for(int itr = 0; itr < eMaxSunRiseSetEvents; ++itr)
 	{
-		if(strcmp(eventList[itr].name, inName) == 0)
+		if(eventList[itr].name != NULL && strcmp(eventList[itr].name, inName) == 0)
 		{
 			return eventList + itr;
 		}
@@ -259,7 +259,7 @@ CSunRiseAndSetModule::FindFirstFreeEvent(
 {
 	for(int itr = 0; itr < eMaxSunRiseSetEvents; ++itr)
 	{
-		if(eventList[itr].name[0] == 0)
+		if(eventList[itr].name == NULL)
 		{
 			return eventList + itr;
 		}
@@ -379,7 +379,7 @@ CSunRiseAndSetModule::RealTimeChangeHandler(
 {
 	for(int i = 0; i < eMaxSunRiseSetEvents; ++i)
 	{
-		if(eventList[i].name[0] != 0)
+		if(eventList[i].name != NULL)
 		{
 			ScheduleNextEvent(eventList + i);
 		}

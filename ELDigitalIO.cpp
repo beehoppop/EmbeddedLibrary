@@ -47,6 +47,7 @@ CModule_DigitalIO::CModule_DigitalIO(
 	CModule("dgio", 0, 0, NULL, eUpdateTimeUS, 1)
 {
 	gDigitalIO = this;
+	memset(pinState, 0, sizeof(pinState));
 }
 
 void
@@ -126,7 +127,7 @@ CModule_DigitalIO::Update(
 			if(curState->time > 0 && gCurLocalMS >= curState->time)
 			{
 				curState->time = 0;
-				digitalWriteFast(i, 0);
+				digitalWriteFast(i, !curState->activeHigh);
 			}
 		}
 	}
