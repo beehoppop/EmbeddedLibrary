@@ -42,6 +42,8 @@ enum
 	eMaxConnectionsCount = 4,
 	eServerMaxAddressLength = 63,
 
+	eCommandServerFrontPageHandlerMax = 8,
+
 	eMaxIncomingPacketSize = 1500,
 	eMaxOutgoingPacketSize = 1400,
 
@@ -74,6 +76,11 @@ class IInternetHandler
 {
 public:
 };
+
+// This will be called when a client connects to the command server
+typedef void
+(IInternetHandler::*TInternetServerPageMethod)(
+	IOutputDirector*	inOutput);
 
 // This will be called when data arrives to a opened server
 typedef void
@@ -293,10 +300,14 @@ public:
 
 	// Configure the internet connection to serve commands on the given port
 	void
-	ServeCommands(
-		uint16_t						inPort,
-		IInternetHandler*				inInternetHandler = NULL,			// The object of the handlers
-		TInternetServerHandlerMethod	inMethod = NULL);					// This method will be called when a client connects to the server, use the inOutput parameter to send html code to the client
+	CommandServer_Start(
+		uint16_t inPort);
+
+	void
+	CommandServer_RegisterFrontPage(
+		IInternetHandler*			inInternetHandler,			// The object of the handlers
+		TInternetServerPageMethod	inMethod);					// This method will be called when a client connects to the server, use the inOutput parameter to send html code to the client
+		
 
 	// Higher level HTTP service
 	CHTTPConnection*
@@ -364,6 +375,12 @@ private:
 		TInternetResponseHandlerMethod			handlerResponseMethod;
 	};
 
+	struct SCommandServerFrontPageHandler
+	{
+		IInternetHandler*			commandServerObject;
+		TInternetServerPageMethod	commandServerMethod;
+	};
+
 	struct SSettings
 	{
 		char		ssid[64];
@@ -381,8 +398,8 @@ private:
 	SSettings	settings;
 
 	uint16_t						commandServerPort;
-	IInternetHandler*				commandServerObject;
-	TInternetServerHandlerMethod	commandServerMethod;
+	
+	SCommandServerFrontPageHandler	commandServerFrontPageHandlerList[eCommandServerFrontPageHandlerMax];
 
 	bool		respondingServer;
 	uint16_t	respondingServerPort;

@@ -95,7 +95,7 @@ CModule_Command::CModule_Command(
 		"help",
 		this,
 		static_cast<TCmdHandlerMethod>(&CModule_Command::HelpCommand),
-		"List the available commands and descriptions");
+		": List the available commands and descriptions");
 }
 
 uint8_t
@@ -108,7 +108,7 @@ CModule_Command::HelpCommand(
 
 	for(int i = 0; i < handlerCount; ++i, ++curCmd)
 	{
-		inOutput->printf("%s: %s\n", curCmd->name, curCmd->description != NULL ? curCmd->description : "(N/A)");
+		inOutput->printf("%s %s\n", curCmd->name, curCmd->description != NULL ? curCmd->description : "(N/A)");
 	}
 
 	return eCmd_Succeeded;

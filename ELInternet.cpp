@@ -359,6 +359,7 @@ CModule_Internet::CModule_Internet(
 	memset(serverList, 0, sizeof(serverList));
 	memset(connectionList, 0, sizeof(connectionList));
 	memset(&settings, 0, sizeof(settings));
+	memset(commandServerFrontPageHandlerList, 0, sizeof(commandServerFrontPageHandlerList));
 	commandServerPort = 0;
 	respondingServer = false;
 	respondingServerPort = 0;
@@ -531,16 +532,30 @@ CModule_Internet::SendData(
 }
 
 void
-CModule_Internet::ServeCommands(
-	uint16_t						inPort,
-	IInternetHandler*				inHandlerObject,			// The object of the handlers
-	TInternetServerHandlerMethod	inHandlerMethod)
+CModule_Internet::CommandServer_Start(
+	uint16_t	inPort)
 {
 	MReturnOnError(internetDevice == NULL);
 	commandServerPort = inPort;
-	commandServerObject = inHandlerObject;
-	commandServerMethod = inHandlerMethod;
 	internetDevice->Server_Open(inPort);
+}
+
+void
+CModule_Internet::CommandServer_RegisterFrontPage(
+	IInternetHandler*			inInternetHandler,
+	TInternetServerPageMethod	inMethod)
+{
+	for(int i = 0; i < eCommandServerFrontPageHandlerMax; ++i)
+	{
+		if(commandServerFrontPageHandlerList[i].commandServerObject == NULL)
+		{
+			commandServerFrontPageHandlerList[i].commandServerObject = inInternetHandler;
+			commandServerFrontPageHandlerList[i].commandServerMethod = inMethod;
+			return;
+		}
+	}
+	
+	MReturnOnError(true);
 }
 
 CHTTPConnection*
@@ -558,10 +573,10 @@ void
 CModule_Internet::Setup(
 	void)
 {
-	gCommand->RegisterCommand("wireless_set", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_WirelessSet), "Set the wireless configuration, \"[ssid] [pw] [wpa2|wep|open]\"");
-	gCommand->RegisterCommand("wireless_get", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_WirelessGet), "Get the wireless configuration");
-	gCommand->RegisterCommand("ip_set", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_IPAddrSet), "Set the ip configuration, \"[ip addr] [gateway addr] [subnet mask]\"");
-	gCommand->RegisterCommand("ip_get", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_IPAddrGet), "Gett the ip configuration");
+	gCommand->RegisterCommand("wireless_set", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_WirelessSet), "[ssid] [pw] [wpa2|wep|open] : Set the wireless configuration");
+	gCommand->RegisterCommand("wireless_get", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_WirelessGet), ": Get the wireless configuration");
+	gCommand->RegisterCommand("ip_set", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_IPAddrSet), "[ip addr] [gateway addr] [subnet mask] : Set the ip configuration");
+	gCommand->RegisterCommand("ip_get", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_IPAddrGet), ": Get the ip configuration");
 }
 
 void
@@ -607,13 +622,15 @@ CModule_Internet::Update(
 			{
 				internetDevice->SendData(replyPort, strlen(gReplyStringPreOutput), gReplyStringPreOutput);
 
-				if(commandServerObject != NULL && commandServerMethod != NULL)
+				respondingServer = true;
+				respondingServerPort = commandServerPort;
+				respondingReplyPort = replyPort;
+				for(int i = 0; i < eCommandServerFrontPageHandlerMax; ++i)
 				{
-					// Allow the application to send html code back to the client for a custom home page
-					respondingServer = true;
-					respondingServerPort = commandServerPort;
-					respondingReplyPort = replyPort;
-					(commandServerObject->*commandServerMethod)(this, 0, NULL);
+					if(commandServerFrontPageHandlerList[i].commandServerObject != NULL)
+					{
+						(commandServerFrontPageHandlerList[i].commandServerObject->*(commandServerFrontPageHandlerList[i].commandServerMethod))(this);
+					}
 				}
 
 				internetDevice->SendData(replyPort, strlen(gReplyStringPostOutput), gReplyStringPostOutput);
@@ -665,13 +682,15 @@ CModule_Internet::Update(
 				respondingServerPort = commandServerPort;
 				respondingReplyPort = replyPort;
 
-				// Call command
+				// Call the front page handlers to provide html
 				gCommand->ProcessCommand(this, argIndex, argList);
 
-				if(commandServerObject != NULL && commandServerMethod != NULL)
+				for(int i = 0; i < eCommandServerFrontPageHandlerMax; ++i)
 				{
-					// Allow the application to send html code back to the client for a custom home page
-					(commandServerObject->*commandServerMethod)(this, 0, NULL);
+					if(commandServerFrontPageHandlerList[i].commandServerObject != NULL)
+					{
+						(commandServerFrontPageHandlerList[i].commandServerObject->*(commandServerFrontPageHandlerList[i].commandServerMethod))(this);
+					}
 				}
 
 				internetDevice->SendData(replyPort, strlen(gReplyStringPostOutput), gReplyStringPostOutput);

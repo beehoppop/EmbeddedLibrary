@@ -76,9 +76,9 @@
 
 #define INV360    ( 1.0 / 360.0 )
 
-CSunRiseAndSetModule*	gSunRiseAndSet;
+CModule_SunRiseAndSet*	gSunRiseAndSet;
 
-CSunRiseAndSetModule::CSunRiseAndSetModule(
+CModule_SunRiseAndSet::CModule_SunRiseAndSet(
 	)
 	:
 	CModule("SRAS", sizeof(SSettings), 1, &settings, 0, 1)
@@ -88,18 +88,18 @@ CSunRiseAndSetModule::CSunRiseAndSetModule(
 }
 	
 void
-CSunRiseAndSetModule::Setup(
+CModule_SunRiseAndSet::Setup(
 	void)
 {
 	MAssert(gRealTime != NULL);
 
-	gCommand->RegisterCommand("lonlat_set", this, static_cast<TCmdHandlerMethod>(&CSunRiseAndSetModule::SerialSetLonLat), "Set longitude and latitude, \"[lon] [lat]\"");
-	gCommand->RegisterCommand("lonlat_get", this, static_cast<TCmdHandlerMethod>(&CSunRiseAndSetModule::SerialGetLonLat), "get longitude and latutude");
-	gRealTime->RegisterTimeChangeHandler("ssar", this, static_cast<TRealTimeChangeMethod>(&CSunRiseAndSetModule::RealTimeChangeHandler));
+	gCommand->RegisterCommand("lonlat_set", this, static_cast<TCmdHandlerMethod>(&CModule_SunRiseAndSet::SerialSetLonLat), "[lon] [lat] : Set longitude and latitude");
+	gCommand->RegisterCommand("lonlat_get", this, static_cast<TCmdHandlerMethod>(&CModule_SunRiseAndSet::SerialGetLonLat), ": Get longitude and latutude");
+	gRealTime->RegisterTimeChangeHandler("ssar", this, static_cast<TRealTimeChangeMethod>(&CModule_SunRiseAndSet::RealTimeChangeHandler));
 }
 
 void
-CSunRiseAndSetModule::SetLongitudeAndLatitude(
+CModule_SunRiseAndSet::SetLongitudeAndLatitude(
 	double	inLongitude,
 	double	inLatitude,
 	bool	inSaveInEEPROM)
@@ -113,7 +113,7 @@ CSunRiseAndSetModule::SetLongitudeAndLatitude(
 }
 
 void
-CSunRiseAndSetModule::GetLongitudeAndLatitude(
+CModule_SunRiseAndSet::GetLongitudeAndLatitude(
 	double&	outLongitude,
 	double&	outLatitude)
 {
@@ -122,7 +122,7 @@ CSunRiseAndSetModule::GetLongitudeAndLatitude(
 }
 
 void
-CSunRiseAndSetModule::RegisterSunriseEvent(
+CModule_SunRiseAndSet::RegisterSunriseEvent(
 	char const*					inEventName,
 	int							inYear,			// The specific year for the event or eAlarm_Any
 	int							inMonth,		// The specific month for the event or eAlarm_Any
@@ -159,7 +159,7 @@ CSunRiseAndSetModule::RegisterSunriseEvent(
 }
 
 void
-CSunRiseAndSetModule::RegisterSunsetEvent(
+CModule_SunRiseAndSet::RegisterSunsetEvent(
 	char const*					inEventName,
 	int							inYear,			// The specific year for the event or eAlarm_Any
 	int							inMonth,		// The specific month for the event or eAlarm_Any
@@ -196,7 +196,7 @@ CSunRiseAndSetModule::RegisterSunsetEvent(
 }
 
 void
-CSunRiseAndSetModule::CancelEvent(
+CModule_SunRiseAndSet::CancelEvent(
 	char const*	inEventName)
 {
 	SEvent*	targetEvent = FindEvent(inEventName);
@@ -210,7 +210,7 @@ CSunRiseAndSetModule::CancelEvent(
 }
 
 uint8_t
-CSunRiseAndSetModule::SerialSetLonLat(
+CModule_SunRiseAndSet::SerialSetLonLat(
 	IOutputDirector*	inOutput,
 	int					inArgC,
 	char const*			inArgV[])
@@ -229,7 +229,7 @@ CSunRiseAndSetModule::SerialSetLonLat(
 }
 
 uint8_t
-CSunRiseAndSetModule::SerialGetLonLat(
+CModule_SunRiseAndSet::SerialGetLonLat(
 	IOutputDirector*	inOutput,
 	int					inArgC,
 	char const*			inArgV[])
@@ -238,8 +238,8 @@ CSunRiseAndSetModule::SerialGetLonLat(
 	return eCmd_Succeeded;
 }
 
-CSunRiseAndSetModule::SEvent*
-CSunRiseAndSetModule::FindEvent(
+CModule_SunRiseAndSet::SEvent*
+CModule_SunRiseAndSet::FindEvent(
 	char const*	inName)
 {
 	for(int itr = 0; itr < eMaxSunRiseSetEvents; ++itr)
@@ -253,8 +253,8 @@ CSunRiseAndSetModule::FindEvent(
 	return NULL;
 }
 
-CSunRiseAndSetModule::SEvent*
-CSunRiseAndSetModule::FindFirstFreeEvent(
+CModule_SunRiseAndSet::SEvent*
+CModule_SunRiseAndSet::FindFirstFreeEvent(
 	void)
 {
 	for(int itr = 0; itr < eMaxSunRiseSetEvents; ++itr)
@@ -269,7 +269,7 @@ CSunRiseAndSetModule::FindFirstFreeEvent(
 }
 
 void
-CSunRiseAndSetModule::ScheduleNextEvent(
+CModule_SunRiseAndSet::ScheduleNextEvent(
 	SEvent*	inEvent)
 {
 	// Get the target utc date
@@ -354,13 +354,13 @@ CSunRiseAndSetModule::ScheduleNextEvent(
 		targetMin,
 		targetSec,
 		this,
-		static_cast<TRealTimeAlarmMethod>(&CSunRiseAndSetModule::RealTimeAlarmHandler),
+		static_cast<TRealTimeAlarmMethod>(&CModule_SunRiseAndSet::RealTimeAlarmHandler),
 		inEvent,
 		inEvent->utc);
 }
 
 bool
-CSunRiseAndSetModule::RealTimeAlarmHandler(
+CModule_SunRiseAndSet::RealTimeAlarmHandler(
 	char const*	inName,
 	void*		inReference)
 {
@@ -373,7 +373,7 @@ CSunRiseAndSetModule::RealTimeAlarmHandler(
 }
 
 void
-CSunRiseAndSetModule::RealTimeChangeHandler(
+CModule_SunRiseAndSet::RealTimeChangeHandler(
 	char const*	inName,
 	bool		inTimeZone)
 {
@@ -528,7 +528,7 @@ SunRADec(
 }
 
 double 
-CSunRiseAndSetModule::GetDayLength(
+CModule_SunRiseAndSet::GetDayLength(
 	int		inYear, 
 	int		inMonth, 
 	int		inDay, 
@@ -593,7 +593,7 @@ CSunRiseAndSetModule::GetDayLength(
 }
 
 int 
-CSunRiseAndSetModule::GetSunRiseAndSetEpochTime(
+CModule_SunRiseAndSet::GetSunRiseAndSetEpochTime(
 	TEpochTime&	outSunriseTime,
 	TEpochTime&	outSunsetTime,
 	int			inYear, 
@@ -683,7 +683,7 @@ CSunRiseAndSetModule::GetSunRiseAndSetEpochTime(
 }
 
 TEpochTime
-CSunRiseAndSetModule::GetSunriseEpochTime(
+CModule_SunRiseAndSet::GetSunriseEpochTime(
 	int		inYear,
 	int		inMonth,
 	int		inDay,
@@ -767,7 +767,7 @@ CSunRiseAndSetModule::GetSunriseEpochTime(
 }
 
 TEpochTime
-CSunRiseAndSetModule::GetSunsetEpochTime(
+CModule_SunRiseAndSet::GetSunsetEpochTime(
 	int		inYear,
 	int		inMonth,
 	int		inDay,

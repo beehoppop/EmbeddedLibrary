@@ -84,12 +84,13 @@ public:
 		int		inChipSelect,
 		bool	inUseAltSPI)
 		:
-		spiSettings(2000000, MSBFIRST, SPI_MODE3),
+		spiSettings(SPI_CLOCK_DIV128, MSBFIRST, SPI_MODE3),
 		useAltSPI(inUseAltSPI)
 	{
 		chipselect = inChipSelect;
 
 		pinMode(chipselect, OUTPUT);
+		digitalWrite(chipselect, HIGH);
 
 		if(useAltSPI)
 		{
@@ -213,6 +214,7 @@ public:
 			SPI.setSCK(14);
 		}
 		SPI.begin();
+
 		for(int i = 0; i < 7; ++i)
 		{
 			if(i == 3)
@@ -220,10 +222,17 @@ public:
 
 			SPI.beginTransaction(spiSettings);
 			digitalWrite(chipselect, LOW);
+		#if 1
 			SPI.transfer(i + 0x00); 
 			unsigned int n = SPI.transfer(0x00);        
+		#else
+			unsigned int n = 0;
+			delay(1);
+		#endif
 			digitalWrite(chipselect, HIGH);
+			delay(1);
 			SPI.endTransaction();
+			delay(1);
 
 			int a = n & 0x0F;
 			int b = (n & 0x70) >> 4;
@@ -236,6 +245,7 @@ public:
 				TimeDate[i] &= 0x1F;
 			}
 		}
+
 		SPI.end();
 		if(useAltSPI)
 		{
@@ -253,7 +263,7 @@ public:
 			TimeDate[6] += 2000;
 		}
 
-		//SystemMsg("got %d %d %d %d %d %d\n", TimeDate[6], TimeDate[5], TimeDate[4], TimeDate[2], TimeDate[1], TimeDate[0]);
+		SystemMsg("got %d %d %d %d %d %d\n", TimeDate[6], TimeDate[5], TimeDate[4], TimeDate[2], TimeDate[1], TimeDate[0]);
 
 		if(TimeDate[5] < 1 || TimeDate[5] > 12 || TimeDate[4] < 1 || TimeDate[4] > 31 || TimeDate[2] < 0 || TimeDate[2] > 23 || TimeDate[1] < 0 || TimeDate[1] > 59 || TimeDate[0] < 0 || TimeDate[0] > 59)
 		{
@@ -316,12 +326,12 @@ CModule_RealTime::Setup(
 		SetTimeZone(gTimeZone, false);
 	#endif
 
-	gCommand->RegisterCommand("time_set", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialSetTime), "[year] [month] [day] [hour] [min] [sec] [utc | local] : Set the current time");
-	gCommand->RegisterCommand("time_get", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialGetTime), "[utc | local] : Get the current time");
-	gCommand->RegisterCommand("timezone_set", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialSetTimeZone), "[name] [dstStartWeek] [dstStartDayOfWeek] [dstStartMonth] [dstStartHour] [dstOffsetMin] [stdStartWeek] [stdStartDayOfWeek] [stdStartMonth] [stdStartHour] [stdOffsetMin] : Set time zone");
-	gCommand->RegisterCommand("timezone_get", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialGetTimeZone), "Get the current time zone information");
-	gCommand->RegisterCommand("rt_dump", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialDumpTable), ": Dump the alarm table");
-	gCommand->RegisterCommand("rt_set_mult", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialSetMultiplier), "[integer] : multiply the passage of time by the given value");
+	gCommand->RegisterCommand("time_set", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialSetTime));
+	gCommand->RegisterCommand("time_get", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialGetTime));
+	gCommand->RegisterCommand("timezone_set", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialSetTimeZone));
+	gCommand->RegisterCommand("timezone_get", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialGetTimeZone));
+	gCommand->RegisterCommand("rt_dump", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialDumpTable));
+	gCommand->RegisterCommand("rt_set_mult", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialSetMultiplier));
 
 	timeMultiplier = 1;
 
@@ -342,7 +352,7 @@ CModule_RealTime::Update(
 	SAlarm* curAlarm = alarmArray;
 	for(int alarmItr = 0; alarmItr < eAlarm_MaxActive; ++alarmItr, ++curAlarm)
 	{
-		if(curAlarm->name == NULL)
+		if(curAlarm->name[0] == 0)
 		{
 			continue;
 		}
@@ -360,7 +370,7 @@ CModule_RealTime::Update(
 			else if(curAlarm->nextTriggerTimeUTC == 0)
 			{
 				// if the alarm has not been rescheduled by the event handler method cancel it here so it does not fire repeatedly
-				curAlarm->name = NULL;
+				curAlarm->name[0] = 0;
 			}
 		}
 	}
@@ -369,7 +379,7 @@ CModule_RealTime::Update(
 	SEvent*	curEvent = eventArray;
 	for(int itr = 0; itr < eEvent_MaxActive; ++itr, ++curEvent)
 	{
-		if(curEvent->name == NULL)
+		if(curEvent->name[0] == 0)
 		{
 			continue;
 		}
@@ -382,7 +392,7 @@ CModule_RealTime::Update(
 			//SystemMsg("Done");
 			if(curEvent->onceOnly)
 			{
-				curEvent->name = NULL;
+				curEvent->name[0] = 0;
 			}
 		}
 	}
@@ -403,7 +413,7 @@ CModule_RealTime::SetTimeZone(
 	STimeChangeHandler*	curHandler = timeChangeHandlerArray;
 	for(int i = 0; i < eTimeChangeHandler_MaxCount; ++i, ++curHandler)
 	{
-		if(curHandler->name != NULL && curHandler->object != NULL)
+		if(curHandler->name[0] != 0 && curHandler->object != NULL)
 		{
 			(curHandler->object->*curHandler->method)(curHandler->name, true);
 		}
@@ -462,7 +472,7 @@ CModule_RealTime::SetEpochTime(
 		STimeChangeHandler*	curHandler = timeChangeHandlerArray;
 		for(int i = 0; i < eTimeChangeHandler_MaxCount; ++i, ++curHandler)
 		{
-			if(curHandler->name != NULL && curHandler->object != NULL)
+			if(curHandler->name[0] != 0 && curHandler->object != NULL)
 			{
 				(curHandler->object->*curHandler->method)(curHandler->name, false);
 			}
@@ -919,7 +929,7 @@ CModule_RealTime::RegisterAlarm(
 	void*				inReference,
 	bool				inUTC)
 {
-	MReturnOnError(inAlarmName == NULL || strlen(inAlarmName) == 0);
+	MReturnOnError(strlen(inAlarmName) == 0 || strlen(inAlarmName) >= eRealTime_MaxNameLength);
 
 	SAlarm*	targetAlarm = FindAlarmByName(inAlarmName);
 
@@ -930,7 +940,7 @@ CModule_RealTime::RegisterAlarm(
 		MReturnOnError(targetAlarm == NULL);
 	}
 
-	targetAlarm->name = inAlarmName;
+	strncpy(targetAlarm->name, inAlarmName, sizeof(targetAlarm->name));
 
 	targetAlarm->year = inYear;
 	targetAlarm->month = inMonth;
@@ -954,7 +964,7 @@ CModule_RealTime::CancelAlarm(
 	SAlarm*	targetAlarm = FindAlarmByName(inAlarmName);
 	if(targetAlarm != NULL)
 	{
-		targetAlarm->name = NULL;
+		targetAlarm->name[0] = 0;
 	}
 }
 
@@ -967,7 +977,7 @@ CModule_RealTime::RegisterEvent(
 	TRealTimeEventMethod	inMethod,		// The method on the above object
 	void*				inReference)	// The reference value passed into the above method
 {
-	MReturnOnError(inEventName == NULL || strlen(inEventName) == 0);
+	MReturnOnError(strlen(inEventName) == 0 || strlen(inEventName) >= eRealTime_MaxNameLength);
 
 	SEvent*	targetEvent = FindEventByName(inEventName);
 
@@ -978,7 +988,7 @@ CModule_RealTime::RegisterEvent(
 		MReturnOnError(targetEvent == NULL);
 	}
 
-	targetEvent->name = inEventName;
+	strncpy(targetEvent->name, inEventName, sizeof(targetEvent->name));
 
 	targetEvent->periodUS = inPeriodUS;
 	targetEvent->onceOnly = inOnlyOnce;
@@ -995,7 +1005,7 @@ CModule_RealTime::CancelEvent(
 	SEvent*	targetEvent = FindEventByName(inEventName);
 	if(targetEvent != NULL)
 	{
-		targetEvent->name = NULL;
+		targetEvent->name[0] = 0;
 	}
 }
 
@@ -1005,7 +1015,7 @@ CModule_RealTime::RegisterTimeChangeHandler(
 	IRealTimeHandler*		inObject,
 	TRealTimeChangeMethod	inMethod)
 {
-	MReturnOnError(inName == NULL || strlen(inName) == 0);
+	MReturnOnError(strlen(inName) == 0 || strlen(inName) >= eRealTime_MaxNameLength);
 
 	STimeChangeHandler*	targetHandler = FindTimeChangeHandlerByName(inName);
 
@@ -1016,7 +1026,7 @@ CModule_RealTime::RegisterTimeChangeHandler(
 		MReturnOnError(targetHandler == NULL);
 	}
 
-	targetHandler->name = inName;
+	strncpy(targetHandler->name, inName, sizeof(targetHandler->name));
 	targetHandler->object = inObject;
 	targetHandler->method = inMethod;
 }
@@ -1028,7 +1038,7 @@ CModule_RealTime::CancelTimeChangeHandler(
 	STimeChangeHandler*	targetHandler = FindTimeChangeHandlerByName(inName);
 	if(targetHandler != NULL)
 	{
-		targetHandler->name = NULL;
+		targetHandler->name[0] = 0;
 	}
 }
 
@@ -1053,7 +1063,7 @@ CModule_RealTime::FindAlarmByName(
 {
 	for(int i = 0; i < eAlarm_MaxActive; ++i)
 	{
-		if(alarmArray[i].name != NULL && strcmp(inName, alarmArray[i].name) == 0)
+		if(strcmp(inName, alarmArray[i].name) == 0)
 		{
 			return alarmArray + i;
 		}
@@ -1068,7 +1078,7 @@ CModule_RealTime::FindAlarmFirstEmpty(
 {
 	for(int i = 0; i < eAlarm_MaxActive; ++i)
 	{
-		if(alarmArray[i].name == NULL)
+		if(alarmArray[i].name[0] == 0)
 		{
 			return alarmArray + i;
 		}
@@ -1083,7 +1093,7 @@ CModule_RealTime::FindEventByName(
 {
 	for(int i = 0; i < eEvent_MaxActive; ++i)
 	{
-		if(eventArray[i].name != NULL && strcmp(inName, eventArray[i].name) == 0)
+		if(strcmp(inName, eventArray[i].name) == 0)
 		{
 			return eventArray + i;
 		}
@@ -1098,7 +1108,7 @@ CModule_RealTime::FindEventFirstEmpty(
 {
 	for(int i = 0; i < eEvent_MaxActive; ++i)
 	{
-		if(eventArray[i].name == NULL)
+		if(eventArray[i].name[0] == 0)
 		{
 			return eventArray + i;
 		}
@@ -1113,7 +1123,7 @@ CModule_RealTime::FindTimeChangeHandlerByName(
 {
 	for(int i = 0; i < eTimeChangeHandler_MaxCount; ++i)
 	{
-		if(timeChangeHandlerArray[i].name != NULL && strcmp(inName, timeChangeHandlerArray[i].name) == 0)
+		if(strcmp(inName, timeChangeHandlerArray[i].name) == 0)
 		{
 			return timeChangeHandlerArray + i;
 		}
@@ -1128,7 +1138,7 @@ CModule_RealTime::FindTimeChangeHandlerFirstEmpty(
 {
 	for(int i = 0; i < eTimeChangeHandler_MaxCount; ++i)
 	{
-		if(timeChangeHandlerArray[i].name == NULL)
+		if(timeChangeHandlerArray[i].name[0] == 0)
 		{
 			return timeChangeHandlerArray + i;
 		}
@@ -1209,7 +1219,7 @@ CModule_RealTime::ScheduleAlarm(
 		SystemMsg(eMsgLevel_Medium, "  target was %02d/%02d/%04d %02d:%02d:%02d", inAlarm->month, inAlarm->dayOfMonth, inAlarm->year, inAlarm->hour, inAlarm->minute, inAlarm->second);
 		GetComponentsFromEpochTime(GetEpochTime(inAlarm->utc), year, month, day, dow, hour, min, sec);
 		SystemMsg(eMsgLevel_Medium, "  now is %02d/%02d/%04d %02d:%02d:%02d", month, day, year, hour, min, sec);
-		inAlarm->name = NULL;
+		inAlarm->name[0] = 0;
 	}
 }
 
@@ -1322,115 +1332,89 @@ CModule_RealTime::SerialSetTimeZone(
 {
 	STimeZoneRule	newTimeZone;
 	
-	if(inArgC == 2)
+	// name dstStartYear dstStartDayOfWeek dstStartMonth dstStartHour dstOffsetMin stdStartYear stdStartDayOfWeek stdStartMonth stdStartHour stdOffsetMin
+
+	if(inArgC != 12)
 	{
-		// Make this a table someday
-		if(strcmp(inArgV[1], "pst") == 0 || strcmp(inArgV[1], "pdt") == 0)
-		{
-			strncpy(newTimeZone.abbrev, inArgV[1], sizeof(newTimeZone.abbrev));
-			newTimeZone.dstStart.week = 2;
-			newTimeZone.dstStart.dayOfWeek = 1;
-			newTimeZone.dstStart.month = 3;
-			newTimeZone.dstStart.hour = 2;
-			newTimeZone.dstStart.offsetMins = -7 * 60;
-			newTimeZone.stdStart.week = 1;
-			newTimeZone.stdStart.dayOfWeek = 1;
-			newTimeZone.stdStart.month = 11;
-			newTimeZone.stdStart.hour = 2;
-			newTimeZone.stdStart.offsetMins = -8 * 60;
-		}
-		else
-		{
-			inOutput->printf("Unknown time zone\n");
-			return eCmd_Failed;
-		}
+		inOutput->printf("Wrong number of arguments got %d expected 11\n", inArgC - 1);
+		return eCmd_Failed;
 	}
-	else
+
+	if(strlen(inArgV[1]) > eRealTime_MaxNameLength)
 	{
-		// name dstStartWeek dstStartDayOfWeek dstStartMonth dstStartHour dstOffsetMin stdStartWeek stdStartDayOfWeek stdStartMonth stdStartHour stdOffsetMin
-
-		if(inArgC != 12)
-		{
-			inOutput->printf("Wrong number of arguments got %d expected 11\n", inArgC - 1);
-			return eCmd_Failed;
-		}
-
-		if(strlen(inArgV[1]) > eRealTime_MaxNameLength)
-		{
-			inOutput->printf("max name length is 15, got %d\n", strlen(inArgV[1]));
-			return eCmd_Failed;
-		}
-		strncpy(newTimeZone.abbrev, inArgV[1], sizeof(newTimeZone.abbrev));
+		inOutput->printf("max name length is 15, got %d\n", strlen(inArgV[1]));
+		return eCmd_Failed;
+	}
+	strncpy(newTimeZone.abbrev, inArgV[1], sizeof(newTimeZone.abbrev));
 		
-		newTimeZone.dstStart.week = atoi(inArgV[2]);
-		if(newTimeZone.dstStart.week < 0 || newTimeZone.dstStart.week > 4)
-		{
-			inOutput->printf("dst start week out of range");
-			return eCmd_Failed;
-		}
+	newTimeZone.dstStart.week = atoi(inArgV[2]);
+	if(newTimeZone.dstStart.week < 0 || newTimeZone.dstStart.week > 4)
+	{
+		inOutput->printf("dst start week out of range");
+		return eCmd_Failed;
+	}
 
-		newTimeZone.dstStart.dayOfWeek = atoi(inArgV[3]);
-		if(newTimeZone.dstStart.dayOfWeek < 1 || newTimeZone.dstStart.dayOfWeek > 7)
-		{
-			inOutput->printf("dst start day of week out of range");
-			return eCmd_Failed;
-		}
+	newTimeZone.dstStart.dayOfWeek = atoi(inArgV[3]);
+	if(newTimeZone.dstStart.dayOfWeek < 1 || newTimeZone.dstStart.dayOfWeek > 7)
+	{
+		inOutput->printf("dst start day of week out of range");
+		return eCmd_Failed;
+	}
 
-		newTimeZone.dstStart.month = atoi(inArgV[4]);
-		if(newTimeZone.dstStart.month < 1 || newTimeZone.dstStart.month > 12)
-		{
-			inOutput->printf("dst start month out of range");
-			return eCmd_Failed;
-		}
+	newTimeZone.dstStart.month = atoi(inArgV[4]);
+	if(newTimeZone.dstStart.month < 1 || newTimeZone.dstStart.month > 12)
+	{
+		inOutput->printf("dst start month out of range");
+		return eCmd_Failed;
+	}
 
-		newTimeZone.dstStart.hour = atoi(inArgV[5]);
-		if(newTimeZone.dstStart.hour < 0 || newTimeZone.dstStart.hour > 23)
-		{
-			inOutput->printf("dst start hour out of range");
-			return eCmd_Failed;
-		}
+	newTimeZone.dstStart.hour = atoi(inArgV[5]);
+	if(newTimeZone.dstStart.hour < 0 || newTimeZone.dstStart.hour > 23)
+	{
+		inOutput->printf("dst start hour out of range");
+		return eCmd_Failed;
+	}
 
-		newTimeZone.dstStart.offsetMins = atoi(inArgV[6]);
-		if(newTimeZone.dstStart.offsetMins < -12 * 60 || newTimeZone.dstStart.offsetMins > 14 * 60)
-		{
-			inOutput->printf("dst start offset out of range");
-			return eCmd_Failed;
-		}
+	newTimeZone.dstStart.offsetMins = atoi(inArgV[6]);
+	if(newTimeZone.dstStart.offsetMins < -12 * 60 || newTimeZone.dstStart.offsetMins > 14 * 60)
+	{
+		inOutput->printf("dst start offset out of range");
+		return eCmd_Failed;
+	}
 		
-		newTimeZone.stdStart.week = atoi(inArgV[7]);
-		if(newTimeZone.stdStart.week < 0 || newTimeZone.stdStart.week > 4)
-		{
-			inOutput->printf("std start week out of range");
-			return eCmd_Failed;
-		}
+	newTimeZone.stdStart.week = atoi(inArgV[7]);
+	if(newTimeZone.stdStart.week < 0 || newTimeZone.stdStart.week > 4)
+	{
+		inOutput->printf("std start week out of range");
+		return eCmd_Failed;
+	}
 
-		newTimeZone.stdStart.dayOfWeek = atoi(inArgV[8]);
-		if(newTimeZone.stdStart.dayOfWeek < 1 || newTimeZone.stdStart.dayOfWeek > 7)
-		{
-			inOutput->printf("std start day of week out of range");
-			return eCmd_Failed;
-		}
+	newTimeZone.stdStart.dayOfWeek = atoi(inArgV[8]);
+	if(newTimeZone.stdStart.dayOfWeek < 1 || newTimeZone.stdStart.dayOfWeek > 7)
+	{
+		inOutput->printf("std start day of week out of range");
+		return eCmd_Failed;
+	}
 
-		newTimeZone.stdStart.month = atoi(inArgV[9]);
-		if(newTimeZone.stdStart.month < 1 || newTimeZone.stdStart.month > 12)
-		{
-			inOutput->printf("std start month out of range");
-			return eCmd_Failed;
-		}
+	newTimeZone.stdStart.month = atoi(inArgV[9]);
+	if(newTimeZone.stdStart.month < 1 || newTimeZone.stdStart.month > 12)
+	{
+		inOutput->printf("std start month out of range");
+		return eCmd_Failed;
+	}
 
-		newTimeZone.stdStart.hour = atoi(inArgV[10]);
-		if(newTimeZone.stdStart.hour < 0 || newTimeZone.stdStart.hour > 23)
-		{
-			inOutput->printf("std start hour out of range");
-			return eCmd_Failed;
-		}
+	newTimeZone.stdStart.hour = atoi(inArgV[10]);
+	if(newTimeZone.stdStart.hour < 0 || newTimeZone.stdStart.hour > 23)
+	{
+		inOutput->printf("std start hour out of range");
+		return eCmd_Failed;
+	}
 
-		newTimeZone.stdStart.offsetMins = atoi(inArgV[11]);
-		if(newTimeZone.stdStart.offsetMins < -12 * 60 || newTimeZone.stdStart.offsetMins > 14 * 60)
-		{
-			inOutput->printf("std start offset out of range");
-			return eCmd_Failed;
-		}
+	newTimeZone.stdStart.offsetMins = atoi(inArgV[11]);
+	if(newTimeZone.stdStart.offsetMins < -12 * 60 || newTimeZone.stdStart.offsetMins > 14 * 60)
+	{
+		inOutput->printf("std start offset out of range");
+		return eCmd_Failed;
 	}
 
 	SetTimeZone(newTimeZone, true);
@@ -1462,7 +1446,7 @@ CModule_RealTime::SerialDumpTable(
 	SAlarm* curAlarm = alarmArray;
 	for(int alarmItr = 0; alarmItr < eAlarm_MaxActive; ++alarmItr, ++curAlarm)
 	{
-		if(curAlarm->name == NULL)
+		if(curAlarm->name[0] == 0)
 		{
 			continue;
 		}

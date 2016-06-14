@@ -29,61 +29,109 @@
 /*
 	ABOUT
 
-	Get luminosity values from the SparkFun TSL2561 or equivalent
+	Get luminosity values from devices that support it.
+	
+	the SparkFun TSL2561 or equivalent
 
 */
 
-class CModule_LuminositySensor : public CModule, public ICmdHandler
+
+enum ELuminositySensor
+{
+	eGain_1X = 0,
+	eGain_16X = 1,
+
+	eIntegrationTime_13_7ms = 0,
+	eIntegrationTime_101ms = 1,
+	eIntegrationTime_402ms = 2,
+	eIntegrationTime_Manual = 3,
+
+};
+
+class ILuminosity
 {
 public:
 
-	CModule_LuminositySensor(
-		);
+	virtual float
+	GetActualLux(
+		void) = 0;
 
-	float
+	virtual float
+	GetNormalizedBrightness(
+		void) = 0;
+
+	virtual void
+	SetMinMaxLux(
+		float	inMinLux,
+		float	inMaxLux) = 0;
+
+	virtual void
+	GetActualRGB(
+		float&	outR,
+		float&	outG,
+		float&	outB) = 0;
+
+	virtual void
+	GetNormalizedRGB(
+		float&	outR,
+		float&	outG,
+		float&	outB) = 0;
+
+	virtual void
+	SetMinMaxRGB(
+		float	inMinR,
+		float	inMaxR,
+		float	inMinG,
+		float	inMaxG,
+		float	inMinB,
+		float	inMaxB) = 0;
+
+};
+
+class CTSL2561Sensor : public ILuminosity
+{
+public:
+
+	CTSL2561Sensor(
+		uint8_t	inAddress,
+		uint8_t	inGain,
+		uint8_t	inTime);
+
+	virtual float
 	GetActualLux(
 		void);
 
-	float
+	virtual float
 	GetNormalizedBrightness(
 		void);
 
-	void
+	virtual void
 	SetMinMaxLux(
 		float	inMinLux,
-		float	inMaxLux,
-		bool	inUpdateEEPROM);
+		float	inMaxLux);
+
+	virtual void
+	GetActualRGB(
+		float&	outR,
+		float&	outG,
+		float&	outB);
+
+	virtual void
+	GetNormalizedRGB(
+		float&	outR,
+		float&	outG,
+		float&	outB);
+
+	virtual void
+	SetMinMaxRGB(
+		float	inMinR,
+		float	inMaxR,
+		float	inMinG,
+		float	inMaxG,
+		float	inMinB,
+		float	inMaxB);
 
 private:
-
-	struct SLuminositySettings
-	{
-		uint8_t		gain;
-		uint8_t		time;
-
-		float		minBrightnessLux;
-		float		maxBrightnessLux;
-	};
-
-	virtual void
-	Setup(
-		void);
-
-	virtual void
-	Update(
-		uint32_t inDeltaTimeUS);
-
-	uint8_t
-	SerialCmdGetLux(
-		IOutputDirector*	inOutput,
-		int					inArgC,
-		char const*			inArgV[]);
-
-	uint8_t
-	SerialCmdConfig(
-		IOutputDirector*	inOutput,
-		int					inArgC,
-		char const*			inArgV[]);
 	
 	void
 	SetupSensor(
@@ -95,7 +143,7 @@ private:
 		unsigned int	inMS, 
 		unsigned int	inCH0, 
 		unsigned int	inCH1, 
-		double&			outLux);
+		float&			outLux);
 
 	bool 
 	ReadI2CByte(
@@ -117,16 +165,16 @@ private:
 		uint8_t		inAddress, 
 		uint16_t	inValue);
 		
-	unsigned int		integrationTimeMS;
-	SLuminositySettings	settings;
+	unsigned int	integrationTimeMS;
 
-	double	lux;
-	double	normalized;
+	float		minBrightnessLux;
+	float		maxBrightnessLux;
 
-	char _i2c_address;
-	byte _error;
+	uint8_t		gain;
+	uint8_t		time;
+
+	char i2cAddress;
+	byte error;
 };
-
-extern CModule_LuminositySensor*	gLuminositySensor;
 
 #endif /* _FHLUMINOSITYSENSOR_H_ */

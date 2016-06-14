@@ -80,11 +80,11 @@ typedef void
 	char const*	inName);
 
 
-class CSunRiseAndSetModule : public CModule, public IRealTimeHandler, public ICmdHandler
+class CModule_SunRiseAndSet : public CModule, public IRealTimeHandler, public ICmdHandler
 {
 public:
 	
-	CSunRiseAndSetModule(
+	CModule_SunRiseAndSet(
 		);
 
 	void
@@ -274,6 +274,6 @@ private:
 	SSettings	settings;
 };
 
-extern CSunRiseAndSetModule*	gSunRiseAndSet;
+extern CModule_SunRiseAndSet*	gSunRiseAndSet;
 
 #endif /* _ELSUNRISEANDSET_H_ */

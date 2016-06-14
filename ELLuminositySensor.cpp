@@ -46,18 +46,6 @@
 #include <ELLuminositySensor.h>
 #include <ELAssert.h>
 
-enum ELuminositySensor
-{
-	eGain_1X = 0,
-	eGain_16X = 1,
-
-	eIntegrationTime_13_7ms = 0,
-	eIntegrationTime_101ms = 1,
-	eIntegrationTime_402ms = 2,
-	eIntegrationTime_Manual = 3,
-
-};
-
 #define TSL2561_ADDR_0 0x29 // address with '0' shorted on board
 #define TSL2561_ADDR   0x39 // default address
 #define TSL2561_ADDR_1 0x49 // address with '1' shorted on board
@@ -75,88 +63,36 @@ enum ELuminositySensor
 #define	TSL2561_REG_DATA_0    0x0C
 #define	TSL2561_REG_DATA_1    0x0E
 
-CModule_LuminositySensor*	gLuminositySensor;
-
-CModule_LuminositySensor::CModule_LuminositySensor(
-	)
+CTSL2561Sensor::CTSL2561Sensor(
+	uint8_t	inAddress,
+	uint8_t	inGain,
+	uint8_t	inTime)
 	:
-	CModule(
-		"lumn",
-		sizeof(SLuminositySettings),
-		1,
-		&settings,
-		500000,
-		1,
-		false)
+	integrationTimeMS(0),
+	gain(inGain),
+	time(inTime),
+	i2cAddress(inAddress),
+	error(0)
 {
-	gLuminositySensor = this;
+	Wire.begin();
+		
+	uint8_t	sensorID;
+	bool	success;
 
-	integrationTimeMS = 0;
-	lux = 0;
-	normalized = 0;
-	_i2c_address = 0;
-	_error = 0;
-}
-
-float
-CModule_LuminositySensor::GetActualLux(
-	void)
-{
-	return (float)lux;
-}
-
-float
-CModule_LuminositySensor::GetNormalizedBrightness(
-	void)
-{
-	return (float)normalized;
-}
-
-void
-CModule_LuminositySensor::SetMinMaxLux(
-	float	inMinLux,
-	float	inMaxLux,
-	bool	inUpdateEEPROM)
-{
-	settings.minBrightnessLux = inMinLux;
-	settings.maxBrightnessLux = inMaxLux;
-	if(inUpdateEEPROM)
+	success = ReadI2CByte(TSL2561_REG_ID, sensorID);
+	if(success == false || sensorID != 0x50)
 	{
-		EEPROMSave();
+		return;
 	}
-}
-
-uint8_t
-CModule_LuminositySensor::SerialCmdGetLux(
-	IOutputDirector*	inOutput,
-	int					inArgC,
-	char const*			inArgV[])
-{
-	inOutput->printf("lux = %f\n", GetActualLux());
-
-	return eCmd_Succeeded;
-}
-
-uint8_t
-CModule_LuminositySensor::SerialCmdConfig(
-	IOutputDirector*	inOutput,
-	int					inArgC,
-	char const*			inArgV[])
-{
-	settings.gain = atoi(inArgV[1]);
-	settings.time = atoi(inArgV[2]);
-	EEPROMSave();
 
 	SetupSensor();
-
-	return eCmd_Succeeded;
 }
 	
 void
-CModule_LuminositySensor::SetupSensor(
+CTSL2561Sensor::SetupSensor(
 	void)
 {
-	switch (settings.time)
+	switch (time)
 	{
 		case 0: integrationTimeMS = 14; break;
 		case 1: integrationTimeMS = 101; break;
@@ -172,14 +108,14 @@ CModule_LuminositySensor::SetupSensor(
 	if(ReadI2CByte(TSL2561_REG_TIMING, timing))
 	{
 		// Set gain (0 or 1)
-		if (settings.gain)
+		if (gain)
 			timing |= 0x10;
 		else
 			timing &= ~0x10;
 
 		// Set integration time (0 to 3)
 		timing &= ~0x03;
-		timing |= (settings.time & 0x03);
+		timing |= (time & 0x03);
 
 		// Write modified timing byte back to device
 		WriteI2CByte(TSL2561_REG_TIMING,timing);
@@ -189,61 +125,13 @@ CModule_LuminositySensor::SetupSensor(
 	WriteI2CByte(TSL2561_REG_CONTROL,0x03);
 }
 
-void
-CModule_LuminositySensor::Setup(
-	void)
-{
-	_i2c_address = TSL2561_ADDR; // just assume default address for now
-	Wire.begin();
-		
-	uint8_t	sensorID;
-	bool	success;
-
-	success = ReadI2CByte(TSL2561_REG_ID, sensorID);
-	if(success == false || sensorID != 0x50)
-	{
-		SetEnabledState(false);
-		return;
-	}
-		
-	gCommand->RegisterCommand("lumin_get_lux", this, static_cast<TCmdHandlerMethod>(&CModule_LuminositySensor::SerialCmdGetLux));
-	gCommand->RegisterCommand("lumin_config", this, static_cast<TCmdHandlerMethod>(&CModule_LuminositySensor::SerialCmdConfig));
-
-	SetupSensor();
-}
-
-void
-CModule_LuminositySensor::Update(
-	uint32_t inDeltaTimeUS)
-{
-
-	uint16_t data0, data1;
-
-	ReadI2CUInt16(TSL2561_REG_DATA_0, data0);
-	ReadI2CUInt16(TSL2561_REG_DATA_1,data1);
-
-	bool	good;
-
-	good = GetLux(settings.gain, integrationTimeMS, data0, data1, lux);
-	if(good)
-	{
-		double adjLux = lux;
-		if(adjLux < settings.minBrightnessLux) adjLux = settings.minBrightnessLux;
-		if(adjLux > settings.maxBrightnessLux) adjLux = settings.maxBrightnessLux;
-
-		normalized = float((adjLux - settings.minBrightnessLux) / (settings.maxBrightnessLux - settings.minBrightnessLux));
-
-		//Serial.printf("%f %f\n", lux, normalized);
-	}
-}
-
 bool
-CModule_LuminositySensor::GetLux(
+CTSL2561Sensor::GetLux(
 	unsigned char	inGain, 
 	unsigned int	inMS, 
 	unsigned int	inCH0, 
 	unsigned int	inCH1, 
-	double&			outLux)
+	float&			outLux)
 {
 	// Convert raw data to lux
 	// gain: 0 (1X) or 1 (16X), see setTiming()
@@ -253,26 +141,26 @@ CModule_LuminositySensor::GetLux(
 	// returns true (1) if calculation was successful
 	// RETURNS false (0) AND lux = 0.0 IF EITHER SENSOR WAS SATURATED (0XFFFF)
 
-	double ratio, d0, d1;
+	float ratio, d0, d1;
 
 	// Determine if either sensor saturated (0xFFFF)
 	// If so, abandon ship (calculation will not be accurate)
 	if ((inCH0 == 0xFFFF) || (inCH1 == 0xFFFF))
 	{
-		outLux = 0.0;
+		outLux = 0.0f;
 		return false;
 	}
 
 	// Convert from unsigned integer to floating point
-	d0 = inCH0; 
-	d1 = inCH1;
+	d0 = (float)inCH0; 
+	d1 = (float)inCH1;
 
 	// We will need the ratio for subsequent calculations
 	ratio = d1 / d0;
 
 	// Normalize for integration time
-	d0 *= (402.0/inMS);
-	d1 *= (402.0/inMS);
+	d0 *= 402.0f / (float)inMS;
+	d1 *= 402.0f / (float)inMS;
 
 	// Normalize for gain
 	if (!inGain)
@@ -285,35 +173,101 @@ CModule_LuminositySensor::GetLux(
 	
 	if (ratio < 0.5)
 	{
-		outLux = 0.0304 * d0 - 0.062 * d0 * pow(ratio, 1.4);
+		outLux = 0.0304f * d0 - 0.062f * d0 * (float)pow(ratio, 1.4f);
 		return true;
 	}
 
-	if (ratio < 0.61)
+	if (ratio < 0.61f)
 	{
-		outLux = 0.0224 * d0 - 0.031 * d1;
+		outLux = 0.0224f * d0 - 0.031f * d1;
 		return true;
 	}
 
 	if (ratio < 0.80)
 	{
-		outLux = 0.0128 * d0 - 0.0153 * d1;
+		outLux = 0.0128f * d0 - 0.0153f * d1;
 		return true;
 	}
 
 	if (ratio < 1.30)
 	{
-		outLux = 0.00146 * d0 - 0.00112 * d1;
+		outLux = 0.00146f * d0 - 0.00112f * d1;
 		return true;
 	}
 
-	outLux = 0.0;
+	outLux = 0.0f;
 
 	return true;
 }
+float
+CTSL2561Sensor::GetActualLux(
+	void)
+{
+	uint16_t data0, data1;
+
+	ReadI2CUInt16(TSL2561_REG_DATA_0, data0);
+	ReadI2CUInt16(TSL2561_REG_DATA_1,data1);
+
+	float	lux;
+
+	GetLux(gain, integrationTimeMS, data0, data1, lux);
+
+	return lux;
+}
+
+float
+CTSL2561Sensor::GetNormalizedBrightness(
+	void)
+{
+	float lux = GetActualLux();
+
+	if(lux < minBrightnessLux) lux = minBrightnessLux;
+	if(lux > maxBrightnessLux) lux = maxBrightnessLux;
+	
+	return float((lux - minBrightnessLux) / (maxBrightnessLux - minBrightnessLux));
+}
+
+void
+CTSL2561Sensor::SetMinMaxLux(
+	float	inMinLux,
+	float	inMaxLux)
+{
+	minBrightnessLux = inMinLux;
+	maxBrightnessLux = inMaxLux;
+}
+
+void
+CTSL2561Sensor::GetActualRGB(
+	float&	outR,
+	float&	outG,
+	float&	outB)
+{
+
+}
+
+void
+CTSL2561Sensor::GetNormalizedRGB(
+	float&	outR,
+	float&	outG,
+	float&	outB)
+{
+
+}
+
+void
+CTSL2561Sensor::SetMinMaxRGB(
+	float	inMinR,
+	float	inMaxR,
+	float	inMinG,
+	float	inMaxG,
+	float	inMinB,
+	float	inMaxB)
+{
+
+}
 
 bool 
-CModule_LuminositySensor::ReadI2CByte(
+CTSL2561Sensor::ReadI2CByte(
 	uint8_t		inAddress, 
 	uint8_t&	outValue)
 {
@@ -324,14 +278,14 @@ CModule_LuminositySensor::ReadI2CByte(
 	// (Also see getError() above)
 
 	// Set up command byte for read
-	Wire.beginTransmission(_i2c_address);
+	Wire.beginTransmission(i2cAddress);
 	Wire.write((inAddress & 0x0F) | TSL2561_CMD);
-	_error = Wire.endTransmission();
+	error = Wire.endTransmission();
 
 	// Read requested byte
-	if (_error == 0)
+	if (error == 0)
 	{
-		Wire.requestFrom(_i2c_address, 1);
+		Wire.requestFrom(i2cAddress, 1);
 		if (Wire.available() == 1)
 		{
 			outValue = Wire.read();
@@ -343,7 +297,7 @@ CModule_LuminositySensor::ReadI2CByte(
 }
 
 bool
-CModule_LuminositySensor::WriteI2CByte(
+CTSL2561Sensor::WriteI2CByte(
 	uint8_t	inAddress,
 	uint8_t	inValue)
 {
@@ -354,17 +308,17 @@ CModule_LuminositySensor::WriteI2CByte(
 	// (Also see getError() above)
 
 	// Set up command byte for write
-	Wire.beginTransmission(_i2c_address);
+	Wire.beginTransmission(i2cAddress);
 	Wire.write((inAddress & 0x0F) | TSL2561_CMD);
 	// Write byte
 	Wire.write(inValue);
-	_error = Wire.endTransmission();
+	error = Wire.endTransmission();
 
-	return _error == 0;
+	return error == 0;
 }
 
 bool
-CModule_LuminositySensor::ReadI2CUInt16(
+CTSL2561Sensor::ReadI2CUInt16(
 	uint8_t		inAddress,
 	uint16_t&	outValue)
 {
@@ -377,14 +331,14 @@ CModule_LuminositySensor::ReadI2CUInt16(
 	char high, low;
 	
 	// Set up command byte for read
-	Wire.beginTransmission(_i2c_address);
+	Wire.beginTransmission(i2cAddress);
 	Wire.write((inAddress & 0x0F) | TSL2561_CMD);
-	_error = Wire.endTransmission();
+	error = Wire.endTransmission();
 
 	// Read two bytes (low and high)
-	if (_error == 0)
+	if (error == 0)
 	{
-		Wire.requestFrom(_i2c_address, 2);
+		Wire.requestFrom(i2cAddress, 2);
 		if (Wire.available() == 2)
 		{
 			low = Wire.read();
@@ -399,7 +353,7 @@ CModule_LuminositySensor::ReadI2CUInt16(
 }
 
 bool 
-CModule_LuminositySensor::WriteI2CUInt16(
+CTSL2561Sensor::WriteI2CUInt16(
 	uint8_t		inAddress, 
 	uint16_t	inValue)
 {
