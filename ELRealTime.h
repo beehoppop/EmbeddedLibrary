@@ -139,8 +139,7 @@ class CModule_RealTime : public CModule, public ICmdHandler
 {
 public:
 
-	CModule_RealTime(
-		void);
+	MModuleSingleton_Declaration(CModule_RealTime)
 	
 	// Set the current timezone and optionally write it to eeprom
 	void
@@ -389,6 +388,9 @@ public:
 		bool	inUTC);
 
 private:
+
+	CModule_RealTime(
+		void);
 
 	virtual void
 	Setup(

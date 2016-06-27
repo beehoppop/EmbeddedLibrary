@@ -39,10 +39,11 @@ class CModule_Loggly : public CModule, public IOutputDirector, IInternetHandler
 {
 public:
 	
-	CModule_Loggly(
+	MModule_Declaration(
+		CModule_Loggly,
 		char const*	inGlobalTags,		// Must be a static string
 		char const*	inServerAddress,	// Must be a static string
-		char const*	inURL);				// Must be a static string
+		char const*	inURL)				// Must be a static string
 
 	virtual void
 	write(
@@ -56,6 +57,11 @@ public:
 		...);
 
 private:
+
+	CModule_Loggly(
+		char const*	inGlobalTags,		// Must be a static string
+		char const*	inServerAddress,	// Must be a static string
+		char const*	inURL);				// Must be a static string
 	
 	virtual void
 	Setup(

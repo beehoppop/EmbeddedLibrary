@@ -33,14 +33,18 @@
 #include <ELConfig.h>
 #include <ELUtilities.h>
 
-CModule_Command*	gCommand;
+CModule_Command*	gCommandModule;
+
+
+MModuleSingleton_Implementation(CModule_SerialCmdHandler)
 
 CModule_SerialCmdHandler::CModule_SerialCmdHandler(
 	)
 	:
-	CModule("srlc", 0, 0, NULL, 100000, 126)
+	CModule(0, 0, NULL, 100000)
 {
 	curIndex = 0;
+	DoneIncluding();
 }
 
 void
@@ -69,7 +73,7 @@ CModule_SerialCmdHandler::Update(
 				charBuffer[curIndex] = 0;
 				curIndex = 0;
 
-				gCommand->ProcessCommand(gSerialOut, charBuffer);
+				gCommandModule->ProcessCommand(gSerialOut, charBuffer);
 			}
 		}
 		else
@@ -82,12 +86,13 @@ CModule_SerialCmdHandler::Update(
 	}
 }
 
+MModuleSingleton_ImplementationGlobal(CModule_Command, gCommandModule);
+
 CModule_Command::CModule_Command(
 	)
 	:
-	CModule("cmnd", 0, 0, NULL, 0, 126)
+	CModule()
 {
-	gCommand = this;
 	handlerCount = 0;
 	memset(commandList, 0, sizeof(commandList));
 
@@ -96,6 +101,8 @@ CModule_Command::CModule_Command(
 		this,
 		static_cast<TCmdHandlerMethod>(&CModule_Command::HelpCommand),
 		": List the available commands and descriptions");
+
+	DoneIncluding();
 }
 
 uint8_t
@@ -159,11 +166,11 @@ CModule_Command::ProcessCommand(
 	
 	if(result == eCmd_Failed)
 	{
-		inOutput->printf("CC:[%03d] %s FAILED\n", gConfig->GetVal(gConfig->nodeIDIndex), inArgV[0]);
+		inOutput->printf("CC:[%03d] %s FAILED\n", gConfigModule->GetVal(gConfigModule->nodeIDIndex), inArgV[0]);
 	}
 	else if(result == eCmd_Succeeded)
 	{
-		inOutput->printf("CC:[%03d] %s SUCCEEDED\n", gConfig->GetVal(gConfig->nodeIDIndex), inArgV[0]);
+		inOutput->printf("CC:[%03d] %s SUCCEEDED\n", gConfigModule->GetVal(gConfigModule->nodeIDIndex), inArgV[0]);
 	}
 
 	RemoveSysMsgHandler(inOutput);	// Now that the command is done remove it's output handler

@@ -62,10 +62,13 @@ typedef uint8_t
 class CModule_SerialCmdHandler : public CModule
 {
 public:
-	CModule_SerialCmdHandler(
-		);
+
+	MModuleSingleton_Declaration(CModule_SerialCmdHandler)
 
 private:
+
+	CModule_SerialCmdHandler(
+		);
 
 	void
 	Update(
@@ -80,8 +83,7 @@ class CModule_Command : public CModule, public ICmdHandler
 {
 public:
 	
-	CModule_Command(
-		);
+	MModuleSingleton_Declaration(CModule_Command)
 	
 	// Register a command handler
 	void
@@ -105,6 +107,9 @@ public:
 		char*				inCmdStr);	// This input command string must be writable in order to break up into discrete arg strings
 
 private:
+	
+	CModule_Command(
+		);
 
 	uint8_t
 	HelpCommand(
@@ -124,6 +129,6 @@ private:
 	SCommand	commandList[eCmd_MaxCommands];
 };
 
-extern CModule_Command*	gCommand;
+extern CModule_Command*	gCommandModule;
 
 #endif /* _ELCOMMAND_H_ */

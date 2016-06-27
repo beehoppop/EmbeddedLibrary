@@ -22,6 +22,15 @@ char const*	gTimeOfDayStr[] = {"Day", "Night", "Latenight"};
 
 CModule_OutdoorLightingControl*	gOutdoorLighting;
 
+MModuleImplementation_Start(
+	CModule_OutdoorLightingControl, 
+	IOutdoorLightingInterface*	inInterface,
+	uint8_t						inMotionSensorPin,
+	uint8_t						inTransformerPin,
+	uint8_t						inTogglePin,
+	ILuminosity*				inLuminosityInterface)
+MModuleImplementation(CModule_OutdoorLightingControl, inInterface, inMotionSensorPin, inTransformerPin, inTogglePin, inLuminosityInterface)
+
 CModule_OutdoorLightingControl::CModule_OutdoorLightingControl(
 	IOutdoorLightingInterface*	inInterface,
 	uint8_t						inMotionSensorPin,
@@ -29,7 +38,7 @@ CModule_OutdoorLightingControl::CModule_OutdoorLightingControl(
 	uint8_t						inTogglePin,
 	ILuminosity*				inLuminosityInterface)
 	:
-	CModule("odlc", sizeof(SSettings), 0, &settings, 250000, 1),
+	CModule(sizeof(SSettings), 0, &settings, 250000, 1),
 	motionSensorPin(inMotionSensorPin),
 	transformerPin(inTransformerPin),
 	togglePin(inTogglePin),
@@ -50,8 +59,15 @@ CModule_OutdoorLightingControl::CModule_OutdoorLightingControl(
 	toggleCount = 0;
 	toggleLastTimeMS = 0;
 
+	// Begin including dependent modules
+	CModule_Command::Include();
+	CModule_SunRiseAndSet::Include();
+	CModule_RealTime::Include();
+	CModule_DigitalIO::Include();
+	CModule_Internet::Include();
+
 	// This is called to check if this module should be setup now or wait for the module SetupAll call
-	CheckSetupNow();
+	DoneIncluding();
 }
 
 void
@@ -83,17 +99,17 @@ CModule_OutdoorLightingControl::Setup(
 	{
 		gDigitalIO->RegisterEventHandler(motionSensorPin, false, this, static_cast<TDigitalIOEventMethod>(&CModule_OutdoorLightingControl::MotionSensorTrigger), NULL);
 	}
-	gCommand->RegisterCommand("set_ledstate", this, static_cast<TCmdHandlerMethod>(&CModule_OutdoorLightingControl::SetLEDState), "[on | off] : Turn LEDs on or off until the next event");
-	gCommand->RegisterCommand("set_latenightstarttime", this, static_cast<TCmdHandlerMethod>(&CModule_OutdoorLightingControl::SetLateNightStartTime));
-	gCommand->RegisterCommand("get_latenightstarttime", this, static_cast<TCmdHandlerMethod>(&CModule_OutdoorLightingControl::GetLateNightStartTime));
-	gCommand->RegisterCommand("set_triggerlux", this, static_cast<TCmdHandlerMethod>(&CModule_OutdoorLightingControl::SetTriggerLux));
-	gCommand->RegisterCommand("get_triggerlux", this, static_cast<TCmdHandlerMethod>(&CModule_OutdoorLightingControl::GetTriggerLux));
-	gCommand->RegisterCommand("set_motionTO", this, static_cast<TCmdHandlerMethod>(&CModule_OutdoorLightingControl::SetMotionTripTimeout));
-	gCommand->RegisterCommand("get_motionTO", this, static_cast<TCmdHandlerMethod>(&CModule_OutdoorLightingControl::GetMotionTripTimeout));
-	gCommand->RegisterCommand("set_latenightTO", this, static_cast<TCmdHandlerMethod>(&CModule_OutdoorLightingControl::SetLateNightTimeout));
-	gCommand->RegisterCommand("get_latenightTO", this, static_cast<TCmdHandlerMethod>(&CModule_OutdoorLightingControl::GetLateNightTimeout));
-	gCommand->RegisterCommand("set_override", this, static_cast<TCmdHandlerMethod>(&CModule_OutdoorLightingControl::SetOverride));
-	gCommand->RegisterCommand("get_override", this, static_cast<TCmdHandlerMethod>(&CModule_OutdoorLightingControl::GetOverride));
+	gCommandModule->RegisterCommand("set_ledstate", this, static_cast<TCmdHandlerMethod>(&CModule_OutdoorLightingControl::SetLEDState), "[on | off] : Turn LEDs on or off until the next event");
+	gCommandModule->RegisterCommand("set_latenightstarttime", this, static_cast<TCmdHandlerMethod>(&CModule_OutdoorLightingControl::SetLateNightStartTime));
+	gCommandModule->RegisterCommand("get_latenightstarttime", this, static_cast<TCmdHandlerMethod>(&CModule_OutdoorLightingControl::GetLateNightStartTime));
+	gCommandModule->RegisterCommand("set_triggerlux", this, static_cast<TCmdHandlerMethod>(&CModule_OutdoorLightingControl::SetTriggerLux));
+	gCommandModule->RegisterCommand("get_triggerlux", this, static_cast<TCmdHandlerMethod>(&CModule_OutdoorLightingControl::GetTriggerLux));
+	gCommandModule->RegisterCommand("set_motionTO", this, static_cast<TCmdHandlerMethod>(&CModule_OutdoorLightingControl::SetMotionTripTimeout));
+	gCommandModule->RegisterCommand("get_motionTO", this, static_cast<TCmdHandlerMethod>(&CModule_OutdoorLightingControl::GetMotionTripTimeout));
+	gCommandModule->RegisterCommand("set_latenightTO", this, static_cast<TCmdHandlerMethod>(&CModule_OutdoorLightingControl::SetLateNightTimeout));
+	gCommandModule->RegisterCommand("get_latenightTO", this, static_cast<TCmdHandlerMethod>(&CModule_OutdoorLightingControl::GetLateNightTimeout));
+	gCommandModule->RegisterCommand("set_override", this, static_cast<TCmdHandlerMethod>(&CModule_OutdoorLightingControl::SetOverride));
+	gCommandModule->RegisterCommand("get_override", this, static_cast<TCmdHandlerMethod>(&CModule_OutdoorLightingControl::GetOverride));
 
 	// Setup the initial state given the current time of day and sunset/sunrise time
 	TEpochTime	curTime = gRealTime->GetEpochTime(false);
@@ -144,7 +160,7 @@ CModule_OutdoorLightingControl::Setup(
 		luxTriggerState = settings.triggerLux < curLux;
 	}
 
-	gInternet->CommandServer_RegisterFrontPage(this, static_cast<TInternetServerPageMethod>(&CModule_OutdoorLightingControl::CommandHomePageHandler));
+	gInternetModule->CommandServer_RegisterFrontPage(this, static_cast<TInternetServerPageMethod>(&CModule_OutdoorLightingControl::CommandHomePageHandler));
 }
 
 void
@@ -331,6 +347,8 @@ CModule_OutdoorLightingControl::ButtonPush(
 	EPinEvent	inEvent,
 	void*		inReference)
 {
+	SystemMsg("Pushbutton");
+
 	if(inEvent == eDigitalIO_PinActivated)
 	{
 		toggleLastTimeMS = gCurLocalMS;

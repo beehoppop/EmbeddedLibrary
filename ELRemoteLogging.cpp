@@ -1,17 +1,28 @@
 #include "ELRemoteLogging.h"
+#include "ELAssert.h"
+
+MModuleImplementation_Start(
+	CModule_Loggly,
+	char const*	inGlobalTags,
+	char const*	inServerAddress,
+	char const*	inURL)
+MModuleImplementation(CModule_Loggly, inGlobalTags, inServerAddress, inURL)
 
 CModule_Loggly::CModule_Loggly(
 	char const*	inGlobalTags,
 	char const*	inServerAddress,
 	char const*	inURL)
 	:
-	CModule("lgly", 0, 0, NULL, 50000, -1)
+	CModule(0, 0, NULL, 50000)
 {
 	head = tail = 0;
 	globalTags = inGlobalTags;
 	serverAddress = inServerAddress;
 	url = inURL;
 	requestInProgress = false;
+
+	CModule_Internet::Include();
+	DoneIncluding();
 }
 
 void
@@ -60,7 +71,7 @@ void
 CModule_Loggly::Setup(
 	void)
 {
-	connection = gInternet->CreateHTTPConnection(serverAddress, 80, this, static_cast<THTTPResponseHandlerMethod>(&CModule_Loggly::HTTPResponseHandlerMethod));
+	connection = gInternetModule->CreateHTTPConnection(serverAddress, 80, this, static_cast<THTTPResponseHandlerMethod>(&CModule_Loggly::HTTPResponseHandlerMethod));
 }
 
 void

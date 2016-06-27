@@ -270,19 +270,17 @@ public:
 };
 #endif
 
+MModuleSingleton_ImplementationGlobal(CModule_RealTime, gRealTime)
+
 CModule_RealTime::CModule_RealTime(
 	)
 	:
 	CModule(
-		"rtc ",					// The module ID
 		sizeof(STimeZoneRule),	// eeprom size
 		1,						// eeprom version number
 		&timeZoneInfo,
-		1000000,				// Call the update method once a second
-		1)
+		1000000)				// Call the update method once a second
 {
-	gRealTime = this;
-
 	memset(alarmArray, 0, sizeof(alarmArray));
 	memset(eventArray, 0, sizeof(eventArray));
 	memset(timeChangeHandlerArray, 0, sizeof(timeChangeHandlerArray));
@@ -299,6 +297,9 @@ CModule_RealTime::CModule_RealTime(
 	dstStartLocal = 0;
 	stdStartLocal = 0;
 	timeMultiplier = 0;
+
+	CModule_Command::Include();
+	DoneIncluding();
 }
 
 void
@@ -316,12 +317,12 @@ CModule_RealTime::Setup(
 		SetTimeZone(gTimeZone, false);
 	#endif
 
-	gCommand->RegisterCommand("time_set", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialSetTime), "[year] [month] [day] [hour] [min] [sec] [utc | local] : Set the current time");
-	gCommand->RegisterCommand("time_get", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialGetTime), "[utc | local] : Get the current time");
-	gCommand->RegisterCommand("timezone_set", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialSetTimeZone), "[name] [dstStartWeek] [dstStartDayOfWeek] [dstStartMonth] [dstStartHour] [dstOffsetMin] [stdStartWeek] [stdStartDayOfWeek] [stdStartMonth] [stdStartHour] [stdOffsetMin] : Set time zone");
-	gCommand->RegisterCommand("timezone_get", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialGetTimeZone), "Get the current time zone information");
-	gCommand->RegisterCommand("rt_dump", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialDumpTable), ": Dump the alarm table");
-	gCommand->RegisterCommand("rt_set_mult", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialSetMultiplier), "[integer] : multiply the passage of time by the given value");
+	gCommandModule->RegisterCommand("time_set", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialSetTime), "[year] [month] [day] [hour] [min] [sec] [utc | local] : Set the current time");
+	gCommandModule->RegisterCommand("time_get", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialGetTime), "[utc | local] : Get the current time");
+	gCommandModule->RegisterCommand("timezone_set", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialSetTimeZone), "[name] [dstStartWeek] [dstStartDayOfWeek] [dstStartMonth] [dstStartHour] [dstOffsetMin] [stdStartWeek] [stdStartDayOfWeek] [stdStartMonth] [stdStartHour] [stdOffsetMin] : Set time zone");
+	gCommandModule->RegisterCommand("timezone_get", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialGetTimeZone), "Get the current time zone information");
+	gCommandModule->RegisterCommand("rt_dump", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialDumpTable), ": Dump the alarm table");
+	gCommandModule->RegisterCommand("rt_set_mult", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialSetMultiplier), "[integer] : multiply the passage of time by the given value");
 
 	timeMultiplier = 1;
 

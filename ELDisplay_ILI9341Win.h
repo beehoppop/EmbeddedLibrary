@@ -38,78 +38,14 @@ class CDisplayDriver_ILI9341 : public CModule, public IDisplayDriver
 {
 public:
 
-	CDisplayDriver_ILI9341(
+	MModule_Declaration(
+		CDisplayDriver_ILI9341,
 		EDisplayOrientation	inDisplayOrientation,
 		uint8_t	inCS,
 		uint8_t	inDC,
 		uint8_t	inMOSI,
 		uint8_t	inClk,
 		uint8_t	inMISO)
-		:
-		displayOrientation(inDisplayOrientation),
-		cs(inCS), dc(inDC), mosi(inMOSI), clk(inClk), miso(inMISO),
-		CModule("ili9", 0, 0, NULL, 10 * 1000)
-	{
-		MReturnOnError(!((mosi == 11 || mosi == 7) && (miso == 12 || miso == 8) && (clk == 13 || clk == 14)));
-
-		me = this;
-
-		displayWidth = 320;
-		displayHeight = 240;
-
-		displayPort.topLeft.x = 0;
-		displayPort.topLeft.y = 0;
-		displayPort.bottomRight.x = displayWidth;
-		displayPort.bottomRight.y = displayHeight;
-
-		drawingActive = false;
-
-		WNDCLASSEX ex;
- 
-		ex.cbSize = sizeof(WNDCLASSEX);
-		ex.style = CS_OWNDC;
-		ex.lpfnWndProc = WinProc;
-		ex.cbClsExtra = 0;
-		ex.cbWndExtra = 0;
-		ex.hInstance = GetModuleHandle(0);
-		ex.hIcon = LoadIcon(NULL, IDI_APPLICATION);
-		ex.hCursor = LoadCursor(NULL, IDC_ARROW);
-		ex.hbrBackground = (HBRUSH)GetStockObject(WHITE_BRUSH);
-		ex.lpszMenuName = NULL;
-		ex.lpszClassName = L"wndclass";
-		ex.hIconSm = NULL;
- 
-		RegisterClassEx(&ex);
-	
-		hwnd = 
-			CreateWindowEx(
-				NULL,
- 				L"wndclass",
-				L"Window",
-				WS_OVERLAPPED | WS_VISIBLE,
-				100, 100,
-				displayWidth + 50, displayHeight + 50,
-				NULL,
-				NULL,
-				GetModuleHandle(0),
-				this);
-
-		ShowWindow(hwnd, SW_SHOW);
-		UpdateWindow(hwnd);
-		
-	}
-	
-	virtual void
-	Update(
-		uint32_t inDeltaTimeUS)
-	{
-		MSG msg;
-		if(PeekMessage(&msg, NULL, NULL, NULL, PM_REMOVE))
-		{
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
-		}
-	}
 	
 	virtual int16_t
 	GetWidth(
@@ -407,6 +343,81 @@ public:
 			}
 		}
 		ReleaseDC(hwnd, hdc);
+	}
+
+private:
+
+	CDisplayDriver_ILI9341(
+		EDisplayOrientation	inDisplayOrientation,
+		uint8_t	inCS,
+		uint8_t	inDC,
+		uint8_t	inMOSI,
+		uint8_t	inClk,
+		uint8_t	inMISO)
+		:
+		displayOrientation(inDisplayOrientation),
+		cs(inCS), dc(inDC), mosi(inMOSI), clk(inClk), miso(inMISO),
+		CModule(0, 0, NULL, 10 * 1000)
+	{
+		MReturnOnError(!((mosi == 11 || mosi == 7) && (miso == 12 || miso == 8) && (clk == 13 || clk == 14)));
+
+		me = this;
+
+		displayWidth = 320;
+		displayHeight = 240;
+
+		displayPort.topLeft.x = 0;
+		displayPort.topLeft.y = 0;
+		displayPort.bottomRight.x = displayWidth;
+		displayPort.bottomRight.y = displayHeight;
+
+		drawingActive = false;
+
+		WNDCLASSEX ex;
+ 
+		ex.cbSize = sizeof(WNDCLASSEX);
+		ex.style = CS_OWNDC;
+		ex.lpfnWndProc = WinProc;
+		ex.cbClsExtra = 0;
+		ex.cbWndExtra = 0;
+		ex.hInstance = GetModuleHandle(0);
+		ex.hIcon = LoadIcon(NULL, IDI_APPLICATION);
+		ex.hCursor = LoadCursor(NULL, IDC_ARROW);
+		ex.hbrBackground = (HBRUSH)GetStockObject(WHITE_BRUSH);
+		ex.lpszMenuName = NULL;
+		ex.lpszClassName = L"wndclass";
+		ex.hIconSm = NULL;
+ 
+		RegisterClassEx(&ex);
+	
+		hwnd = 
+			CreateWindowEx(
+				NULL,
+ 				L"wndclass",
+				L"Window",
+				WS_OVERLAPPED | WS_VISIBLE,
+				100, 100,
+				displayWidth + 50, displayHeight + 50,
+				NULL,
+				NULL,
+				GetModuleHandle(0),
+				this);
+
+		ShowWindow(hwnd, SW_SHOW);
+		UpdateWindow(hwnd);
+		
+	}
+	
+	virtual void
+	Update(
+		uint32_t inDeltaTimeUS)
+	{
+		MSG msg;
+		if(PeekMessage(&msg, NULL, NULL, NULL, PM_REMOVE))
+		{
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
 	}
 
 	static LRESULT CALLBACK 

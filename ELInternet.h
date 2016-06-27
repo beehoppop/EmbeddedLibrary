@@ -262,8 +262,7 @@ class CModule_Internet : public CModule, public IOutputDirector, public ICmdHand
 {
 public:
 	
-	CModule_Internet(
-		);
+	MModuleSingleton_Declaration(CModule_Internet)
 
 	void
 	SetInternetDevice(
@@ -318,6 +317,9 @@ public:
 		THTTPResponseHandlerMethod			inResponseMethod);	// The method of the response handler
 
 private:
+	
+	CModule_Internet(
+		);
 
 	virtual void
 	Setup(
@@ -407,6 +409,6 @@ private:
 	
 };
 
-extern CModule_Internet*	gInternet;
+extern CModule_Internet*	gInternetModule;
 
 #endif /* _EL_INTERNET_H_ */

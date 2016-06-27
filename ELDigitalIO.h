@@ -69,9 +69,8 @@ class CModule_DigitalIO : public CModule
 {
 public:
 	
-	CModule_DigitalIO(
-		);
-	
+	MModuleSingleton_Declaration(CModule_DigitalIO)
+
 	// Register an event handler method for the given pin
 	void
 	RegisterEventHandler(
@@ -106,10 +105,9 @@ public:
 		uint8_t	inPin);
 
 private:
-
-	virtual void
-	Setup(
-		void);
+	
+	CModule_DigitalIO(
+		);
 
 	virtual void
 	Update(

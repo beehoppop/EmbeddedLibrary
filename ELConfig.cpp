@@ -29,26 +29,31 @@
 #include "ELUtilities.h"
 #include "ELCommand.h"
 
-CModule_Config*	gConfig;
+CModule_Config*	gConfigModule;
+	
+MModuleSingleton_ImplementationGlobal(CModule_Config, gConfigModule);
 
 CModule_Config::CModule_Config(
 	)
 	:
-	CModule("cnfg", sizeof(configVars), 1, configVars, 0, 127)
+	CModule(sizeof(configVars), 1, configVars)
 {
 	memset(configVars, 0, sizeof(configVars));
 	memset(configVarUsed, 0, sizeof(configVarUsed));
+
+	// Include dependent modules
+	CModule_Command::Include();
+	DoneIncluding();
 }
 
 void
 CModule_Config::Setup(
 	void)
 {
-	gConfig = this;
 	MAssert(eepromOffset > 0);
 
-	gCommand->RegisterCommand("config_set", this, static_cast<TCmdHandlerMethod>(&CModule_Config::SetConfig), ": Set a 8-bit config value");
-	gCommand->RegisterCommand("config_get", this, static_cast<TCmdHandlerMethod>(&CModule_Config::GetConfig), ": Get a 8-bit config value");
+	gCommandModule->RegisterCommand("config_set", this, static_cast<TCmdHandlerMethod>(&CModule_Config::SetConfig), ": Set a 8-bit config value");
+	gCommandModule->RegisterCommand("config_get", this, static_cast<TCmdHandlerMethod>(&CModule_Config::GetConfig), ": Get a 8-bit config value");
 
 	nodeIDIndex = RegisterConfigVar("node_id");
 	debugLevelIndex = RegisterConfigVar("debug_level");
@@ -126,6 +131,7 @@ CModule_Config::RegisterConfigVar(
 	char const*	inName)
 {
 	MReturnOnError(strlen(inName) > eConfigVar_MaxNameLength, -1);
+	MAssert(eepromOffset > 0);
 
 	int	targetIndex = -1;
 	for(int i = 0; i < eConfigVar_Max; ++i)

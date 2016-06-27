@@ -746,8 +746,7 @@ class CModule_Display : public CModule
 {
 public:
 
-	CModule_Display(
-		);
+	MModuleSingleton_Declaration(CModule_Display)
 	
 	int16_t
 	GetWidth(
@@ -807,6 +806,9 @@ public:
 
 private:
 
+	CModule_Display(
+		);
+
 	virtual void
 	Update(
 		uint32_t inDeltaTimeUS);
@@ -829,15 +831,6 @@ private:
 	bool			touchDown;
 	SDisplayPoint	touchLoc;
 };
-
-IDisplayDriver*
-CreateILI9341Driver(
-	EDisplayOrientation	inDisplayOrientation,
-	uint8_t	inCS,
-	uint8_t	inDC,
-	uint8_t	inMOSI,
-	uint8_t	inClk,
-	uint8_t	inMISO);
 
 ITouchDriver*
 CreateXPT2046Driver(

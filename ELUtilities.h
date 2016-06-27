@@ -92,4 +92,8 @@ GetRandomFloatGuassian(
 	float	inMean,
 	float	inStandardDeviation);
 
+uint32_t
+GetFreeMemory(
+	void);
+
 #endif /* _ELUTILITIES_H_ */

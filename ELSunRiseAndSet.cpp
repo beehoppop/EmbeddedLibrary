@@ -78,13 +78,18 @@
 
 CModule_SunRiseAndSet*	gSunRiseAndSet;
 
+MModuleSingleton_ImplementationGlobal(CModule_SunRiseAndSet, gSunRiseAndSet)
+
 CModule_SunRiseAndSet::CModule_SunRiseAndSet(
 	)
 	:
-	CModule("SRAS", sizeof(SSettings), 1, &settings, 0, 1)
+	CModule(sizeof(SSettings), 1, &settings, 0)
 {
-	gSunRiseAndSet = this;
 	memset(eventList, 0, sizeof(eventList));
+
+	CModule_Command::Include();
+	CModule_RealTime::Include();
+	DoneIncluding();
 }
 	
 void
@@ -93,8 +98,8 @@ CModule_SunRiseAndSet::Setup(
 {
 	MAssert(gRealTime != NULL);
 
-	gCommand->RegisterCommand("lonlat_set", this, static_cast<TCmdHandlerMethod>(&CModule_SunRiseAndSet::SerialSetLonLat), "[lon] [lat] : Set longitude and latitude");
-	gCommand->RegisterCommand("lonlat_get", this, static_cast<TCmdHandlerMethod>(&CModule_SunRiseAndSet::SerialGetLonLat), ": Get longitude and latutude");
+	gCommandModule->RegisterCommand("lonlat_set", this, static_cast<TCmdHandlerMethod>(&CModule_SunRiseAndSet::SerialSetLonLat), "[lon] [lat] : Set longitude and latitude");
+	gCommandModule->RegisterCommand("lonlat_get", this, static_cast<TCmdHandlerMethod>(&CModule_SunRiseAndSet::SerialGetLonLat), ": Get longitude and latutude");
 	gRealTime->RegisterTimeChangeHandler("ssar", this, static_cast<TRealTimeChangeMethod>(&CModule_SunRiseAndSet::RealTimeChangeHandler));
 }
 

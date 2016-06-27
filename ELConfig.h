@@ -47,9 +47,8 @@ class CModule_Config : public CModule, public ICmdHandler
 {
 public:
 	
-	CModule_Config(
-		);
-	
+	MModuleSingleton_Declaration(CModule_Config)
+
 	// Return the value given the config var
 	uint8_t
 	GetVal(
@@ -70,6 +69,9 @@ public:
 
 private:
 
+	CModule_Config(
+		);
+	
 	virtual void
 	Setup(
 		void);
@@ -106,6 +108,6 @@ private:
 	friend class CModule;
 };
 
-extern CModule_Config*	gConfig;
+extern CModule_Config*	gConfigModule;
 
 #endif /* _ELCONFIG_H_ */

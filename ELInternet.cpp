@@ -4,7 +4,7 @@
 #include <ELUtilities.h>
 #include <ELCommand.h>
 
-CModule_Internet*	gInternet;
+CModule_Internet*	gInternetModule;
 
 static char const*	gCmdHomePageGet = "GET / HTTP";
 static char const*	gCmdProcessPageGet = "GET /cmd_data.asp?Command=";
@@ -161,7 +161,7 @@ CHTTPConnection::Close(
 {
 	if(localPort != 0)
 	{
-		gInternet->CloseConnection(localPort);
+		gInternetModule->CloseConnection(localPort);
 	}
 
 	delete this;
@@ -181,14 +181,14 @@ CHTTPConnection::ResponseHandlerMethod(
 			localPort = inLocalPort;
 			if(requestIndex > 0)
 			{
-				gInternet->SendData(localPort, requestIndex, buffer);
+				gInternetModule->SendData(localPort, requestIndex, buffer);
 				requestIndex = 0;
 			}
 			break;
 
 		case eConnectionResponse_Closed:
 		case eConnectionResponse_Error:
-			gInternet->CloseConnection(localPort);
+			gInternetModule->CloseConnection(localPort);
 			openInProgress = false;
 			waitingOnResponse = false;
 			localPort = 0xFF;
@@ -210,14 +210,14 @@ CHTTPConnection::SendData(
 {
 	if(localPort != 0xFF)
 	{
-		gInternet->SendData(localPort, strlen(inData), inData);
+		gInternetModule->SendData(localPort, strlen(inData), inData);
 	}
 	else
 	{
 		if(!openInProgress)
 		{
 			// Start an open request
-			gInternet->OpenConnection(serverPort, serverAddress, this, static_cast<TInternetResponseHandlerMethod>(&CHTTPConnection::ResponseHandlerMethod));
+			gInternetModule->OpenConnection(serverPort, serverAddress, this, static_cast<TInternetResponseHandlerMethod>(&CHTTPConnection::ResponseHandlerMethod));
 			openInProgress = true;
 		}
 
@@ -348,13 +348,13 @@ CHTTPConnection::FinishResponse(
 	(internetHandler->*responseMethod)(responseHTTPCode, responseContentSize, buffer);
 }
 
+MModuleSingleton_ImplementationGlobal(CModule_Internet, gInternetModule)
+
 CModule_Internet::CModule_Internet(
 	)
 	:
-	CModule("intn", sizeof(settings), 0, &settings, 10000, 1)
+	CModule(sizeof(settings), 0, &settings, 10000)
 {
-	gInternet = this;
-
 	internetDevice = NULL;
 	memset(serverList, 0, sizeof(serverList));
 	memset(connectionList, 0, sizeof(connectionList));
@@ -371,6 +371,8 @@ CModule_Internet::CModule_Internet(
 		cur->openRef = -1;
 		cur->localPort = 0xFF;
 	}
+
+	DoneIncluding();
 }
 
 void
@@ -573,10 +575,10 @@ void
 CModule_Internet::Setup(
 	void)
 {
-	gCommand->RegisterCommand("wireless_set", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_WirelessSet), "[ssid] [pw] [wpa2|wep|open] : Set the wireless configuration");
-	gCommand->RegisterCommand("wireless_get", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_WirelessGet), ": Get the wireless configuration");
-	gCommand->RegisterCommand("ip_set", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_IPAddrSet), "[ip addr] [gateway addr] [subnet mask] : Set the ip configuration");
-	gCommand->RegisterCommand("ip_get", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_IPAddrGet), ": Get the ip configuration");
+	gCommandModule->RegisterCommand("wireless_set", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_WirelessSet), "[ssid] [pw] [wpa2|wep|open] : Set the wireless configuration");
+	gCommandModule->RegisterCommand("wireless_get", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_WirelessGet), ": Get the wireless configuration");
+	gCommandModule->RegisterCommand("ip_set", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_IPAddrSet), "[ip addr] [gateway addr] [subnet mask] : Set the ip configuration");
+	gCommandModule->RegisterCommand("ip_get", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_IPAddrGet), ": Get the ip configuration");
 }
 
 void
@@ -683,7 +685,7 @@ CModule_Internet::Update(
 				respondingReplyPort = replyPort;
 
 				// Call the front page handlers to provide html
-				gCommand->ProcessCommand(this, argIndex, argList);
+				gCommandModule->ProcessCommand(this, argIndex, argList);
 
 				for(int i = 0; i < eCommandServerFrontPageHandlerMax; ++i)
 				{

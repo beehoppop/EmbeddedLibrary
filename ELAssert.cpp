@@ -39,28 +39,28 @@ static SOutputEntry	gEntries[eMaxMsgHandlers];
 
 IOutputDirector*	gSerialOut;
 
+MModuleSingleton_Implementation(CModule_SysMsgCmdHandler)
+
 CModule_SysMsgCmdHandler::CModule_SysMsgCmdHandler(
 	)
 	:
-	CModule(
-		"dbch",
-		0,
-		0,
-		NULL,
-		0,
-		1)
+	CModule()
 {
 	msgBufferIndex = 0;
+
+	// Begin including other dependent modules
+	CModule_Command::Include();
+	DoneIncluding();
 }
 
 void
 CModule_SysMsgCmdHandler::Setup(
 	void)
 {
-	MAssert(gCommand != NULL);
+	MAssert(gCommandModule != NULL);
 
 	AddSysMsgHandler(this);
-	gCommand->RegisterCommand("msg_dump", this, static_cast<TCmdHandlerMethod>(&CModule_SysMsgCmdHandler::MsgLogDump), ": Dump a brief history of the system messages");
+	gCommandModule->RegisterCommand("msg_dump", this, static_cast<TCmdHandlerMethod>(&CModule_SysMsgCmdHandler::MsgLogDump), ": Dump a brief history of the system messages");
 }
 
 uint8_t
@@ -95,18 +95,13 @@ CModule_SysMsgCmdHandler::write(
 	}
 }
 
+MModuleSingleton_ImplementationGlobal(CModule_SysMsgSerialHandler, gSerialOut)
+
 CModule_SysMsgSerialHandler::CModule_SysMsgSerialHandler(
 	)
 	:
-	CModule(
-		"dbsh",
-		0,
-		0,
-		NULL,
-		0,
-		127)
+	CModule()
 {
-	gSerialOut = this;
 }
 
 void
@@ -143,7 +138,7 @@ DebugMsgVA(
 	char const*	inMsg,
 	va_list		inVAList)
 {
-	if(gConfig != NULL && inLevel > gConfig->GetVal(gConfig->debugLevelIndex))
+	if(gConfigModule != NULL && inLevel > gConfigModule->GetVal(gConfigModule->debugLevelIndex))
 		return;
 
 	char	vabuffer[256];

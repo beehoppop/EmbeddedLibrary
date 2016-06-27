@@ -27,8 +27,11 @@
 #include <ctype.h>
 #include <math.h>
 
-#include "ELUtilities.h"
+#if !defined(WIN32)
+#include <RamMonitor.h>
+#endif
 
+#include "ELUtilities.h"
 
 bool
 IsStrDigit(
@@ -279,3 +282,13 @@ GetRandomFloatGuassian(
 	return inMean + y1 * inStandardDeviation;
 }
 
+uint32_t
+GetFreeMemory(
+	void)
+{
+#if !defined(WIN32)
+	return gRamMonitor.unallocated();
+#else
+	return 0;
+#endif
+}

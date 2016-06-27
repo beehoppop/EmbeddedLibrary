@@ -31,13 +31,18 @@
 
 	This is the foundation of the EmbeddedLibrary. A module is a unit of functionality that manages eeprom storage, periodic updates, and initialization.
 	Modules are meant to encapsulate units of functionality that sketches can use depending on their needs.
+
+	A module's constructor can only initialize itself, it can not access other modules
+	A module's Setup() method may reference other modules, any module included during a constructor will itself be constructed and added to the module list
 */
 
 #include <EL.h>
+#include <ELUtilities.h>
 
 enum
 {
-	eMaxModuleCount = 32,
+	eMaxModuleSingletonCount = 16,
+	eMaxModuleDynamicCount = 16,
 };
 
 class CModule
@@ -54,18 +59,16 @@ public:
 	SetEnabledState(
 		bool	inEnabled);
 
-	uint32_t		uid;	// The unique ID for the module
+	char const*		uid;	// The unique ID for the module
 
 protected:
 	
 	// This is the initializer for the module
 	CModule(
-		char const*	inUID,					// This is the 4 character unique ID for the module
 		uint16_t	inEEPROMSize = 0,		// This is the amount of eeprom space needed for the module
 		uint16_t	inEEPROMVersion = 0,	// This is the version number of the eeprom (so the system can reinitialize eeprom when the version number changes)
 		void*		inEEPROMData = NULL,	// A pointer to the local eeprom data storage
 		uint32_t	inUpdateTimeUS = 0,		// The period between Update() calles
-		int8_t		inPriority = 0,			// This is the priority for initializing the module, higher priority modules are initialized before lower priority ones)
 		bool		inEnabled = true);		// This is the initial enabled state for the module
 	
 	// Override this to setup the initial state of the module
@@ -98,9 +101,9 @@ protected:
 	EEPROMSave(
 		void);
 	
-	// Call this in the modules constructor to check if Setup() should happen now for modules that can be loaded during another modules Setup() method
+	// Call this at the end of a module's constructor after all other modules have been included so that the module's setup method may be called
 	void
-	CheckSetupNow(
+	DoneIncluding(
 		void);
 
 	uint16_t		eepromOffset;
@@ -111,10 +114,19 @@ private:
 	uint16_t		eepromVersion;
 	void*			eepromData;
 	uint32_t		updateTimeUS;
+	uint32_t		classSize;
 	uint64_t		lastUpdateUS;
-	int8_t			priority;
+	bool			isSingleton;
 	bool			enabled;
 	bool			hasBeenSetup;
+
+	void
+	SetupIfNeeded(
+		void);
+
+	void
+	UpdateIfNeeded(
+		void);
 
 	// This is called from the sketch's setup() function in the .ino file
 	static void
@@ -149,5 +161,73 @@ private:
 
 extern uint64_t		gCurLocalMS;	// The accumulated ms since boot, its 64-bit so it will never overflow
 extern uint64_t		gCurLocalUS;	// The accumulated us since boot, its 64-bit so it will never overflow
+
+void
+StartingModuleConstruction(
+	char const*	inClassName,
+	uint32_t	inClassSize,
+	bool		inSingleton);
+
+#define MModuleSingleton_Declaration(inClassName)	\
+	static void											\
+	Include(										\
+		void);
+
+#define MModuleSingleton_ImplementationGlobal(inClassName, inGlobalVariable)		\
+void																				\
+inClassName::Include(																\
+	void)																			\
+{																					\
+	static bool	initialized = false;												\
+	if(initialized)																	\
+	{																				\
+		/* recursion in the constructor, this is allowed for singleton modules */	\
+		return;																		\
+	}																				\
+	initialized = true;																\
+	StartingModuleConstruction(#inClassName, sizeof(inClassName), true);			\
+	inGlobalVariable = new inClassName();											\
+}
+
+#define MModuleSingleton_Implementation(inClassName)								\
+void																				\
+inClassName::Include(																\
+	void)																			\
+{																					\
+	static bool	initialized = false;												\
+	if(initialized)																	\
+	{																				\
+		/* recursion in the constructor, this is allowed for singleton modules */	\
+		return;																		\
+	}																				\
+	initialized = true;																\
+	StartingModuleConstruction(#inClassName, sizeof(inClassName), true);			\
+	new inClassName();																\
+}
+
+#define MModule_Declaration(inClassName, ...)	\
+	static inClassName*							\
+	Include(									\
+		__VA_ARGS__);
+
+#define MModuleImplementation_Start(inClassName, ...)	\
+inClassName*											\
+inClassName::Include(									\
+	__VA_ARGS__)										\
+{
+
+#define MModuleImplementation(inClassName, ...)												\
+	static bool	initialized = false;														\
+	if(initialized)																			\
+	{																						\
+		/* recursion in the constructor, this is not allowed for non singleton modules*/	\
+		MAssert(0);																			\
+		return NULL;																		\
+	}																						\
+	initialized = true;																		\
+	StartingModuleConstruction(#inClassName, sizeof(inClassName), false);					\
+	inClassName*	result = new inClassName(__VA_ARGS__);									\
+	return result;																			\
+}
 
 #endif /* _ELMODULE_H_ */

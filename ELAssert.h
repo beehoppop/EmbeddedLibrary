@@ -61,11 +61,13 @@ enum
 class CModule_SysMsgCmdHandler : public CModule, public ICmdHandler, public IOutputDirector
 {
 public:
+
+	MModuleSingleton_Declaration(CModule_SysMsgCmdHandler);
+
+private:
 	
 	CModule_SysMsgCmdHandler(
 		);
-
-private:
 
 	virtual void
 	Setup(
@@ -90,11 +92,13 @@ private:
 class CModule_SysMsgSerialHandler : public CModule, public IOutputDirector
 {
 public:
+
+	MModuleSingleton_Declaration(CModule_SysMsgSerialHandler);
+
+private:
 	
 	CModule_SysMsgSerialHandler(
 		);
-
-private:
 
 	virtual void
 	Setup(

@@ -35,37 +35,42 @@ enum
 	eEEPROM_ModuleCountOffset = 1,
 	eEEPROM_ListStart = 2,
 
-	eEEPROM_Version = 102,
+	eEEPROM_Version = 103,
 
-	eEEPROM_Size = 2048
+	eEEPROM_Size = 2048,
+
+	eEEPROM_UIDLength = 32,
 
 };
 
-#define MDebugDelayEachModule 0
+#define MDebugDelayEachModule 1
 #define MDebugDelayStart 0
 #define MDebugTargetNode 0xFF
 
 struct SEEPROMEntry
 {
-	uint32_t	uid;
+	char		uid[eEEPROM_UIDLength];
 	uint16_t	offset;
 	uint16_t	size;
 	uint16_t	version;
 	bool		inUse;
 };
 
-static int			gModuleCount;
-static CModule*		gModuleList[eMaxModuleCount];
-static SEEPROMEntry	gEEPROMEntryList[eMaxModuleCount];
+static int			gModuleSingletonCount;
+static CModule*		gModuleSingletonList[eMaxModuleSingletonCount];
+static int			gModuleDynamicCount;
+static CModule*		gModuleDynamicList[eMaxModuleDynamicCount];
+static SEEPROMEntry	gEEPROMEntryList[eMaxModuleSingletonCount];
 static bool			gTooManyModules = false;
 static bool			gTearingDown = false;
 static uint32_t		gLastMillis;
 static uint32_t		gLastMicros;
 static bool			gFlashLED;
 static int			gBlinkLEDIndex;		// config index for blink LED config var
-static bool			gSetupFinished;
+static char const*	gCurrentModuleConstructingName;
+static uint32_t		gCurrentModuleClassSize;
+static bool			gCurrentModuleIsSingleton;
 static bool			gSetupStarted;
-static int			gCurSetupLevel;
 
 uint64_t	gCurLocalMS;
 uint64_t	gCurLocalUS;
@@ -76,21 +81,28 @@ class CModuleManager : public CModule, public ICmdHandler
 {
 public:
 
+	MModuleSingleton_Declaration(CModuleManager)
+
+private:
+
 	CModuleManager(
 		)
 		:
-		CModule("mdmg", 0, 0, 0, 0, 123)
+		CModule()
 	{
+		CModule_Command::Include();
+		CModule_Config::Include();
+		DoneIncluding();
 	}
 
 	virtual void
 	Setup(
 		void)
 	{
-		MAssert(gCommand != NULL);
-		MAssert(gConfig != NULL);
-		gCommand->RegisterCommand("alive", this, static_cast<TCmdHandlerMethod>(&CModuleManager::SerialCmdAlive), "Return the build date and version as proof of life");
-		gBlinkLEDIndex = gConfig->RegisterConfigVar("blink_led");
+		MAssert(gCommandModule != NULL);
+		MAssert(gConfigModule != NULL);
+		gCommandModule->RegisterCommand("alive", this, static_cast<TCmdHandlerMethod>(&CModuleManager::SerialCmdAlive), "Return the build date and version as proof of life");
+		gBlinkLEDIndex = gConfigModule->RegisterConfigVar("blink_led");
 	}
 
 	uint8_t
@@ -99,47 +111,88 @@ public:
 		int					inArgC,
 		char const*			inArgV[])
 	{
-		inOutput->printf("ALIVE node=%d ver=%s build date=%s %s\n", gConfig->GetVal(gConfig->nodeIDIndex), gVersionStr, __DATE__, __TIME__);
+		inOutput->printf("ALIVE node=%d ver=%s build date=%s %s\n", gConfigModule->GetVal(gConfigModule->nodeIDIndex), gVersionStr, __DATE__, __TIME__);
 		
 		return eCmd_Succeeded;
 	}
 
 };
 
+MModuleSingleton_Implementation(CModuleManager)
+
 CModule::CModule(
-	char const*	inUID,
 	uint16_t	inEEPROMSize,
 	uint16_t	inEEPROMVersion,
 	void*		inEEPROMData,
 	uint32_t	inUpdateTimeUS,
-	int8_t		inPriority,
 	bool		inEnabled)
 	:
-	uid((inUID[0] << 24) | (inUID[1] << 16) | (inUID[2] << 8) | inUID[3]),
 	eepromSize(inEEPROMSize),
 	eepromVersion(inEEPROMVersion),
 	eepromData(inEEPROMData),
 	updateTimeUS(inUpdateTimeUS),
-	priority(inPriority),
 	enabled(inEnabled),
 	hasBeenSetup(false)
 {
-	if(gModuleCount >= eMaxModuleCount)
+	MAssert(strlen(gCurrentModuleConstructingName) <= eEEPROM_UIDLength - 1);
+	uid = gCurrentModuleConstructingName;
+	classSize = gCurrentModuleClassSize;
+	isSingleton = gCurrentModuleIsSingleton;
+
+	if(isSingleton)
 	{
-		gTooManyModules = true;
-		return;
+		for(int i = 0; i < gModuleSingletonCount; ++i)
+		{
+			MAssert(gModuleSingletonList[i]->uid != uid);	// There can only be one singleton module of each class name
+		}
 	}
-
-	gModuleList[gModuleCount++] = this;
-
+	else
+	{
+		MAssert(inEEPROMSize == 0);	// Non singleton modules can not have eeprom storage
+	}
 }
 
 void
-CModule::CheckSetupNow(
+CModule::DoneIncluding(
 	void)
 {
-	if(gSetupStarted && priority >= gCurSetupLevel)
+	if(isSingleton)
 	{
+		if(gModuleSingletonCount >= eMaxModuleSingletonCount)
+		{
+			gTooManyModules = true;
+			return;
+		}
+		gModuleSingletonList[gModuleSingletonCount++] = this;
+	}
+	else
+	{
+		if(gModuleDynamicCount >= eMaxModuleDynamicCount)
+		{
+			gTooManyModules = true;
+			return;
+		}
+		gModuleDynamicList[gModuleDynamicCount++] = this;
+	}
+	SetupIfNeeded();
+}
+
+void
+CModule::SetupIfNeeded(
+	void)
+{
+	if(gSetupStarted && enabled && !hasBeenSetup)
+	{
+		#if MDebugDelayEachModule || MDebugDelayStart
+			SystemMsg("Module: Setup %s\n", uid);
+		#endif
+		#if MDebugDelayEachModule
+			//Need to fix this code to not reference gConfigModule since it has not been initialized yet
+			//if(MDebugTargetNode == 0xFF || MDebugTargetNode == gConfigModule->GetVal(eConfigVar_NodeID))
+			{
+				delay(1000);
+			}
+		#endif
 		// Set this module up now
 		Setup();
 		lastUpdateUS = gCurLocalUS;
@@ -173,20 +226,14 @@ CModule::SetEnabledState(
 	bool	inEnabled)
 {
 	enabled = inEnabled;
-
-	if(enabled && !hasBeenSetup && gSetupFinished)
-	{
-		Setup();
-		lastUpdateUS = gCurLocalUS;
-		hasBeenSetup = true;
-	}
+	SetupIfNeeded();
 }
 
 void
 CModule::Update(
 	uint32_t	inDeltaTimeUS)
 {
-	//Serial.printf("default %s %d\n", StringizeUInt32(uid), enabled);
+	//Serial.printf("default %s %d\n", uid, enabled);
 }
 	
 void
@@ -218,11 +265,11 @@ CModule::EEPROMSave(
 
 static SEEPROMEntry*
 FindEEPROMEntry(
-	uint32_t		inUID)
+	char const*		inUID)
 {
-	for(int i = 0; i < eMaxModuleCount; ++i)
+	for(int i = 0; i < eMaxModuleSingletonCount; ++i)
 	{
-		if(gEEPROMEntryList[i].uid == inUID)
+		if(strcmp(gEEPROMEntryList[i].uid, inUID) == 0)
 			return gEEPROMEntryList + i;
 	}
 
@@ -242,30 +289,27 @@ CModule::SetupAll(
 		digitalWrite(13, 1);
 	}
 
-	new CModuleManager();
-	new CModule_SysMsgSerialHandler();
-	new CModule_Config();
-	new CModule_Command();
+	CModuleManager::Include();
 
-	SystemMsg(eMsgLevel_Basic, "Module: count=%d\n", gModuleCount);
+	SystemMsg(eMsgLevel_Basic, "Module: count=%d\n", gModuleSingletonCount);
 
 	MAssert(gTooManyModules == false);
 
 	bool	changes = false;
 	uint8_t	eepromVersion = EEPROM.read(eEEPROM_VersionOffset);
 	uint8_t	eepromModuleCount = EEPROM.read(eEEPROM_ModuleCountOffset);
-	if(eepromVersion == eEEPROM_Version && eMaxModuleCount == eepromModuleCount)
+	if(eepromVersion == eEEPROM_Version && eMaxModuleSingletonCount == eepromModuleCount)
 	{
 		LoadDataFromEEPROM(gEEPROMEntryList, eEEPROM_ListStart, sizeof(gEEPROMEntryList));
-		for(int i = 0; i < eMaxModuleCount; ++i)
+		for(int i = 0; i < eMaxModuleSingletonCount; ++i)
 		{
 			gEEPROMEntryList[i].inUse = false;
 		}
 
 		int	totalEEPROMSize = eEEPROM_ListStart + sizeof(gEEPROMEntryList);
-		for(int i = 0; i < gModuleCount; ++i)
+		for(int i = 0; i < gModuleSingletonCount; ++i)
 		{
-			CModule*	curModule = gModuleList[i];
+			CModule*	curModule = gModuleSingletonList[i];
 			if(curModule->eepromSize == 0)
 				continue;
 		
@@ -275,12 +319,12 @@ CModule::SetupAll(
 
 			if(target == NULL)
 			{
-				SystemMsg(eMsgLevel_Basic, "Module %s: no eeprom entry\n", StringizeUInt32(curModule->uid));
+				SystemMsg(eMsgLevel_Basic, "Module %s: no eeprom entry\n", curModule->uid);
 				changes = true;
 			}
 			else if(target->size != curModule->eepromSize || target->version != curModule->eepromVersion)
 			{
-				SystemMsg(eMsgLevel_Basic, "Module %s: eeprom changed version or size\n", StringizeUInt32(curModule->uid));
+				SystemMsg(eMsgLevel_Basic, "Module %s: eeprom changed version or size\n", curModule->uid);
 				changes = true;
 			}
 			else
@@ -299,7 +343,7 @@ CModule::SetupAll(
 		SystemMsg(eMsgLevel_Basic, "EEPROM version mismatch old=%d new=%d\n", eepromVersion, eEEPROM_Version);
 
 		changes = true;
-		for(int i = 0; i < eMaxModuleCount; ++i)
+		for(int i = 0; i < eMaxModuleSingletonCount; ++i)
 		{
 			gEEPROMEntryList[i].inUse = false;
 		}
@@ -310,20 +354,20 @@ CModule::SetupAll(
 		// since changes have been made compress all module eeprom data into low eeprom space
 		uint16_t		curOffset = eEEPROM_ListStart + sizeof(gEEPROMEntryList);
 		SEEPROMEntry*	curEEPROM = gEEPROMEntryList;
-		for(int i = 0; i < gModuleCount; ++i)
+		for(int i = 0; i < gModuleSingletonCount; ++i)
 		{
-			CModule*	curModule = gModuleList[i];
+			CModule*	curModule = gModuleSingletonList[i];
 			if(curModule->eepromSize == 0)
 				continue;
 
 			curModule->eepromOffset = curOffset;
-			curEEPROM->uid = curModule->uid;
+			strcpy(curEEPROM->uid, curModule->uid);
 			curEEPROM->offset = curOffset;
 			curEEPROM->size = curModule->eepromSize;
 			curEEPROM->version = curModule->eepromVersion;
 			if(!curEEPROM->inUse)
 			{
-				SystemMsg(eMsgLevel_Basic, "Module %s: Initializing eeprom\n", StringizeUInt32(curModule->uid));
+				SystemMsg(eMsgLevel_Basic, "Module %s: Initializing eeprom\n", curModule->uid);
 				curModule->EEPROMInitialize();
 			}
 			WriteDataToEEPROM(curModule->eepromData, curOffset, curModule->eepromSize);
@@ -333,11 +377,11 @@ CModule::SetupAll(
 
 		WriteDataToEEPROM(gEEPROMEntryList, eEEPROM_ListStart, sizeof(gEEPROMEntryList));
 		EEPROM.write(eEEPROM_VersionOffset, eEEPROM_Version);
-		EEPROM.write(eEEPROM_ModuleCountOffset, eMaxModuleCount);
+		EEPROM.write(eEEPROM_ModuleCountOffset, eMaxModuleSingletonCount);
 	}
 
 	#if MDebugDelayStart
-		if(MDebugTargetNode == 0xFF /*|| MDebugTargetNode == gConfig->GetVal(eConfigVar_NodeID)*/)	// 		Need to fix this code to not reference gConfig since it has not been initialized yet
+		if(MDebugTargetNode == 0xFF /*|| MDebugTargetNode == gConfigModule->GetVal(eConfigVar_NodeID)*/)	// 		Need to fix this code to not reference gConfigModule since it has not been initialized yet
 		{
 			WaitForSerialPort();
 		}
@@ -348,46 +392,19 @@ CModule::SetupAll(
 	gCurLocalMS = millis();
 	gCurLocalUS = micros();
 
-	for(int priorityItr = MAXINT8 + 1; priorityItr-- > MININT8;)
+	for(int i = 0; i < gModuleSingletonCount; ++i)
 	{
-		gCurSetupLevel = priorityItr;
-
-		for(int i = 0; i < gModuleCount; ++i)
-		{
-			CModule*	curModule = gModuleList[i];
-			if(curModule->priority == priorityItr)
-			{
-				if(!curModule->enabled)
-				{
-					// Don't try to setup modules that are not enabled
-					continue;
-				}
-
-				if(curModule->hasBeenSetup)
-				{
-					// Don't try to setup modules that are already setup
-					continue;
-				}
-
-				#if MDebugDelayEachModule || MDebugDelayStart
-					SystemMsg("Module: Setup %s %d\n", StringizeUInt32(curModule->uid), curModule->priority);
-				#endif
-				#if MDebugDelayEachModule
-					//Need to fix this code to not reference gConfig since it has not been initialized yet
-					//if(MDebugTargetNode == 0xFF || MDebugTargetNode == gConfig->GetVal(eConfigVar_NodeID))
-					{
-						delay(1000);
-					}
-				#endif
-				curModule->Setup();
-				curModule->lastUpdateUS = gCurLocalUS;
-				curModule->hasBeenSetup = true;
-			}
-		}
+		CModule*	curModule = gModuleSingletonList[i];
+		curModule->SetupIfNeeded();
 	}
 
-	gSetupFinished = true;
-	gConfig->SetupFinished();
+	for(int i = 0; i < gModuleDynamicCount; ++i)
+	{
+		CModule*	curModule = gModuleDynamicList[i];
+		curModule->SetupIfNeeded();
+	}
+
+	gConfigModule->SetupFinished();
 
 	#if MDebugDelayEachModule || MDebugDelayStart
 		SystemMsg("Module: Setup Complete\n"); delay(100);
@@ -398,19 +415,22 @@ void
 CModule::TearDownAll(
 	void)
 {
-	for(int priorityItr = 0; priorityItr < 256; ++priorityItr)
+	for(int i = 0; i < gModuleDynamicCount; ++i)
 	{
-		for(int i = 0; i < gModuleCount; ++i)
-		{
-			if(gModuleList[i]->priority == priorityItr)
-			{
-				#if MDebugModules
-				SystemMsg(eMsgLevel_Medium, "Module: TearDown %s\n", StringizeUInt32(gModuleList[i]->uid));
-				delay(3000);
-				#endif
-				gModuleList[i]->TearDown();
-			}
-		}
+		#if MDebugModules
+		SystemMsg(eMsgLevel_Medium, "Module: TearDown %s\n", gModuleSingletonList[i]->uid);
+		delay(3000);
+		#endif
+		gModuleDynamicList[i]->TearDown();
+	}
+
+	for(int i = 0; i < gModuleSingletonCount; ++i)
+	{
+		#if MDebugModules
+		SystemMsg(eMsgLevel_Medium, "Module: TearDown %s\n", gModuleSingletonList[i]->uid);
+		delay(3000);
+		#endif
+		gModuleSingletonList[i]->TearDown();
 	}
 
 	gTearingDown = true;
@@ -424,15 +444,25 @@ void
 CModule::ResetAllState(
 	void)
 {
+	MAssert(0); // This needs work to ensure modules don't get re-added to the lists
+
 	TearDownAll();
 
-	for(int i = 0; i < gModuleCount; ++i)
+	for(int i = 0; i < gModuleSingletonCount; ++i)
 	{
-		SystemMsg(eMsgLevel_Medium, "Module: ResetState %s\n", StringizeUInt32(gModuleList[i]->uid));
+		SystemMsg(eMsgLevel_Medium, "Module: ResetState %s\n", gModuleSingletonList[i]->uid);
 		#if MDebugModules
 		delay(3000);
 		#endif
-		gModuleList[i]->ResetState();
+		gModuleSingletonList[i]->ResetState();
+	}
+	for(int i = 0; i < gModuleDynamicCount; ++i)
+	{
+		SystemMsg(eMsgLevel_Medium, "Module: ResetState %s\n", gModuleSingletonList[i]->uid);
+		#if MDebugModules
+		delay(3000);
+		#endif
+		gModuleDynamicList[i]->ResetState();
 	}
 
 	SetupAll(gVersionStr, gFlashLED);
@@ -450,7 +480,7 @@ CModule::LoopAll(
 	void)
 {
 
-	if(gFlashLED && gConfig->GetVal(gBlinkLEDIndex) == 1)
+	if(gFlashLED && gConfigModule->GetVal(gBlinkLEDIndex) == 1)
 	{
 		static bool	on = false;
 		static uint64_t	lastBlinkTime;
@@ -463,53 +493,58 @@ CModule::LoopAll(
 		}
 	}
 
-
-	for(int i = 0; i < gModuleCount; ++i)
+	for(int i = 0; i < gModuleSingletonCount; ++i)
 	{
 		if(gTearingDown)
 		{
 			break;
 		}
+		gModuleSingletonList[i]->UpdateIfNeeded();
+	}
 
-		uint32_t	curMillis = millis();
-		uint32_t	curMicros = micros();
-
-		gCurLocalMS += curMillis - gLastMillis;
-		gCurLocalUS += curMicros - gLastMicros;
-		gLastMillis = curMillis;
-		gLastMicros = curMicros;
-
-		uint64_t	updateDeltaUS = gCurLocalUS - gModuleList[i]->lastUpdateUS;
-		if(updateDeltaUS >= gModuleList[i]->updateTimeUS)
+	for(int i = 0; i < gModuleDynamicCount; ++i)
+	{
+		if(gTearingDown)
 		{
-			if(gModuleList[i]->enabled)
-			{
-				//Serial.printf("Updating %s %d\n", StringizeUInt32(gModuleList[i]->uid), gModuleList[i]->enabled); delay(100);
-				gModuleList[i]->Update((uint32_t)updateDeltaUS);
-				gModuleList[i]->lastUpdateUS = gCurLocalUS;
-			}
+			break;
 		}
+		gModuleDynamicList[i]->UpdateIfNeeded();
 	}
 
 	gTearingDown = false;
 }
 
-
-/*
-
-
-CModule*
-FindModule(
-	uint32_t	inUID)
+void
+CModule::UpdateIfNeeded(
+	void)
 {
-	for(int i = 0; i < gModuleCount; ++i)
-	{
-		if(gModuleList[i]->uid == inUID)
-			return gModuleList[i];
-	}
+	uint32_t	curMillis = millis();
+	uint32_t	curMicros = micros();
 
-	return NULL;
+	gCurLocalMS += curMillis - gLastMillis;
+	gCurLocalUS += curMicros - gLastMicros;
+	gLastMillis = curMillis;
+	gLastMicros = curMicros;
+
+	uint64_t	updateDeltaUS = gCurLocalUS - lastUpdateUS;
+	if(updateDeltaUS >= updateTimeUS)
+	{
+		if(enabled)
+		{
+			//Serial.printf("Updating %s %d\n", gModuleList[i]->uid, gModuleList[i]->enabled); delay(100);
+			Update((uint32_t)updateDeltaUS);
+			lastUpdateUS = gCurLocalUS;
+		}
+	}
 }
 
-
-*/
+void
+StartingModuleConstruction(
+	char const*	inClassName,
+	uint32_t	inClassSize,
+	bool		inSingleton)
+{
+	gCurrentModuleConstructingName = inClassName;
+	gCurrentModuleClassSize = inClassSize;
+	gCurrentModuleIsSingleton = inSingleton;
+}

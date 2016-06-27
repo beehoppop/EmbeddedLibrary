@@ -41,20 +41,16 @@ enum
 
 CModule_DigitalIO*	gDigitalIO;
 
+MModuleSingleton_ImplementationGlobal(CModule_DigitalIO, gDigitalIO)
+
 CModule_DigitalIO::CModule_DigitalIO(
 	)
 	:
-	CModule("dgio", 0, 0, NULL, eUpdateTimeUS, 1)
+	CModule(0, 0, NULL, eUpdateTimeUS)
 {
-	gDigitalIO = this;
 	memset(pinState, 0, sizeof(pinState));
-}
 
-void
-CModule_DigitalIO::Setup(
-	void)
-{
-	memset(pinState, 0, sizeof(pinState));
+	DoneIncluding();
 }
 
 void

@@ -61,6 +61,16 @@ SDisplayColor	gColorBlue(0, 0, 255);
 #include "ELDisplay_ILI9341.h"
 #endif
 
+MModuleImplementation_Start(
+	CDisplayDriver_ILI9341,
+	EDisplayOrientation	inDisplayOrientation,
+	uint8_t	inCS,
+	uint8_t	inDC,
+	uint8_t	inMOSI,
+	uint8_t	inClk,
+	uint8_t	inMISO)
+MModuleImplementation(CDisplayDriver_ILI9341, inDisplayOrientation, inCS, inDC, inMOSI, inClk, inMISO)
+
 SPlacement
 SPlacement::Outside(
 	uint8_t	inSide,
@@ -75,25 +85,6 @@ SPlacement::Inside(
 	uint8_t	inVert)
 {
 	return SPlacement(ePlacementType_Inside, inHoriz, inVert);
-}
-
-IDisplayDriver*
-CreateILI9341Driver(
-	EDisplayOrientation	inDisplayOrientation,
-	uint8_t	inCS,
-	uint8_t	inDC,
-	uint8_t	inMOSI,
-	uint8_t	inClk,
-	uint8_t	inMISO)
-{
-	static IDisplayDriver*	displayDriver = NULL;
-
-	if(displayDriver == NULL)
-	{
-		displayDriver = new CDisplayDriver_ILI9341(inDisplayOrientation, inCS, inDC, inMOSI, inClk, inMISO);
-	}
-
-	return displayDriver;
 }
 
 ITouchDriver*
@@ -866,17 +857,20 @@ CDisplayRegion_Text::UpdateDimensions(
 	}
 }
 
+MModuleSingleton_ImplementationGlobal(CModule_Display, gDisplayModule)
+
 CModule_Display::CModule_Display(
 	)
 	:
-	CModule("disp", 0, 0, NULL, 20000)
+	CModule(0, 0, NULL, 20000)
 {
 	displayDriver = NULL;
 	touchDriver = NULL;
-	gDisplayModule = this;
 	touchDown = false;
 	topRegion = NULL;
 	memset(stringTable, 0xFF, sizeof(stringTable));
+
+	DoneIncluding();
 }
 
 void

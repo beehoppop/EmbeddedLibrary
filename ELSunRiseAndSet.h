@@ -83,9 +83,8 @@ typedef void
 class CModule_SunRiseAndSet : public CModule, public IRealTimeHandler, public ICmdHandler
 {
 public:
-	
-	CModule_SunRiseAndSet(
-		);
+
+	MModuleSingleton_Declaration(CModule_SunRiseAndSet)
 
 	void
 	SetLongitudeAndLatitude(
@@ -211,6 +210,9 @@ public:
 		int		inSunRelativePosition = eSunRelativePosition_UpperLimb);
 
 private:
+	
+	CModule_SunRiseAndSet(
+		);
 
 	virtual void
 	Setup(

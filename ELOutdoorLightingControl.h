@@ -75,12 +75,13 @@ class CModule_OutdoorLightingControl : public CModule, public IRealTimeHandler, 
 {
 public:
 
-	CModule_OutdoorLightingControl(
+	MModule_Declaration(
+		CModule_OutdoorLightingControl,
 		IOutdoorLightingInterface*	inInterface,
 		uint8_t						inMotionSensorPin,
 		uint8_t						inTransformerPin,
 		uint8_t						inTogglePin,
-		ILuminosity*				inLuminosityInterface);
+		ILuminosity*				inLuminosityInterface)
 
 	void
 	SetOverride(
@@ -88,6 +89,13 @@ public:
 		bool	inOverrideState);
 
 private:
+
+	CModule_OutdoorLightingControl(
+		IOutdoorLightingInterface*	inInterface,
+		uint8_t						inMotionSensorPin,
+		uint8_t						inTransformerPin,
+		uint8_t						inTogglePin,
+		ILuminosity*				inLuminosityInterface);
 
 	void
 	Setup(
