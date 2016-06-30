@@ -69,7 +69,7 @@ MModuleImplementation_Start(
 	uint8_t	inMOSI,
 	uint8_t	inClk,
 	uint8_t	inMISO)
-MModuleImplementation(CDisplayDriver_ILI9341, inDisplayOrientation, inCS, inDC, inMOSI, inClk, inMISO)
+MModuleImplementation_Finish(CDisplayDriver_ILI9341, inDisplayOrientation, inCS, inDC, inMOSI, inClk, inMISO)
 
 SPlacement
 SPlacement::Outside(
@@ -91,7 +91,6 @@ ITouchDriver*
 CreateXPT2046Driver(
 	uint8_t	inChipselect)
 {
-
 	static ITouchDriver*	touchDriver = NULL;
 
 	if(touchDriver == NULL)
@@ -857,7 +856,9 @@ CDisplayRegion_Text::UpdateDimensions(
 	}
 }
 
-MModuleSingleton_ImplementationGlobal(CModule_Display, gDisplayModule)
+MModuleImplementation_Start(
+	CModule_Display)
+MModuleImplementation_FinishGlobal(CModule_Display, gDisplayModule)
 
 CModule_Display::CModule_Display(
 	)
@@ -870,7 +871,16 @@ CModule_Display::CModule_Display(
 	topRegion = NULL;
 	memset(stringTable, 0xFF, sizeof(stringTable));
 
-	DoneIncluding();
+}
+
+void
+CModule_Display::Configure(
+	IDisplayDriver*	inDisplayDriver,
+	ITouchDriver*	inTouchDriver)
+{
+	displayDriver = inDisplayDriver;
+	touchDriver = inTouchDriver;
+	topRegion = new CDisplayRegion(NULL, SPlacement::Inside(eAlign_Horiz_Expand, eAlign_Vert_Expand));
 }
 
 void
@@ -925,21 +935,6 @@ CModule_Display::GetHeight(
 		return displayDriver->GetHeight();
 	}
 	return 0;
-}
-
-void
-CModule_Display::SetDisplayDriver(
-	IDisplayDriver*	inDisplayDriver)
-{
-	displayDriver = inDisplayDriver;
-	topRegion = new CDisplayRegion(NULL, SPlacement::Inside(eAlign_Horiz_Expand, eAlign_Vert_Expand));
-}
-
-void
-CModule_Display::SetTouchscreenDriver(
-	ITouchDriver*	inTouchDriver)
-{
-	touchDriver = inTouchDriver;
 }
 
 IDisplayDriver*

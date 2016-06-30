@@ -30,8 +30,9 @@
 #include "ELCommand.h"
 
 CModule_Config*	gConfigModule;
-	
-MModuleSingleton_ImplementationGlobal(CModule_Config, gConfigModule);
+
+MModuleImplementation_Start(CModule_Config)
+MModuleImplementation_FinishGlobal(CModule_Config, gConfigModule);
 
 CModule_Config::CModule_Config(
 	)
@@ -41,9 +42,11 @@ CModule_Config::CModule_Config(
 	memset(configVars, 0, sizeof(configVars));
 	memset(configVarUsed, 0, sizeof(configVarUsed));
 
+	nodeIDIndex = 0xFF;
+	debugLevelIndex = 0xFF;
+
 	// Include dependent modules
 	CModule_Command::Include();
-	DoneIncluding();
 }
 
 void

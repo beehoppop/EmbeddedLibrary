@@ -78,7 +78,8 @@
 
 CModule_SunRiseAndSet*	gSunRiseAndSet;
 
-MModuleSingleton_ImplementationGlobal(CModule_SunRiseAndSet, gSunRiseAndSet)
+MModuleImplementation_Start(CModule_SunRiseAndSet)
+MModuleImplementation_FinishGlobal(CModule_SunRiseAndSet, gSunRiseAndSet)
 
 CModule_SunRiseAndSet::CModule_SunRiseAndSet(
 	)
@@ -89,7 +90,6 @@ CModule_SunRiseAndSet::CModule_SunRiseAndSet(
 
 	CModule_Command::Include();
 	CModule_RealTime::Include();
-	DoneIncluding();
 }
 	
 void

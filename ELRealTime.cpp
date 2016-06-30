@@ -70,7 +70,7 @@ public:
 		void)
 	{
 		time_t	localTime = time(NULL) /*- 33 * 60*/;
-		gRealTime->SetEpochTime((TEpochTime)localTime, true);
+		gRealTime->SetEpochTime((TEpochTime)localTime);
 	}
 };
 
@@ -270,7 +270,8 @@ public:
 };
 #endif
 
-MModuleSingleton_ImplementationGlobal(CModule_RealTime, gRealTime)
+MModuleImplementation_Start(CModule_RealTime)
+MModuleImplementation_FinishGlobal(CModule_RealTime, gRealTime)
 
 CModule_RealTime::CModule_RealTime(
 	)
@@ -299,7 +300,20 @@ CModule_RealTime::CModule_RealTime(
 	timeMultiplier = 0;
 
 	CModule_Command::Include();
-	DoneIncluding();
+}
+
+void
+CModule_RealTime::Configure(
+	IRealTimeDataProvider*	inProvider,				// If provider is NULL the user is responsible for calling SetDateAndTime and setting an alarm to periodically sync as needed
+	uint32_t				inProviderSyncPeriod)	// In seconds, the period between refreshing the time with the given provider
+{
+	provider = inProvider;
+	providerSyncPeriod = inProviderSyncPeriod;
+
+	if(provider != NULL)
+	{
+		provider->RequestSync();
+	}
 }
 
 void
@@ -325,8 +339,6 @@ CModule_RealTime::Setup(
 	gCommandModule->RegisterCommand("rt_set_mult", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialSetMultiplier), "[integer] : multiply the passage of time by the given value");
 
 	timeMultiplier = 1;
-
-	SetEpochTime(0, false);
 }
 
 void
@@ -408,20 +420,6 @@ CModule_RealTime::SetTimeZone(
 		{
 			(curHandler->object->*curHandler->method)(curHandler->name, true);
 		}
-	}
-}
-
-void
-CModule_RealTime::SetProvider(
-	IRealTimeDataProvider*	inProvider,				// If provider is NULL the user is responsible for calling SetDateAndTime and setting an alarm to periodically sync as needed
-	uint32_t				inProviderSyncPeriod)	// In seconds, the period between refreshing the time with the given provider
-{
-	provider = inProvider;
-	providerSyncPeriod = inProviderSyncPeriod;
-
-	if(provider != NULL)
-	{
-		provider->RequestSync();
 	}
 }
 
@@ -1031,21 +1029,6 @@ CModule_RealTime::CancelTimeChangeHandler(
 	{
 		targetHandler->name = NULL;
 	}
-}
-
-IRealTimeDataProvider*
-CModule_RealTime::CreateDS3234Provider(
-	uint8_t	inChipSelectPin,
-	bool	inUseAltSPI)
-{
-	static CRealTimeDataProvider_DS3234*	ds3234Provider = NULL;
-
-	if(ds3234Provider == NULL)
-	{
-		ds3234Provider = new CRealTimeDataProvider_DS3234(inChipSelectPin, inUseAltSPI);
-	}
-
-	return ds3234Provider;
 }
 
 CModule_RealTime::SAlarm*
@@ -1702,4 +1685,19 @@ CModule_RealTime::CompareDateTimeWithNow(
 	}
 
 	return 0;
+}
+
+IRealTimeDataProvider*
+CreateDS3234Provider(
+	uint8_t	inChipSelectPin,
+	bool	inUseAltSPI)
+{
+	static CRealTimeDataProvider_DS3234*	ds3234Provider = NULL;
+
+	if(ds3234Provider == NULL)
+	{
+		ds3234Provider = new CRealTimeDataProvider_DS3234(inChipSelectPin, inUseAltSPI);
+	}
+
+	return ds3234Provider;
 }

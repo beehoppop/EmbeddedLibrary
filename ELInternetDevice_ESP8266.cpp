@@ -20,7 +20,7 @@ MModuleImplementation_Start(CModule_ESP8266,
 	uint8_t			inChPDPin,
 	uint8_t			inGPIO0,
 	uint8_t			inGPIO2)
-MModuleImplementation(CModule_ESP8266, inSerialPort, inRstPin, inChPDPin, inGPIO0, inGPIO2)
+MModuleImplementation_Finish(CModule_ESP8266, inSerialPort, inRstPin, inChPDPin, inGPIO0, inGPIO2)
 
 CModule_ESP8266::CModule_ESP8266(
 	HardwareSerial*	inSerialPort,
@@ -48,8 +48,6 @@ CModule_ESP8266::CModule_ESP8266(
 	{
 		channelArray[i].linkIndex = -1;
 	}
-	
-	DoneIncluding();
 }
 
 void

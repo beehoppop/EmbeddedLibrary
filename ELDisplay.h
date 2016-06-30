@@ -746,8 +746,14 @@ class CModule_Display : public CModule
 {
 public:
 
-	MModuleSingleton_Declaration(CModule_Display)
+	MModule_Declaration(
+		CModule_Display)
 	
+	void
+	Configure(
+		IDisplayDriver*	inDisplayDriver,
+		ITouchDriver*	inTouchDriver);
+
 	int16_t
 	GetWidth(
 		void);
@@ -755,14 +761,6 @@ public:
 	int16_t
 	GetHeight(
 		void);
-
-	void
-	SetDisplayDriver(
-		IDisplayDriver*	inDisplayDriver);
-
-	void
-	SetTouchscreenDriver(
-		ITouchDriver*	inTouchDriver);
 
 	IDisplayDriver*
 	GetDisplayDriver(

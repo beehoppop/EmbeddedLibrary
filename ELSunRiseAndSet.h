@@ -84,7 +84,7 @@ class CModule_SunRiseAndSet : public CModule, public IRealTimeHandler, public IC
 {
 public:
 
-	MModuleSingleton_Declaration(CModule_SunRiseAndSet)
+	MModule_Declaration(CModule_SunRiseAndSet)
 
 	void
 	SetLongitudeAndLatitude(

@@ -29,7 +29,7 @@ MModuleImplementation_Start(
 	uint8_t						inTransformerPin,
 	uint8_t						inTogglePin,
 	ILuminosity*				inLuminosityInterface)
-MModuleImplementation(CModule_OutdoorLightingControl, inInterface, inMotionSensorPin, inTransformerPin, inTogglePin, inLuminosityInterface)
+MModuleImplementation_Finish(CModule_OutdoorLightingControl, inInterface, inMotionSensorPin, inTransformerPin, inTogglePin, inLuminosityInterface)
 
 CModule_OutdoorLightingControl::CModule_OutdoorLightingControl(
 	IOutdoorLightingInterface*	inInterface,
@@ -65,9 +65,6 @@ CModule_OutdoorLightingControl::CModule_OutdoorLightingControl(
 	CModule_RealTime::Include();
 	CModule_DigitalIO::Include();
 	CModule_Internet::Include();
-
-	// This is called to check if this module should be setup now or wait for the module SetupAll call
-	DoneIncluding();
 }
 
 void

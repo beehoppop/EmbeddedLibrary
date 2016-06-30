@@ -262,10 +262,11 @@ class CModule_Internet : public CModule, public IOutputDirector, public ICmdHand
 {
 public:
 	
-	MModuleSingleton_Declaration(CModule_Internet)
-
+	MModule_Declaration(
+		CModule_Internet)
+	
 	void
-	SetInternetDevice(
+	Configure(
 		IInternetDevice*	inInternetDevice);
 
 	// Register a server handler

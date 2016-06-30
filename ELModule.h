@@ -41,8 +41,7 @@
 
 enum
 {
-	eMaxModuleSingletonCount = 16,
-	eMaxModuleDynamicCount = 16,
+	eMaxModuleCount = 32,
 };
 
 class CModule
@@ -58,6 +57,10 @@ public:
 	virtual void
 	SetEnabledState(
 		bool	inEnabled);
+	
+	void
+	DoneConstructing(
+		void);
 
 	char const*		uid;	// The unique ID for the module
 
@@ -100,11 +103,6 @@ protected:
 	void
 	EEPROMSave(
 		void);
-	
-	// Call this at the end of a module's constructor after all other modules have been included so that the module's setup method may be called
-	void
-	DoneIncluding(
-		void);
 
 	uint16_t		eepromOffset;
 
@@ -116,7 +114,6 @@ private:
 	uint32_t		updateTimeUS;
 	uint32_t		classSize;
 	uint64_t		lastUpdateUS;
-	bool			isSingleton;
 	bool			enabled;
 	bool			hasBeenSetup;
 
@@ -165,45 +162,7 @@ extern uint64_t		gCurLocalUS;	// The accumulated us since boot, its 64-bit so it
 void
 StartingModuleConstruction(
 	char const*	inClassName,
-	uint32_t	inClassSize,
-	bool		inSingleton);
-
-#define MModuleSingleton_Declaration(inClassName)	\
-	static void											\
-	Include(										\
-		void);
-
-#define MModuleSingleton_ImplementationGlobal(inClassName, inGlobalVariable)		\
-void																				\
-inClassName::Include(																\
-	void)																			\
-{																					\
-	static bool	initialized = false;												\
-	if(initialized)																	\
-	{																				\
-		/* recursion in the constructor, this is allowed for singleton modules */	\
-		return;																		\
-	}																				\
-	initialized = true;																\
-	StartingModuleConstruction(#inClassName, sizeof(inClassName), true);			\
-	inGlobalVariable = new inClassName();											\
-}
-
-#define MModuleSingleton_Implementation(inClassName)								\
-void																				\
-inClassName::Include(																\
-	void)																			\
-{																					\
-	static bool	initialized = false;												\
-	if(initialized)																	\
-	{																				\
-		/* recursion in the constructor, this is allowed for singleton modules */	\
-		return;																		\
-	}																				\
-	initialized = true;																\
-	StartingModuleConstruction(#inClassName, sizeof(inClassName), true);			\
-	new inClassName();																\
-}
+	uint32_t	inClassSize);
 
 #define MModule_Declaration(inClassName, ...)	\
 	static inClassName*							\
@@ -216,18 +175,31 @@ inClassName::Include(									\
 	__VA_ARGS__)										\
 {
 
-#define MModuleImplementation(inClassName, ...)												\
-	static bool	initialized = false;														\
-	if(initialized)																			\
-	{																						\
-		/* recursion in the constructor, this is not allowed for non singleton modules*/	\
-		MAssert(0);																			\
-		return NULL;																		\
-	}																						\
-	initialized = true;																		\
-	StartingModuleConstruction(#inClassName, sizeof(inClassName), false);					\
-	inClassName*	result = new inClassName(__VA_ARGS__);									\
-	return result;																			\
+#define MModuleImplementation_FinishGlobal(inClassName, inGlobalVariable, ...)		\
+	static bool	initialized = false;												\
+	if(initialized)																	\
+	{																				\
+		return NULL;																\
+	}																				\
+	initialized = true;																\
+	StartingModuleConstruction(#inClassName, sizeof(inClassName));					\
+	inClassName*	result = new inClassName(__VA_ARGS__);							\
+	result->DoneConstructing();														\
+	inGlobalVariable = result;														\
+	return result;																	\
+}
+
+#define MModuleImplementation_Finish(inClassName, ...)								\
+	static bool	initialized = false;												\
+	if(initialized)																	\
+	{																				\
+		return NULL;																\
+	}																				\
+	initialized = true;																\
+	StartingModuleConstruction(#inClassName, sizeof(inClassName));					\
+	inClassName*	result = new inClassName(__VA_ARGS__);							\
+	result->DoneConstructing();														\
+	return result;																	\
 }
 
 #endif /* _ELMODULE_H_ */

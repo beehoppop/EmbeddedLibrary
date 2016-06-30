@@ -39,7 +39,8 @@ static SOutputEntry	gEntries[eMaxMsgHandlers];
 
 IOutputDirector*	gSerialOut;
 
-MModuleSingleton_Implementation(CModule_SysMsgCmdHandler)
+MModuleImplementation_Start(CModule_SysMsgCmdHandler)
+MModuleImplementation_Finish(CModule_SysMsgCmdHandler)
 
 CModule_SysMsgCmdHandler::CModule_SysMsgCmdHandler(
 	)
@@ -48,9 +49,10 @@ CModule_SysMsgCmdHandler::CModule_SysMsgCmdHandler(
 {
 	msgBufferIndex = 0;
 
+	AddSysMsgHandler(this);
+
 	// Begin including other dependent modules
 	CModule_Command::Include();
-	DoneIncluding();
 }
 
 void
@@ -59,7 +61,6 @@ CModule_SysMsgCmdHandler::Setup(
 {
 	MAssert(gCommandModule != NULL);
 
-	AddSysMsgHandler(this);
 	gCommandModule->RegisterCommand("msg_dump", this, static_cast<TCmdHandlerMethod>(&CModule_SysMsgCmdHandler::MsgLogDump), ": Dump a brief history of the system messages");
 }
 
@@ -95,18 +96,13 @@ CModule_SysMsgCmdHandler::write(
 	}
 }
 
-MModuleSingleton_ImplementationGlobal(CModule_SysMsgSerialHandler, gSerialOut)
+MModuleImplementation_Start(CModule_SysMsgSerialHandler)
+MModuleImplementation_FinishGlobal(CModule_SysMsgSerialHandler, gSerialOut)
 
 CModule_SysMsgSerialHandler::CModule_SysMsgSerialHandler(
 	)
 	:
 	CModule()
-{
-}
-
-void
-CModule_SysMsgSerialHandler::Setup(
-	void)
 {
 	AddSysMsgHandler(this);
 }
@@ -138,7 +134,7 @@ DebugMsgVA(
 	char const*	inMsg,
 	va_list		inVAList)
 {
-	if(gConfigModule != NULL && inLevel > gConfigModule->GetVal(gConfigModule->debugLevelIndex))
+	if(gConfigModule != NULL && gConfigModule->debugLevelIndex < eConfigVar_Max && inLevel > gConfigModule->GetVal(gConfigModule->debugLevelIndex))
 		return;
 
 	char	vabuffer[256];

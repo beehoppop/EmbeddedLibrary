@@ -63,7 +63,7 @@ class CModule_SerialCmdHandler : public CModule
 {
 public:
 
-	MModuleSingleton_Declaration(CModule_SerialCmdHandler)
+	MModule_Declaration(CModule_SerialCmdHandler)
 
 private:
 
@@ -83,7 +83,7 @@ class CModule_Command : public CModule, public ICmdHandler
 {
 public:
 	
-	MModuleSingleton_Declaration(CModule_Command)
+	MModule_Declaration(CModule_Command)
 	
 	// Register a command handler
 	void

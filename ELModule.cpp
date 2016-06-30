@@ -35,12 +35,13 @@ enum
 	eEEPROM_ModuleCountOffset = 1,
 	eEEPROM_ListStart = 2,
 
-	eEEPROM_Version = 103,
+	eEEPROM_Version = 104,
 
 	eEEPROM_Size = 2048,
 
 	eEEPROM_UIDLength = 32,
 
+	eMaxEEPROMModules = 16,
 };
 
 #define MDebugDelayEachModule 1
@@ -56,11 +57,9 @@ struct SEEPROMEntry
 	bool		inUse;
 };
 
-static int			gModuleSingletonCount;
-static CModule*		gModuleSingletonList[eMaxModuleSingletonCount];
-static int			gModuleDynamicCount;
-static CModule*		gModuleDynamicList[eMaxModuleDynamicCount];
-static SEEPROMEntry	gEEPROMEntryList[eMaxModuleSingletonCount];
+static int			gModuleCount;
+static CModule*		gModuleList[eMaxModuleCount];
+static SEEPROMEntry	gEEPROMEntryList[eMaxEEPROMModules];
 static bool			gTooManyModules = false;
 static bool			gTearingDown = false;
 static uint32_t		gLastMillis;
@@ -69,7 +68,6 @@ static bool			gFlashLED;
 static int			gBlinkLEDIndex;		// config index for blink LED config var
 static char const*	gCurrentModuleConstructingName;
 static uint32_t		gCurrentModuleClassSize;
-static bool			gCurrentModuleIsSingleton;
 static bool			gSetupStarted;
 
 uint64_t	gCurLocalMS;
@@ -81,7 +79,7 @@ class CModuleManager : public CModule, public ICmdHandler
 {
 public:
 
-	MModuleSingleton_Declaration(CModuleManager)
+	MModule_Declaration(CModuleManager)
 
 private:
 
@@ -92,7 +90,6 @@ private:
 	{
 		CModule_Command::Include();
 		CModule_Config::Include();
-		DoneIncluding();
 	}
 
 	virtual void
@@ -118,7 +115,8 @@ private:
 
 };
 
-MModuleSingleton_Implementation(CModuleManager)
+MModuleImplementation_Start(CModuleManager)
+MModuleImplementation_Finish(CModuleManager)
 
 CModule::CModule(
 	uint16_t	inEEPROMSize,
@@ -137,43 +135,19 @@ CModule::CModule(
 	MAssert(strlen(gCurrentModuleConstructingName) <= eEEPROM_UIDLength - 1);
 	uid = gCurrentModuleConstructingName;
 	classSize = gCurrentModuleClassSize;
-	isSingleton = gCurrentModuleIsSingleton;
-
-	if(isSingleton)
-	{
-		for(int i = 0; i < gModuleSingletonCount; ++i)
-		{
-			MAssert(gModuleSingletonList[i]->uid != uid);	// There can only be one singleton module of each class name
-		}
-	}
-	else
-	{
-		MAssert(inEEPROMSize == 0);	// Non singleton modules can not have eeprom storage
-	}
 }
 
 void
-CModule::DoneIncluding(
+CModule::DoneConstructing(
 	void)
 {
-	if(isSingleton)
+	if(gModuleCount >= MStaticArrayLength(gModuleList))
 	{
-		if(gModuleSingletonCount >= eMaxModuleSingletonCount)
-		{
-			gTooManyModules = true;
-			return;
-		}
-		gModuleSingletonList[gModuleSingletonCount++] = this;
+		gTooManyModules = true;
+		return;
 	}
-	else
-	{
-		if(gModuleDynamicCount >= eMaxModuleDynamicCount)
-		{
-			gTooManyModules = true;
-			return;
-		}
-		gModuleDynamicList[gModuleDynamicCount++] = this;
-	}
+	gModuleList[gModuleCount++] = this;
+
 	SetupIfNeeded();
 }
 
@@ -267,7 +241,7 @@ static SEEPROMEntry*
 FindEEPROMEntry(
 	char const*		inUID)
 {
-	for(int i = 0; i < eMaxModuleSingletonCount; ++i)
+	for(int i = 0; i < MStaticArrayLength(gEEPROMEntryList); ++i)
 	{
 		if(strcmp(gEEPROMEntryList[i].uid, inUID) == 0)
 			return gEEPROMEntryList + i;
@@ -289,27 +263,28 @@ CModule::SetupAll(
 		digitalWrite(13, 1);
 	}
 
+	CModule_SysMsgSerialHandler::Include();
 	CModuleManager::Include();
 
-	SystemMsg(eMsgLevel_Basic, "Module: count=%d\n", gModuleSingletonCount);
+	SystemMsg(eMsgLevel_Basic, "Module: count=%d\n", gModuleCount);
 
 	MAssert(gTooManyModules == false);
 
 	bool	changes = false;
 	uint8_t	eepromVersion = EEPROM.read(eEEPROM_VersionOffset);
 	uint8_t	eepromModuleCount = EEPROM.read(eEEPROM_ModuleCountOffset);
-	if(eepromVersion == eEEPROM_Version && eMaxModuleSingletonCount == eepromModuleCount)
+	if(eepromVersion == eEEPROM_Version && eepromModuleCount == MStaticArrayLength(gEEPROMEntryList))
 	{
 		LoadDataFromEEPROM(gEEPROMEntryList, eEEPROM_ListStart, sizeof(gEEPROMEntryList));
-		for(int i = 0; i < eMaxModuleSingletonCount; ++i)
+		for(int i = 0; i < MStaticArrayLength(gEEPROMEntryList); ++i)
 		{
 			gEEPROMEntryList[i].inUse = false;
 		}
 
 		int	totalEEPROMSize = eEEPROM_ListStart + sizeof(gEEPROMEntryList);
-		for(int i = 0; i < gModuleSingletonCount; ++i)
+		for(int i = 0; i < gModuleCount; ++i)
 		{
-			CModule*	curModule = gModuleSingletonList[i];
+			CModule*	curModule = gModuleList[i];
 			if(curModule->eepromSize == 0)
 				continue;
 		
@@ -343,7 +318,7 @@ CModule::SetupAll(
 		SystemMsg(eMsgLevel_Basic, "EEPROM version mismatch old=%d new=%d\n", eepromVersion, eEEPROM_Version);
 
 		changes = true;
-		for(int i = 0; i < eMaxModuleSingletonCount; ++i)
+		for(int i = 0; i < MStaticArrayLength(gEEPROMEntryList); ++i)
 		{
 			gEEPROMEntryList[i].inUse = false;
 		}
@@ -354,12 +329,13 @@ CModule::SetupAll(
 		// since changes have been made compress all module eeprom data into low eeprom space
 		uint16_t		curOffset = eEEPROM_ListStart + sizeof(gEEPROMEntryList);
 		SEEPROMEntry*	curEEPROM = gEEPROMEntryList;
-		for(int i = 0; i < gModuleSingletonCount; ++i)
+		for(int i = 0; i < gModuleCount; ++i)
 		{
-			CModule*	curModule = gModuleSingletonList[i];
+			CModule*	curModule = gModuleList[i];
 			if(curModule->eepromSize == 0)
 				continue;
 
+			MAssert(curEEPROM < gEEPROMEntryList + MStaticArrayLength(gEEPROMEntryList));
 			curModule->eepromOffset = curOffset;
 			strcpy(curEEPROM->uid, curModule->uid);
 			curEEPROM->offset = curOffset;
@@ -377,7 +353,7 @@ CModule::SetupAll(
 
 		WriteDataToEEPROM(gEEPROMEntryList, eEEPROM_ListStart, sizeof(gEEPROMEntryList));
 		EEPROM.write(eEEPROM_VersionOffset, eEEPROM_Version);
-		EEPROM.write(eEEPROM_ModuleCountOffset, eMaxModuleSingletonCount);
+		EEPROM.write(eEEPROM_ModuleCountOffset, MStaticArrayLength(gEEPROMEntryList));
 	}
 
 	#if MDebugDelayStart
@@ -392,15 +368,9 @@ CModule::SetupAll(
 	gCurLocalMS = millis();
 	gCurLocalUS = micros();
 
-	for(int i = 0; i < gModuleSingletonCount; ++i)
+	for(int i = 0; i < gModuleCount; ++i)
 	{
-		CModule*	curModule = gModuleSingletonList[i];
-		curModule->SetupIfNeeded();
-	}
-
-	for(int i = 0; i < gModuleDynamicCount; ++i)
-	{
-		CModule*	curModule = gModuleDynamicList[i];
+		CModule*	curModule = gModuleList[i];
 		curModule->SetupIfNeeded();
 	}
 
@@ -415,22 +385,13 @@ void
 CModule::TearDownAll(
 	void)
 {
-	for(int i = 0; i < gModuleDynamicCount; ++i)
+	for(int i = 0; i < gModuleCount; ++i)
 	{
 		#if MDebugModules
-		SystemMsg(eMsgLevel_Medium, "Module: TearDown %s\n", gModuleSingletonList[i]->uid);
+		SystemMsg(eMsgLevel_Medium, "Module: TearDown %s\n", gModuleList[i]->uid);
 		delay(3000);
 		#endif
-		gModuleDynamicList[i]->TearDown();
-	}
-
-	for(int i = 0; i < gModuleSingletonCount; ++i)
-	{
-		#if MDebugModules
-		SystemMsg(eMsgLevel_Medium, "Module: TearDown %s\n", gModuleSingletonList[i]->uid);
-		delay(3000);
-		#endif
-		gModuleSingletonList[i]->TearDown();
+		gModuleList[i]->TearDown();
 	}
 
 	gTearingDown = true;
@@ -448,21 +409,13 @@ CModule::ResetAllState(
 
 	TearDownAll();
 
-	for(int i = 0; i < gModuleSingletonCount; ++i)
+	for(int i = 0; i < gModuleCount; ++i)
 	{
-		SystemMsg(eMsgLevel_Medium, "Module: ResetState %s\n", gModuleSingletonList[i]->uid);
+		SystemMsg(eMsgLevel_Medium, "Module: ResetState %s\n", gModuleList[i]->uid);
 		#if MDebugModules
 		delay(3000);
 		#endif
-		gModuleSingletonList[i]->ResetState();
-	}
-	for(int i = 0; i < gModuleDynamicCount; ++i)
-	{
-		SystemMsg(eMsgLevel_Medium, "Module: ResetState %s\n", gModuleSingletonList[i]->uid);
-		#if MDebugModules
-		delay(3000);
-		#endif
-		gModuleDynamicList[i]->ResetState();
+		gModuleList[i]->ResetState();
 	}
 
 	SetupAll(gVersionStr, gFlashLED);
@@ -493,22 +446,13 @@ CModule::LoopAll(
 		}
 	}
 
-	for(int i = 0; i < gModuleSingletonCount; ++i)
+	for(int i = 0; i < gModuleCount; ++i)
 	{
 		if(gTearingDown)
 		{
 			break;
 		}
-		gModuleSingletonList[i]->UpdateIfNeeded();
-	}
-
-	for(int i = 0; i < gModuleDynamicCount; ++i)
-	{
-		if(gTearingDown)
-		{
-			break;
-		}
-		gModuleDynamicList[i]->UpdateIfNeeded();
+		gModuleList[i]->UpdateIfNeeded();
 	}
 
 	gTearingDown = false;
@@ -541,10 +485,8 @@ CModule::UpdateIfNeeded(
 void
 StartingModuleConstruction(
 	char const*	inClassName,
-	uint32_t	inClassSize,
-	bool		inSingleton)
+	uint32_t	inClassSize)
 {
 	gCurrentModuleConstructingName = inClassName;
 	gCurrentModuleClassSize = inClassSize;
-	gCurrentModuleIsSingleton = inSingleton;
 }

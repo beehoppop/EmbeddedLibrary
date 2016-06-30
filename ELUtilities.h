@@ -32,6 +32,8 @@
 #define MMin(x, y) (((x) < (y)) ? (x) : (y))
 #define MPin(x, y, z) ((y) < (x) ? (x) : (y) > (z) ? (z) : (y))
 
+#define MStaticArrayLength(x) (sizeof(x) / sizeof(x[0]))
+
 bool
 IsStrDigit(
 	char const*	inStr);

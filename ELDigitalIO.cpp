@@ -41,7 +41,8 @@ enum
 
 CModule_DigitalIO*	gDigitalIO;
 
-MModuleSingleton_ImplementationGlobal(CModule_DigitalIO, gDigitalIO)
+MModuleImplementation_Start(CModule_DigitalIO)
+MModuleImplementation_FinishGlobal(CModule_DigitalIO, gDigitalIO)
 
 CModule_DigitalIO::CModule_DigitalIO(
 	)
@@ -49,8 +50,6 @@ CModule_DigitalIO::CModule_DigitalIO(
 	CModule(0, 0, NULL, eUpdateTimeUS)
 {
 	memset(pinState, 0, sizeof(pinState));
-
-	DoneIncluding();
 }
 
 void

@@ -35,8 +35,8 @@
 
 CModule_Command*	gCommandModule;
 
-
-MModuleSingleton_Implementation(CModule_SerialCmdHandler)
+MModuleImplementation_Start(CModule_SerialCmdHandler)
+MModuleImplementation_Finish(CModule_SerialCmdHandler)
 
 CModule_SerialCmdHandler::CModule_SerialCmdHandler(
 	)
@@ -44,7 +44,6 @@ CModule_SerialCmdHandler::CModule_SerialCmdHandler(
 	CModule(0, 0, NULL, 100000)
 {
 	curIndex = 0;
-	DoneIncluding();
 }
 
 void
@@ -73,6 +72,7 @@ CModule_SerialCmdHandler::Update(
 				charBuffer[curIndex] = 0;
 				curIndex = 0;
 
+				MAssert(gSerialOut != NULL);
 				gCommandModule->ProcessCommand(gSerialOut, charBuffer);
 			}
 		}
@@ -86,7 +86,8 @@ CModule_SerialCmdHandler::Update(
 	}
 }
 
-MModuleSingleton_ImplementationGlobal(CModule_Command, gCommandModule);
+MModuleImplementation_Start(CModule_Command)
+MModuleImplementation_FinishGlobal(CModule_Command, gCommandModule)
 
 CModule_Command::CModule_Command(
 	)
@@ -101,8 +102,6 @@ CModule_Command::CModule_Command(
 		this,
 		static_cast<TCmdHandlerMethod>(&CModule_Command::HelpCommand),
 		": List the available commands and descriptions");
-
-	DoneIncluding();
 }
 
 uint8_t

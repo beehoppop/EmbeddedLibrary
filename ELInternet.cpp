@@ -348,7 +348,8 @@ CHTTPConnection::FinishResponse(
 	(internetHandler->*responseMethod)(responseHTTPCode, responseContentSize, buffer);
 }
 
-MModuleSingleton_ImplementationGlobal(CModule_Internet, gInternetModule)
+MModuleImplementation_Start(CModule_Internet)
+MModuleImplementation_FinishGlobal(CModule_Internet, gInternetModule)
 
 CModule_Internet::CModule_Internet(
 	)
@@ -371,25 +372,13 @@ CModule_Internet::CModule_Internet(
 		cur->openRef = -1;
 		cur->localPort = 0xFF;
 	}
-
-	DoneIncluding();
 }
-
+	
 void
-CModule_Internet::SetInternetDevice(
+CModule_Internet::Configure(
 	IInternetDevice*	inInternetDevice)
 {
 	internetDevice = inInternetDevice;
-
-	if(settings.ssid[0] != 0)
-	{
-		internetDevice->ConnectToAP(settings.ssid, settings.pw, EWirelessPWEnc(settings.securityType));
-	}
-
-	if(settings.ipAddr != 0)
-	{
-		internetDevice->SetIPAddr(settings.ipAddr, settings.subnetAddr, settings.gatewayAddr);
-	}
 }
 
 // Register a server handler
@@ -575,6 +564,19 @@ void
 CModule_Internet::Setup(
 	void)
 {
+	if(internetDevice != NULL)
+	{
+		if(settings.ssid[0] != 0)
+		{
+			internetDevice->ConnectToAP(settings.ssid, settings.pw, EWirelessPWEnc(settings.securityType));
+		}
+
+		if(settings.ipAddr != 0)
+		{
+			internetDevice->SetIPAddr(settings.ipAddr, settings.subnetAddr, settings.gatewayAddr);
+		}
+	}
+
 	gCommandModule->RegisterCommand("wireless_set", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_WirelessSet), "[ssid] [pw] [wpa2|wep|open] : Set the wireless configuration");
 	gCommandModule->RegisterCommand("wireless_get", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_WirelessGet), ": Get the wireless configuration");
 	gCommandModule->RegisterCommand("ip_set", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_IPAddrSet), "[ip addr] [gateway addr] [subnet mask] : Set the ip configuration");

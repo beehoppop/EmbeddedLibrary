@@ -405,7 +405,6 @@ private:
 
 		ShowWindow(hwnd, SW_SHOW);
 		UpdateWindow(hwnd);
-		
 	}
 	
 	virtual void

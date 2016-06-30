@@ -69,7 +69,7 @@ class CModule_DigitalIO : public CModule
 {
 public:
 	
-	MModuleSingleton_Declaration(CModule_DigitalIO)
+	MModule_Declaration(CModule_DigitalIO)
 
 	// Register an event handler method for the given pin
 	void

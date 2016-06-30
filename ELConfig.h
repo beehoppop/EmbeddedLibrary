@@ -47,7 +47,7 @@ class CModule_Config : public CModule, public ICmdHandler
 {
 public:
 	
-	MModuleSingleton_Declaration(CModule_Config)
+	MModule_Declaration(CModule_Config)
 
 	// Return the value given the config var
 	uint8_t

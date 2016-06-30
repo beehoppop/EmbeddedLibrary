@@ -6,7 +6,7 @@ MModuleImplementation_Start(
 	char const*	inGlobalTags,
 	char const*	inServerAddress,
 	char const*	inURL)
-MModuleImplementation(CModule_Loggly, inGlobalTags, inServerAddress, inURL)
+MModuleImplementation_Finish(CModule_Loggly, inGlobalTags, inServerAddress, inURL)
 
 CModule_Loggly::CModule_Loggly(
 	char const*	inGlobalTags,
@@ -22,7 +22,6 @@ CModule_Loggly::CModule_Loggly(
 	requestInProgress = false;
 
 	CModule_Internet::Include();
-	DoneIncluding();
 }
 
 void
@@ -78,7 +77,7 @@ void
 CModule_Loggly::Update(
 	uint32_t	inDeltaUS)
 {
-	if(requestInProgress == false && head > tail)
+	if(connection != NULL && requestInProgress == false && head > tail)
 	{
 		char	tagsBuffer[128];
 		char	msgBuffer[256];

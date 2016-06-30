@@ -62,7 +62,7 @@ class CModule_SysMsgCmdHandler : public CModule, public ICmdHandler, public IOut
 {
 public:
 
-	MModuleSingleton_Declaration(CModule_SysMsgCmdHandler);
+	MModule_Declaration(CModule_SysMsgCmdHandler);
 
 private:
 	
@@ -93,16 +93,12 @@ class CModule_SysMsgSerialHandler : public CModule, public IOutputDirector
 {
 public:
 
-	MModuleSingleton_Declaration(CModule_SysMsgSerialHandler);
+	MModule_Declaration(CModule_SysMsgSerialHandler);
 
 private:
 	
 	CModule_SysMsgSerialHandler(
 		);
-
-	virtual void
-	Setup(
-		void);
 
 	virtual void
 	write(

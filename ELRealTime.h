@@ -139,19 +139,19 @@ class CModule_RealTime : public CModule, public ICmdHandler
 {
 public:
 
-	MModuleSingleton_Declaration(CModule_RealTime)
-	
+	MModule_Declaration(CModule_RealTime)
+
+	// Set the provider and the frequency that time should be retrieved from it
+	void
+	Configure(
+		IRealTimeDataProvider*	inProvider,				// If provider is NULL the user is responsible for calling SetDateAndTime and setting an alarm to periodically sync as needed
+		uint32_t				inProviderSyncPeriod);	// In seconds, the period between refreshing the time with the given provider
+
 	// Set the current timezone and optionally write it to eeprom
 	void
 	SetTimeZone(
 		STimeZoneRule&	inTimeZone,
 		bool			inWriteToEEPROM);
-
-	// Set the provider and the frequency that time should be retrieved from it
-	void
-	SetProvider(
-		IRealTimeDataProvider*	inProvider,				// If provider is NULL the user is responsible for calling SetDateAndTime and setting an alarm to periodically sync as needed
-		uint32_t				inProviderSyncPeriod);	// In seconds, the period between refreshing the time with the given provider
 	
 	// Set the current date and time as components
 	void
@@ -346,12 +346,6 @@ public:
 	CancelTimeChangeHandler(
 		char const*	inName);
 
-	// Create a provider for the DS3234 dead-on RTC clock on main SPI bus with the given chipselect pin
-	IRealTimeDataProvider*
-	CreateDS3234Provider(
-		uint8_t	inChipSelectPin,
-		bool	inUseAltSPI = false);
-
 	// Given the date and time (of which components may be eAlarm_Any) return the next date time past the current time, return false if there is not a valid date and time past the current time
 	bool
 	GetNextDateTime(
@@ -390,7 +384,7 @@ public:
 private:
 
 	CModule_RealTime(
-		void);
+		);
 
 	virtual void
 	Setup(
@@ -531,6 +525,12 @@ private:
 		char const*			inArgV[]);
 
 };
+
+// Create a provider for the DS3234 dead-on RTC clock on main SPI bus with the given chipselect pin
+IRealTimeDataProvider*
+CreateDS3234Provider(
+	uint8_t	inChipSelectPin,
+	bool	inUseAltSPI = false);
 
 extern int			gDaysInMonth[12];	// This is 0 based not 1 based
 extern CModule_RealTime*	gRealTime;
