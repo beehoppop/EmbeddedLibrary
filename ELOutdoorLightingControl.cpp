@@ -85,28 +85,29 @@ CModule_OutdoorLightingControl::Setup(
 	digitalWriteFast(transformerPin, false);
 
 	// Register the alarms, events, and commands
-	gSunRiseAndSet->RegisterSunsetEvent("Sunset1", eAlarm_Any, eAlarm_Any, eAlarm_Any, eAlarm_Any, this, static_cast<TSunRiseAndSetEventMethod>(&CModule_OutdoorLightingControl::Sunset));
-	gSunRiseAndSet->RegisterSunriseEvent("Sunrise1", eAlarm_Any, eAlarm_Any, eAlarm_Any, eAlarm_Any, this, static_cast<TSunRiseAndSetEventMethod>(&CModule_OutdoorLightingControl::Sunrise));
-	gRealTime->RegisterAlarm("LateNightAlarm", eAlarm_Any, eAlarm_Any, eAlarm_Any, eAlarm_Any, settings.lateNightStartHour, settings.lateNightStartMin, 0, this, static_cast<TRealTimeAlarmMethod>(&CModule_OutdoorLightingControl::LateNightAlarm), NULL);
+	MSunsetRegisterEvent("Sunset1", eAlarm_Any, eAlarm_Any, eAlarm_Any, eAlarm_Any, CModule_OutdoorLightingControl::Sunset);
+	MSunriseRegisterEvent("Sunrise1", eAlarm_Any, eAlarm_Any, eAlarm_Any, eAlarm_Any, CModule_OutdoorLightingControl::Sunrise);
+	MRealTimeRegisterAlarm("LateNightAlarm", eAlarm_Any, eAlarm_Any, eAlarm_Any, eAlarm_Any, settings.lateNightStartHour, settings.lateNightStartMin, 0, CModule_OutdoorLightingControl::LateNightAlarm, NULL);
 	if(togglePin != 0xFF)
 	{
-		gDigitalIO->RegisterEventHandler(togglePin, false, this, static_cast<TDigitalIOEventMethod>(&CModule_OutdoorLightingControl::ButtonPush), NULL, 100);
+		MDigitalIORegisterEventHandler(togglePin, false, CModule_OutdoorLightingControl::ButtonPush, NULL, 100);
 	}
 	if(motionSensorPin != 0xFF)
 	{
-		gDigitalIO->RegisterEventHandler(motionSensorPin, false, this, static_cast<TDigitalIOEventMethod>(&CModule_OutdoorLightingControl::MotionSensorTrigger), NULL);
+		MDigitalIORegisterEventHandler(motionSensorPin, false, CModule_OutdoorLightingControl::MotionSensorTrigger, NULL);
 	}
-	gCommandModule->RegisterCommand("set_ledstate", this, static_cast<TCmdHandlerMethod>(&CModule_OutdoorLightingControl::SetLEDState), "[on | off] : Turn LEDs on or off until the next event");
-	gCommandModule->RegisterCommand("set_latenightstarttime", this, static_cast<TCmdHandlerMethod>(&CModule_OutdoorLightingControl::SetLateNightStartTime));
-	gCommandModule->RegisterCommand("get_latenightstarttime", this, static_cast<TCmdHandlerMethod>(&CModule_OutdoorLightingControl::GetLateNightStartTime));
-	gCommandModule->RegisterCommand("set_triggerlux", this, static_cast<TCmdHandlerMethod>(&CModule_OutdoorLightingControl::SetTriggerLux));
-	gCommandModule->RegisterCommand("get_triggerlux", this, static_cast<TCmdHandlerMethod>(&CModule_OutdoorLightingControl::GetTriggerLux));
-	gCommandModule->RegisterCommand("set_motionTO", this, static_cast<TCmdHandlerMethod>(&CModule_OutdoorLightingControl::SetMotionTripTimeout));
-	gCommandModule->RegisterCommand("get_motionTO", this, static_cast<TCmdHandlerMethod>(&CModule_OutdoorLightingControl::GetMotionTripTimeout));
-	gCommandModule->RegisterCommand("set_latenightTO", this, static_cast<TCmdHandlerMethod>(&CModule_OutdoorLightingControl::SetLateNightTimeout));
-	gCommandModule->RegisterCommand("get_latenightTO", this, static_cast<TCmdHandlerMethod>(&CModule_OutdoorLightingControl::GetLateNightTimeout));
-	gCommandModule->RegisterCommand("set_override", this, static_cast<TCmdHandlerMethod>(&CModule_OutdoorLightingControl::SetOverride));
-	gCommandModule->RegisterCommand("get_override", this, static_cast<TCmdHandlerMethod>(&CModule_OutdoorLightingControl::GetOverride));
+
+	MCommandRegister("set_ledstate", CModule_OutdoorLightingControl::SetLEDState, "[on | off] : Turn LEDs on or off until the next event");
+	MCommandRegister("set_latenightstarttime", CModule_OutdoorLightingControl::SetLateNightStartTime, "[hour] [min] : Set the hour and minute of late night");
+	MCommandRegister("get_latenightstarttime", CModule_OutdoorLightingControl::GetLateNightStartTime, "[hour] [min] : Get the hour and minute of late night");
+	MCommandRegister("set_triggerlux", CModule_OutdoorLightingControl::SetTriggerLux, "");
+	MCommandRegister("get_triggerlux", CModule_OutdoorLightingControl::GetTriggerLux, "");
+	MCommandRegister("set_motionTO", CModule_OutdoorLightingControl::SetMotionTripTimeout, "");
+	MCommandRegister("get_motionTO", CModule_OutdoorLightingControl::GetMotionTripTimeout, "");
+	MCommandRegister("set_latenightTO", CModule_OutdoorLightingControl::SetLateNightTimeout, "");
+	MCommandRegister("get_latenightTO", CModule_OutdoorLightingControl::GetLateNightTimeout, "");
+	MCommandRegister("set_override", CModule_OutdoorLightingControl::SetOverride, "");
+	MCommandRegister("get_override", CModule_OutdoorLightingControl::GetOverride, "");
 
 	// Setup the initial state given the current time of day and sunset/sunrise time
 	TEpochTime	curTime = gRealTime->GetEpochTime(false);
@@ -148,7 +149,7 @@ CModule_OutdoorLightingControl::Setup(
 
 	ledsOn = timeOfDay == eTimeOfDay_Night;
 
-	gRealTime->RegisterEvent("LuxPeriodic", 1 * 60 * 1000000, false, this, static_cast<TRealTimeEventMethod>(&CModule_OutdoorLightingControl::LuxPeriodic), NULL);
+	MRealTimeRegisterEvent("LuxPeriodic", 1 * 60 * 1000000, false, CModule_OutdoorLightingControl::LuxPeriodic, NULL);
 
 	// Update lux trigger
 	if(luminosityInterface != NULL)
@@ -157,7 +158,7 @@ CModule_OutdoorLightingControl::Setup(
 		luxTriggerState = settings.triggerLux < curLux;
 	}
 
-	gInternetModule->CommandServer_RegisterFrontPage(this, static_cast<TInternetServerPageMethod>(&CModule_OutdoorLightingControl::CommandHomePageHandler));
+	MInternetRegisterFrontPage(CModule_OutdoorLightingControl::CommandHomePageHandler);
 }
 
 void
@@ -182,7 +183,7 @@ CModule_OutdoorLightingControl::Update(
 			{
 				if(ledsOn)
 				{
-					gRealTime->RegisterEvent("LateNightTimerExpire", settings.lateNightTimeoutMins * 60 * 1000000, true, this, static_cast<TRealTimeEventMethod>(&CModule_OutdoorLightingControl::LateNightTimerExpire), NULL);
+					MRealTimeRegisterEvent("LateNightTimerExpire", settings.lateNightTimeoutMins * 60 * 1000000, true, CModule_OutdoorLightingControl::LateNightTimerExpire, NULL);
 				}
 				else
 				{
@@ -393,7 +394,7 @@ CModule_OutdoorLightingControl::MotionSensorTrigger(
 			SystemMsg("Motion sensor off, setting cooldown timer\n");
 
 			// Set an event for settings.motionTripTimeoutMins mins from now
-			gRealTime->RegisterEvent("MotionTripCD", settings.motionTripTimeoutMins * 60 * 1000000, true, this, static_cast<TRealTimeEventMethod>(&CModule_OutdoorLightingControl::MotionTripCooldown), NULL);
+			MRealTimeRegisterEvent("MotionTripCD", settings.motionTripTimeoutMins * 60 * 1000000, true, CModule_OutdoorLightingControl::MotionTripCooldown, NULL);
 		}
 		else
 		{
@@ -464,7 +465,7 @@ CModule_OutdoorLightingControl::SetLateNightStartTime(
 	settings.lateNightStartHour = atoi(inArgv[1]);
 	settings.lateNightStartMin = atoi(inArgv[2]);
 		
-	gRealTime->RegisterAlarm("LateNightAlarm", eAlarm_Any, eAlarm_Any, eAlarm_Any, eAlarm_Any, settings.lateNightStartHour, settings.lateNightStartMin, 0, this, static_cast<TRealTimeAlarmMethod>(&CModule_OutdoorLightingControl::LateNightAlarm), NULL);
+	MRealTimeRegisterAlarm("LateNightAlarm", eAlarm_Any, eAlarm_Any, eAlarm_Any, eAlarm_Any, settings.lateNightStartHour, settings.lateNightStartMin, 0, CModule_OutdoorLightingControl::LateNightAlarm, NULL);
 
 	EEPROMSave();
 
@@ -615,7 +616,7 @@ CModule_OutdoorLightingControl::SetTransformerState(
 		digitalWriteFast(transformerPin, true);
 
 		// Let transformer warm up for 2 seconds
-		gRealTime->RegisterEvent("XfmrWarmup", eTransformerWarmUpSecs * 1000000, true, this, static_cast<TRealTimeEventMethod>(&CModule_OutdoorLightingControl::TransformerTransitionEvent), NULL);
+		MRealTimeRegisterEvent("XfmrWarmup", eTransformerWarmUpSecs * 1000000, true, CModule_OutdoorLightingControl::TransformerTransitionEvent, NULL);
 	}
 	else
 	{
@@ -623,7 +624,7 @@ CModule_OutdoorLightingControl::SetTransformerState(
 		curTransformerState = false;
 
 		// Let led update finish
-		gRealTime->RegisterEvent("XfmrWarmup", eTransformerWarmUpSecs * 1000000, true, this, static_cast<TRealTimeEventMethod>(&CModule_OutdoorLightingControl::TransformerTransitionEvent), NULL);
+		MRealTimeRegisterEvent("XfmrWarmup", eTransformerWarmUpSecs * 1000000, true, CModule_OutdoorLightingControl::TransformerTransitionEvent, NULL);
 	}
 }
 

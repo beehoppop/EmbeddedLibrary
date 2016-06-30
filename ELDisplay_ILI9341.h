@@ -167,9 +167,18 @@ public:
 	XPT2046_Touchscreen	touchscreen;
 };
 
-class CDisplayDriver_ILI9341 : public IDisplayDriver
+class CDisplayDriver_ILI9341 : public IDisplayDriver, public CModule
 {
 public:
+
+	MModule_Declaration(
+		CDisplayDriver_ILI9341,
+		EDisplayOrientation	inDisplayOrientation,
+		uint8_t	inCS,
+		uint8_t	inDC,
+		uint8_t	inMOSI,
+		uint8_t	inClk,
+		uint8_t	inMISO)
 
 	#if 0
 	// sigh...
@@ -402,6 +411,7 @@ public:
 		uint8_t	inClk,
 		uint8_t	inMISO)
 		:
+		CModule(),
 		displayOrientation(inDisplayOrientation),
 		cs(inCS), dc(inDC), mosi(inMOSI), clk(inClk), miso(inMISO)
 	{

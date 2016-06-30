@@ -40,15 +40,13 @@ enum
 	eTouchThreshold = 2000,
 };
 
-CModule_Touch	CModule_Touch::module;
-CModule_Touch*	gTouch;
+CModule_Touch*	gTouchModule;
 
 CModule_Touch::CModule_Touch(
 	)
 	:
-	CModule("toch", 0, 0, NULL, 10000)
+	CModule(0, 0, NULL, 10000)
 {
-	gTouch = this;
 }
 
 void
@@ -178,6 +176,9 @@ CModule_Touch::FindUnused(
 
 	return NULL;
 }
+
+MModuleImplementation_Start(CModule_Touch)
+MModuleImplementation_FinishGlobal(CModule_Touch, gTouchModule)
 
 #if 0
 // For future use

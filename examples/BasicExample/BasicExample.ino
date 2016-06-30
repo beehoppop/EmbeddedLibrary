@@ -43,11 +43,14 @@
 
 class CExampleModule : public CModule, public IDigitalIOEventHandler, public ICmdHandler, public IRealTimeHandler
 {
+public:
+	MModule_Declaration(CExampleModule)
+
+private:
 	CExampleModule(
 		)
 		:
 		CModule(
-			"expl",		// This is the 4 character name of the module, every module has a unique 4 character code.
 			0,			// This is the amount of EEPROM space this module needs
 			0,			// This is the version number of the EEPROM data format. If this changes the system will re-initialize the EEPROM data for you
 			NULL,		// This is a pointer to the local memory to store the EEPROM data
@@ -63,10 +66,10 @@ class CExampleModule : public CModule, public IDigitalIOEventHandler, public ICm
 		Serial.printf("In Setup\n");
 
 		// Register a serial port command.
-		gCommand->RegisterCommand("hello", this, static_cast<TCmdHandlerMethod>(&CExampleModule::SerialCmdHello));
+		MCommandRegister("hello", CExampleModule::SerialCmdHello, ": Example command");
 
 		// Register a digital io event handler on pin 1
-		gDigitalIO->RegisterEventHandler(1, false, this, static_cast<TDigitalIOEventMethod>(&CExampleModule::PinActivated), NULL);
+		MDigitalIORegisterEventHandler(1, false, CExampleModule::PinActivated, NULL);
 
 		// Register an event to fire every 5 seconds
 		//gRealTime->RegisterEvent("MyEvent", 5 * 1000000, false, this, static_cast<TRealTimeEventMethod>(&CExampleModule::MyPeriodicEvent), NULL);
@@ -107,20 +110,23 @@ class CExampleModule : public CModule, public IDigitalIOEventHandler, public ICm
 		char const*	inName,
 		void*		inRef)
 	{
-		DebugMsg(eDbgLevel_Basic, "event %s has fired", inName);
-		DebugMsg(eDbgLevel_Basic, "updateCount = %d", updateCount);
+		SystemMsg("event %s has fired", inName);
+		SystemMsg("updateCount = %d", updateCount);
 	}
 
 	int	updateCount;
 
 	static CExampleModule	module;
 };
-CExampleModule	CExampleModule::module;
+
+MModuleImplementation_Start(CExampleModule)
+MModuleImplementation_Finish(CExampleModule)
 
 void
 setup(
 	void)
 {
+	CExampleModule::Include();
 	CModule::SetupAll("v0.3", true);	// Passing in true blinks the led when the blink_led config var is set to one
 }
 

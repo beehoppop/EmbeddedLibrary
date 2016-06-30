@@ -98,7 +98,7 @@ private:
 	{
 		MAssert(gCommandModule != NULL);
 		MAssert(gConfigModule != NULL);
-		gCommandModule->RegisterCommand("alive", this, static_cast<TCmdHandlerMethod>(&CModuleManager::SerialCmdAlive), "Return the build date and version as proof of life");
+		MCommandRegister("alive", CModuleManager::SerialCmdAlive, "Return the build date and version as proof of life");
 		gBlinkLEDIndex = gConfigModule->RegisterConfigVar("blink_led");
 	}
 

@@ -34,7 +34,7 @@
 
 #if defined(WIN32)
 
-	#include <Arduino.h>
+	#include <ArduinoSimulator.h>
 
 	struct CAN_message_t
 	{
@@ -114,8 +114,7 @@ class CModule_CANBus : public CModule, public ICmdHandler, public IOutputDirecto
 {
 public:
 	
-	CModule_CANBus(
-		);
+	MModule_Declaration(CModule_CANBus)
 
 	void
 	RegisterMsgHandler(
@@ -151,6 +150,9 @@ public:
 		size_t		inBytes);
 
 private:
+	
+	CModule_CANBus(
+		);
 
 	virtual void
 	Setup(
@@ -205,7 +207,7 @@ private:
 	uint8_t	targetNodeID;
 };
 
-extern CModule_CANBus*	gCANBus;
+extern CModule_CANBus*	gCANBusModule;
 
 #endif /* _ELCANBUS_H_ */
 

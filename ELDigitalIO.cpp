@@ -39,10 +39,10 @@ enum
 	eUpdateTimeUS = 10000
 };
 
-CModule_DigitalIO*	gDigitalIO;
+CModule_DigitalIO*	gDigitalIOModule;
 
 MModuleImplementation_Start(CModule_DigitalIO)
-MModuleImplementation_FinishGlobal(CModule_DigitalIO, gDigitalIO)
+MModuleImplementation_FinishGlobal(CModule_DigitalIO, gDigitalIOModule)
 
 CModule_DigitalIO::CModule_DigitalIO(
 	)

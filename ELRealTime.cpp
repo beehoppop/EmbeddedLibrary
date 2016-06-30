@@ -331,12 +331,12 @@ CModule_RealTime::Setup(
 		SetTimeZone(gTimeZone, false);
 	#endif
 
-	gCommandModule->RegisterCommand("time_set", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialSetTime), "[year] [month] [day] [hour] [min] [sec] [utc | local] : Set the current time");
-	gCommandModule->RegisterCommand("time_get", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialGetTime), "[utc | local] : Get the current time");
-	gCommandModule->RegisterCommand("timezone_set", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialSetTimeZone), "[name] [dstStartWeek] [dstStartDayOfWeek] [dstStartMonth] [dstStartHour] [dstOffsetMin] [stdStartWeek] [stdStartDayOfWeek] [stdStartMonth] [stdStartHour] [stdOffsetMin] : Set time zone");
-	gCommandModule->RegisterCommand("timezone_get", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialGetTimeZone), "Get the current time zone information");
-	gCommandModule->RegisterCommand("rt_dump", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialDumpTable), ": Dump the alarm table");
-	gCommandModule->RegisterCommand("rt_set_mult", this, static_cast<TCmdHandlerMethod>(&CModule_RealTime::SerialSetMultiplier), "[integer] : multiply the passage of time by the given value");
+	MCommandRegister("time_set", CModule_RealTime::SerialSetTime, "[year] [month] [day] [hour] [min] [sec] [utc | local] : Set the current time");
+	MCommandRegister("time_get", CModule_RealTime::SerialGetTime, "[utc | local] : Get the current time");
+	MCommandRegister("timezone_set", CModule_RealTime::SerialSetTimeZone, "[name] [dstStartWeek] [dstStartDayOfWeek] [dstStartMonth] [dstStartHour] [dstOffsetMin] [stdStartWeek] [stdStartDayOfWeek] [stdStartMonth] [stdStartHour] [stdOffsetMin] : Set time zone");
+	MCommandRegister("timezone_get", CModule_RealTime::SerialGetTimeZone, "Get the current time zone information");
+	MCommandRegister("rt_dump", CModule_RealTime::SerialDumpTable, ": Dump the alarm table");
+	MCommandRegister("rt_set_mult", CModule_RealTime::SerialSetMultiplier, "[integer] : multiply the passage of time by the given value");
 
 	timeMultiplier = 1;
 }
@@ -399,6 +399,22 @@ CModule_RealTime::Update(
 			}
 		}
 	}
+}
+
+void
+CModule_RealTime::EEPROMInitialize(
+	void)
+{
+	timeZoneInfo.dstStart.week = 2;
+	timeZoneInfo.dstStart.dayOfWeek = 1;
+	timeZoneInfo.dstStart.month = 3;
+	timeZoneInfo.dstStart.hour = 2;
+	timeZoneInfo.dstStart.offsetMins = -7 * 60;
+	timeZoneInfo.stdStart.week = 1;
+	timeZoneInfo.stdStart.dayOfWeek = 1;
+	timeZoneInfo.stdStart.month = 11;
+	timeZoneInfo.stdStart.hour = 2;
+	timeZoneInfo.stdStart.offsetMins = -8 * 60;
 }
 
 void

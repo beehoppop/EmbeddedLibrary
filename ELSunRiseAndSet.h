@@ -70,6 +70,9 @@ enum
 	eMaxSunRiseSetEvents = 4,
 };
 
+#define MSunsetRegisterEvent(inEventName, inYear, inMonth, inDay, inDOW, inMethod, ...) gSunRiseAndSet->RegisterSunsetEvent(inEventName, inYear, inMonth, inDay, inDOW, this, static_cast<TSunRiseAndSetEventMethod>(&inMethod), ## __VA_ARGS__)
+#define MSunriseRegisterEvent(inEventName, inYear, inMonth, inDay, inDOW, inMethod, ...) gSunRiseAndSet->RegisterSunriseEvent(inEventName, inYear, inMonth, inDay, inDOW, this, static_cast<TSunRiseAndSetEventMethod>(&inMethod), ## __VA_ARGS__)
+
 class ISunRiseAndSetEventHandler
 {
 public:

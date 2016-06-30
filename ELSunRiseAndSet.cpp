@@ -98,9 +98,9 @@ CModule_SunRiseAndSet::Setup(
 {
 	MAssert(gRealTime != NULL);
 
-	gCommandModule->RegisterCommand("lonlat_set", this, static_cast<TCmdHandlerMethod>(&CModule_SunRiseAndSet::SerialSetLonLat), "[lon] [lat] : Set longitude and latitude");
-	gCommandModule->RegisterCommand("lonlat_get", this, static_cast<TCmdHandlerMethod>(&CModule_SunRiseAndSet::SerialGetLonLat), ": Get longitude and latutude");
-	gRealTime->RegisterTimeChangeHandler("ssar", this, static_cast<TRealTimeChangeMethod>(&CModule_SunRiseAndSet::RealTimeChangeHandler));
+	MCommandRegister("lonlat_set", CModule_SunRiseAndSet::SerialSetLonLat, "[lon] [lat] : Set longitude and latitude");
+	MCommandRegister("lonlat_get", CModule_SunRiseAndSet::SerialGetLonLat, ": Get longitude and latutude");
+	MRealTimeRegisterTimeChange("ssar", CModule_SunRiseAndSet::RealTimeChangeHandler);
 }
 
 void
@@ -294,6 +294,8 @@ CModule_SunRiseAndSet::ScheduleNextEvent(
 		return;
 	}
 
+	MReturnOnError(settings.lon == 0.0f && settings.lat == 0.0f);
+
 	// Get the event epoch time for the target date
 	TEpochTime		eventEpochTime;
 	if(inEvent->sunRise)
@@ -349,7 +351,7 @@ CModule_SunRiseAndSet::ScheduleNextEvent(
 	}
 
 	// Set the alarm to fire
-	gRealTime->RegisterAlarm(
+	MRealTimeRegisterAlarm(
 		inEvent->name,
 		targetYear,
 		targetMonth,
@@ -358,8 +360,7 @@ CModule_SunRiseAndSet::ScheduleNextEvent(
 		targetHour,
 		targetMin,
 		targetSec,
-		this,
-		static_cast<TRealTimeAlarmMethod>(&CModule_SunRiseAndSet::RealTimeAlarmHandler),
+		CModule_SunRiseAndSet::RealTimeAlarmHandler,
 		inEvent,
 		inEvent->utc);
 }

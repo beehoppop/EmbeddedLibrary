@@ -54,6 +54,8 @@ enum EPinEvent
 	eDigitalIO_PinDeactivated
 };
 
+#define MDigitalIORegisterEventHandler(inPin, inActiveHigh, inMethod, inReference, ...) gDigitalIOModule->RegisterEventHandler(inPin, inActiveHigh, this, static_cast<TDigitalIOEventMethod>(&inMethod), inReference, ## __VA_ARGS__)
+
 class IDigitalIOEventHandler
 {
 public:
@@ -129,7 +131,7 @@ private:
 	SPinState	pinState[eDigitalIO_PinCount];
 };
 
-extern CModule_DigitalIO*	gDigitalIO;
+extern CModule_DigitalIO*	gDigitalIOModule;
 
 #endif /* _ELDIGITALIO_h */
 

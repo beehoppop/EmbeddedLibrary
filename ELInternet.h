@@ -70,6 +70,11 @@ enum EWirelessPWEnc
 	eWirelessPWEnc_WPA2Personal,
 };
 
+// Utility macro for registering a response handler when opening a connection to a server
+#define MInternetOpenConnection(inServerPort, inServerAddress, inMethod) gInternetModule->OpenConnection(inServerPort, inServerAddress, this, static_cast<TInternetResponseHandlerMethod>(&inMethod))
+#define MInternetRegisterFrontPage(inMethod) gInternetModule->CommandServer_RegisterFrontPage(this, static_cast<TInternetServerPageMethod>(&inMethod))
+#define MInternetCreateHTTPConnection(inServerPort, inServerAddress, inMethod) gInternetModule->CreateHTTPConnection(inServerPort, inServerAddress, this, static_cast<THTTPResponseHandlerMethod>(&inMethod))
+
 class CModule_Internet;
 
 class IInternetHandler

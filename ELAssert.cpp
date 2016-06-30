@@ -61,7 +61,7 @@ CModule_SysMsgCmdHandler::Setup(
 {
 	MAssert(gCommandModule != NULL);
 
-	gCommandModule->RegisterCommand("msg_dump", this, static_cast<TCmdHandlerMethod>(&CModule_SysMsgCmdHandler::MsgLogDump), ": Dump a brief history of the system messages");
+	MCommandRegister("msg_dump", CModule_SysMsgCmdHandler::MsgLogDump, ": Dump a brief history of the system messages");
 }
 
 uint8_t

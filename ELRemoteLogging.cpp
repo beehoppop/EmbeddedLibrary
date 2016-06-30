@@ -70,7 +70,7 @@ void
 CModule_Loggly::Setup(
 	void)
 {
-	connection = gInternetModule->CreateHTTPConnection(serverAddress, 80, this, static_cast<THTTPResponseHandlerMethod>(&CModule_Loggly::HTTPResponseHandlerMethod));
+	connection = MInternetCreateHTTPConnection(serverAddress, 80, CModule_Loggly::HTTPResponseHandlerMethod);
 }
 
 void

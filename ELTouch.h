@@ -67,9 +67,8 @@ typedef void
 class CModule_Touch : public CModule
 {
 public:
-	
-	CModule_Touch(
-		);
+
+	MModule_Declaration(CModule_Touch)
 
 	// Register an event handler method for the given pin
 	void
@@ -81,6 +80,9 @@ public:
 		void*				inReference);
 
 private:
+	
+	CModule_Touch(
+		);
 
 	virtual void
 	Setup(
@@ -114,12 +116,9 @@ private:
 
 	int		touchCount;
 	STouch	touchList[eTouch_MaxEvents];
-
-	static CModule_Touch	module;
-
 };
 
-extern CModule_Touch*	gTouch;
+extern CModule_Touch*	gTouchModule;
 
 #endif /* _ELTOUCH_h */
 

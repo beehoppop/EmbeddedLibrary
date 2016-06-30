@@ -57,8 +57,6 @@
 #include <ELModule.h>
 #include <ELCommand.h>
 
-#define MIsLeapYear(inYear) (((inYear) & 3) == 0 && (((inYear) % 25) != 0 || ((inYear) & 15) == 0))
-
 enum
 {
 	eAlarm_Any = -1,
@@ -69,6 +67,12 @@ enum
 
 	eRealTime_MaxNameLength = 15,
 };
+
+#define MIsLeapYear(inYear) (((inYear) & 3) == 0 && (((inYear) % 25) != 0 || ((inYear) & 15) == 0))
+#define MRealTimeRegisterAlarm(inAlarmName, inYear, inMonth, inDayOfMonth, inDayOfWeek, inHour, inMinute, inSecond, inMethod, inReference, ...) \
+	gRealTime->RegisterAlarm(inAlarmName, inYear, inMonth, inDayOfMonth, inDayOfWeek, inHour, inMinute, inSecond, this, static_cast<TRealTimeAlarmMethod>(&inMethod), inReference, ## __VA_ARGS__)
+#define MRealTimeRegisterEvent(inEventName, inPeriodUS, inOnlyOnce, inMethod, inReference) gRealTime->RegisterEvent(inEventName, inPeriodUS, inOnlyOnce, this, static_cast<TRealTimeEventMethod>(&inMethod), inReference)
+#define MRealTimeRegisterTimeChange(inEventName, inMethod) gRealTime->RegisterTimeChangeHandler(inEventName, this, static_cast<TRealTimeChangeMethod>(&inMethod))
 
 // This specifies a timezone change
 struct STimeZoneOffsetSpecifier
@@ -393,6 +397,10 @@ private:
 	virtual void
 	Update(
 		uint32_t	inDeltaTimeUS);
+
+	virtual void
+	EEPROMInitialize(
+		void);
 
 	struct SAlarm
 	{

@@ -217,7 +217,7 @@ CHTTPConnection::SendData(
 		if(!openInProgress)
 		{
 			// Start an open request
-			gInternetModule->OpenConnection(serverPort, serverAddress, this, static_cast<TInternetResponseHandlerMethod>(&CHTTPConnection::ResponseHandlerMethod));
+			MInternetOpenConnection(serverPort, serverAddress, CHTTPConnection::ResponseHandlerMethod);
 			openInProgress = true;
 		}
 
@@ -577,10 +577,10 @@ CModule_Internet::Setup(
 		}
 	}
 
-	gCommandModule->RegisterCommand("wireless_set", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_WirelessSet), "[ssid] [pw] [wpa2|wep|open] : Set the wireless configuration");
-	gCommandModule->RegisterCommand("wireless_get", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_WirelessGet), ": Get the wireless configuration");
-	gCommandModule->RegisterCommand("ip_set", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_IPAddrSet), "[ip addr] [gateway addr] [subnet mask] : Set the ip configuration");
-	gCommandModule->RegisterCommand("ip_get", this, static_cast<TCmdHandlerMethod>(&CModule_Internet::SerialCmd_IPAddrGet), ": Get the ip configuration");
+	MCommandRegister("wireless_set", CModule_Internet::SerialCmd_WirelessSet, "[ssid] [pw] [wpa2|wep|open] : Set the wireless configuration");
+	MCommandRegister("wireless_get", CModule_Internet::SerialCmd_WirelessGet, ": Get the wireless configuration");
+	MCommandRegister("ip_set", CModule_Internet::SerialCmd_IPAddrSet, "[ip addr] [gateway addr] [subnet mask] : Set the ip configuration");
+	MCommandRegister("ip_get", CModule_Internet::SerialCmd_IPAddrGet, ": Get the ip configuration");
 }
 
 void

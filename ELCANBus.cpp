@@ -28,8 +28,9 @@
 #include <ELAssert.h>
 #include <ELConfig.h>
 #include <ELOutput.h>
+#include <ELCommand.h>
 
-CModule_CANBus*	gCANBus;
+CModule_CANBus*	gCANBusModule;
 
 enum
 {
@@ -61,10 +62,10 @@ CANIDFromComponents(
 CModule_CANBus::CModule_CANBus(
 	)
 	:
-	CModule("canb", 0, 0, NULL, 100, 254),
+	CModule(0, 0, NULL, 100),
 	canBus(500000)
 {
-	gCANBus = this;
+	gCANBusModule = this;
 	canBus.begin();
 
 	memset(handlerList, 0, sizeof(handlerList));
@@ -88,7 +89,7 @@ void
 CModule_CANBus::Setup(
 	void)
 {
-	gCommand->RegisterCommand("cb_send", this, static_cast<TCmdHandlerMethod>(&CModule_CANBus::SendCommand));
+	MCommandRegister("cb_send", CModule_CANBus::SendCommand, ": Send a can bus message");
 }
 
 void
@@ -133,11 +134,11 @@ CModule_CANBus::SendMsg(
 {
 	CAN_message_t	msg;
 
-	//SystemMsg(eMsgLevel_Basic, "CAN: %02x TXM src=0x%x dst=0x%x typ=0x%x len=%d\n", gConfig->GetVal(gConfig->nodeIDIndex), gConfig->GetVal(gConfig->nodeIDIndex), inDstNode, inMsgType, inMsgSize);
+	//SystemMsg(eMsgLevel_Basic, "CAN: %02x TXM src=0x%x dst=0x%x typ=0x%x len=%d\n", gConfigModule->GetVal(gConfigModule->nodeIDIndex), gConfigModule->GetVal(gConfigModule->nodeIDIndex), inDstNode, inMsgType, inMsgSize);
 
 	MReturnOnError(inMsgSize > eCANBus_MaxMsgLength);
 
-	msg.id = CANIDFromComponents(gConfig->GetVal(gConfig->nodeIDIndex), inDstNode, inMsgType);
+	msg.id = CANIDFromComponents(gConfigModule->GetVal(gConfigModule->nodeIDIndex), inDstNode, inMsgType);
 	msg.ext = 1;
 	msg.timeout = 1;	// Specify a short timeout to ensure packets are sent in order
 	msg.len = inMsgSize;
@@ -181,7 +182,7 @@ CModule_CANBus::SendString(
 {
 	CAN_message_t	msg;
 
-	msg.id = CANIDFromComponents(gConfig->GetVal(gConfig->nodeIDIndex), inDstNode, inMsgType);
+	msg.id = CANIDFromComponents(gConfigModule->GetVal(gConfigModule->nodeIDIndex), inDstNode, inMsgType);
 	msg.ext = 1;
 	msg.timeout = 1;	// Specify a short timeout to ensure packets are sent in order
 
@@ -225,9 +226,9 @@ CModule_CANBus::ProcessCANMsg(
 
 	CANIDToComponents(inMsg.id, srcNode, dstNode, msgType);
 
-	//Serial.printf("CAN: %02x RCV src=0x%x dst=0x%x typ=0x%x\n", gConfig->GetVal(gConfig->nodeIDIndex), srcNode, dstNode, msgType);
+	//Serial.printf("CAN: %02x RCV src=0x%x dst=0x%x typ=0x%x\n", gConfigModule->GetVal(gConfigModule->nodeIDIndex), srcNode, dstNode, msgType);
 	
-	if(dstNode != 0xFF && dstNode != gConfig->GetVal(gConfig->nodeIDIndex))
+	if(dstNode != 0xFF && dstNode != gConfigModule->GetVal(gConfigModule->nodeIDIndex))
 	{
 		return;
 	}
@@ -262,7 +263,7 @@ CModule_CANBus::ProcessCANMsg(
 			if(msgType == eSysMsg_Command)
 			{
 				targetNodeID = srcNode;
-				gCommand->ProcessCommand(this, targetState->serialCmdBuffer);
+				gCommandModule->ProcessCommand(this, targetState->serialCmdBuffer);
 				targetNodeID = 0xFF;
 			}
 			else
@@ -330,9 +331,9 @@ CModule_CANBus::SendCommand(
 	MReturnOnError(bufferLen + 1 > sizeof(buffer), eCmd_Failed);
 	buffer[bufferLen++] = 0;
 
-	if(dstNodeID == gConfig->GetVal(gConfig->nodeIDIndex))
+	if(dstNodeID == gConfigModule->GetVal(gConfigModule->nodeIDIndex))
 	{
-		gCommand->ProcessCommand(inOutput, buffer);
+		gCommandModule->ProcessCommand(inOutput, buffer);
 	}
 	else
 	{
@@ -352,3 +353,6 @@ CModule_CANBus::write(
 		SendString(targetNodeID, eSysMsg_SerialOutput, inMsg, inBytes);
 	}
 }
+
+MModuleImplementation_Start(CModule_CANBus)
+MModuleImplementation_FinishGlobal(CModule_CANBus, gCANBusModule)

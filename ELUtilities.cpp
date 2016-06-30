@@ -29,6 +29,7 @@
 
 #if !defined(WIN32)
 #include <RamMonitor.h>
+RamMonitor gRamMonitor;
 #endif
 
 #include "ELUtilities.h"
