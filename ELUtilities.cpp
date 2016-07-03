@@ -290,6 +290,6 @@ GetFreeMemory(
 #if !defined(WIN32)
 	return gRamMonitor.unallocated();
 #else
-	return 0;
+	return 0x1000000;
 #endif
 }

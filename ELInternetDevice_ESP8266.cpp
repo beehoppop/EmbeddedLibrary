@@ -1,3 +1,33 @@
+/*
+	Author: Brent Pease (embeddedlibraryfeedback@gmail.com)
+
+	The MIT License (MIT)
+
+	Copyright (c) 2015-FOREVER Brent Pease
+
+	Permission is hereby granted, free of charge, to any person obtaining a copy
+	of this software and associated documentation files (the "Software"), to deal
+	in the Software without restriction, including without limitation the rights
+	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	copies of the Software, and to permit persons to whom the Software is
+	furnished to do so, subject to the following conditions:
+
+	The above copyright notice and this permission notice shall be included in all
+	copies or substantial portions of the Software.
+
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+	SOFTWARE.
+*/
+
+/*
+	ABOUT
+
+*/
 
 #include <limits.h>
 
@@ -8,21 +38,23 @@
 #include <ELRealTime.h>
 #include <ELInternetDevice_ESP8266.h>
 
-#if 1
+#if 0
 #define MESPDebugMsg(...) SystemMsg(__VA_ARGS__)
 #else
-#define MESPDebugMsg(...)
+#define MESPDebugMsg(inMsg, ...) Serial.printf(inMsg, ## __VA_ARGS__)
 #endif
 
 MModuleImplementation_Start(CModule_ESP8266,
+	uint8_t			inChannelCount,
 	HardwareSerial*	inSerialPort,
 	uint8_t			inRstPin,
 	uint8_t			inChPDPin,
 	uint8_t			inGPIO0,
 	uint8_t			inGPIO2)
-MModuleImplementation_Finish(CModule_ESP8266, inSerialPort, inRstPin, inChPDPin, inGPIO0, inGPIO2)
+MModuleImplementation_Finish(CModule_ESP8266, inChannelCount, inSerialPort, inRstPin, inChPDPin, inGPIO0, inGPIO2)
 
 CModule_ESP8266::CModule_ESP8266(
+	uint8_t			inChannelCount,
 	HardwareSerial*	inSerialPort,
 	uint8_t			inRstPin,
 	uint8_t			inChPDPin,
@@ -40,11 +72,15 @@ CModule_ESP8266::CModule_ESP8266(
 	commandHead(0),
 	commandTail(0),
 	serialInputBufferLength(0),
-	serverPort(0)
+	serverPort(0),
+	channelCount(inChannelCount)
 {
+	channelArray = (SChannel*)malloc(sizeof(SChannel) * channelCount);
+	MAssert(channelArray != NULL);
+
 	memset(commandQueue, 0, sizeof(commandQueue));
-	memset(channelArray, 0, sizeof(channelArray));
-	for(int i = 0; i < eMaxLinks; ++i)
+	memset(channelArray, 0, sizeof(SChannel) * channelCount);
+	for(int i = 0; i < channelCount; ++i)
 	{
 		channelArray[i].linkIndex = -1;
 	}
@@ -418,7 +454,7 @@ CModule_ESP8266::ProcessChannelTimeouts(
 	void)
 {
 	SChannel*	curChannel = channelArray;
-	for(int i = 0; i < eMaxLinks; ++i, ++curChannel)
+	for(int i = 0; i < channelCount; ++i, ++curChannel)
 	{
 		if(curChannel->serverPort && curChannel->linkIndex >= 0 && millis() - curChannel->lastUseTimeMS > eConnectionTimeoutMS)
 		{
@@ -520,7 +556,7 @@ CModule_ESP8266::Client_OpenCompleted(
 	outSuccess = false;
 	outLocalPort = 0;
 
-	if(inOpenRef < 0 || inOpenRef >= eMaxLinks)
+	if(inOpenRef < 0 || inOpenRef >= channelCount)
 	{
 		SystemMsg("Client_OpenCompleted %d is not valid", inOpenRef);
 		return true;
@@ -559,7 +595,7 @@ CModule_ESP8266::GetData(
 {
 	SChannel*	curChannel = channelArray;
 
-	for(int i = 0; i < eMaxLinks; ++i, ++curChannel)
+	for(int i = 0; i < channelCount; ++i, ++curChannel)
 	{
 		//MESPDebugMsg("chn=%d inuse=%d lnk=%d bytes=%d", i, curChannel->inUse, curChannel->linkIndex, curChannel->incomingTotalBytes);
 		if(curChannel->inUse && curChannel->incomingTotalBytes > 0 && curChannel->incomingBufferIndex >= curChannel->incomingTotalBytes)
@@ -586,7 +622,7 @@ CModule_ESP8266::SendData(
 	char const*	inBuffer,
 	bool		inFlush)
 {
-	MReturnOnError(inPort >= eMaxLinks, false);
+	MReturnOnError(inPort >= channelCount, false);
 
 	SChannel*	targetChannel = channelArray + inPort;
 
@@ -628,7 +664,7 @@ uint32_t
 CModule_ESP8266::GetPortState(
 	uint16_t	inPort)
 {
-	MReturnOnError(inPort >= eMaxLinks, 0);
+	MReturnOnError(inPort >= channelCount, 0);
 
 	SChannel*	targetChannel = channelArray + inPort;
 		
@@ -667,7 +703,7 @@ CModule_ESP8266::CloseConnection(
 	uint16_t	inPort)
 {
 	MESPDebugMsg("CloseConnection chn=%d", inPort);
-	MReturnOnError(inPort >= eMaxLinks);
+	MReturnOnError(inPort >= channelCount);
 
 	SChannel*	targetChannel = channelArray + inPort;
 
@@ -789,7 +825,7 @@ CModule_ESP8266::FindHighestAvailableLink(
 	void)
 {
 	int	usedLinks = 0;
-	for(int i = 0; i < eMaxLinks; ++i)
+	for(int i = 0; i < channelCount; ++i)
 	{
 		if(channelArray[i].linkIndex >= 0)
 		{
@@ -797,7 +833,7 @@ CModule_ESP8266::FindHighestAvailableLink(
 		}
 	}
 
-	for(int i = eMaxLinks - 1; i >= 0; --i)
+	for(int i = channelCount - 1; i >= 0; --i)
 	{
 		if(!(usedLinks & (1 << i)))
 		{
@@ -826,7 +862,7 @@ CModule_ESP8266::SChannel*
 CModule_ESP8266::FindAvailableChannel(
 	void)
 {
-	for(int i = 0; i < eMaxLinks; ++i)
+	for(int i = 0; i < channelCount; ++i)
 	{
 		if(channelArray[i].inUse == false && channelArray[i].linkIndex < 0)
 		{
@@ -841,7 +877,7 @@ CModule_ESP8266::SChannel*
 CModule_ESP8266::FindChannel(
 	int	inLinkIndex)
 {
-	for(int i = 0; i < eMaxLinks; ++i)
+	for(int i = 0; i < channelCount; ++i)
 	{
 		if(channelArray[i].linkIndex == inLinkIndex)
 		{
@@ -859,7 +895,7 @@ CModule_ESP8266::DumpState(
 	MESPDebugMsg("***");
 
 	SChannel*	curChannel = channelArray;
-	for(int i = 0; i < eMaxLinks; ++i, ++curChannel)
+	for(int i = 0; i < channelCount; ++i, ++curChannel)
 	{
 		MESPDebugMsg("chn=%d lnk=%d inu=%d srp=%d cnf=%d sdp=%d", 
 			i,

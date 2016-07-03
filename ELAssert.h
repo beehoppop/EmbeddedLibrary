@@ -54,7 +54,7 @@ enum
 	eMsgLevel_Medium,
 	eMsgLevel_Verbose,
 
-	eMsgBuffer_Size = 8 * 1024,
+	eMsgBuffer_Size = 2 * 1024,
 };
 
 // Instantiate this module to dump a log of system messages using the "msg_dump" command

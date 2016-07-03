@@ -123,7 +123,7 @@ AssertFailed(
 {
 	for(;;)
 	{
-		SystemMsg("ASSERT: %s %d %s\n", inFile, inLine, inMsg);
+		Serial.printf("ASSERT: %s %d %s\n", inFile, inLine, inMsg);
 		delay(500);
 	}
 }

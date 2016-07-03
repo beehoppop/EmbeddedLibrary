@@ -38,6 +38,7 @@ public:
 	
 	MModule_Declaration(
 		CModule_ESP8266,
+		uint8_t			inChannelCount,
 		HardwareSerial*	inSerialPort,
 		uint8_t			inRstPin,
 		uint8_t			inChPDPin = 0xFF,
@@ -47,6 +48,7 @@ public:
 private:
 
 	CModule_ESP8266(
+		uint8_t			inChannelCount,
 		HardwareSerial*	inSerialPort,
 		uint8_t			inRstPin,
 		uint8_t			inChPDPin,
@@ -117,8 +119,6 @@ private:
 		
 	enum
 	{
-		eMaxLinks = 5,
-
 		eMaxCommandLenth = 96,
 		eMaxPendingCommands = 8,
 
@@ -277,7 +277,8 @@ private:
 
 	uint16_t	serverPort;
 
-	SChannel	channelArray[eMaxLinks];
+	uint8_t		channelCount;
+	SChannel*	channelArray;
 };
 
 #endif /* _ELINTERNETDEVICE_ESP8266_H_ */

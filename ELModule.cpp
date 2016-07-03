@@ -57,7 +57,7 @@ struct SEEPROMEntry
 	bool		inUse;
 };
 
-static int			gModuleCount;
+static uint32_t		gModuleCount;
 static CModule*		gModuleList[eMaxModuleCount];
 static SEEPROMEntry	gEEPROMEntryList[eMaxEEPROMModules];
 static bool			gTooManyModules = false;
@@ -149,6 +149,8 @@ CModule::DoneConstructing(
 	gModuleList[gModuleCount++] = this;
 
 	SetupIfNeeded();
+
+	SystemMsg("%s DoneConstruction: free mem = %ld", uid, GetFreeMemory());
 }
 
 void
@@ -241,7 +243,7 @@ static SEEPROMEntry*
 FindEEPROMEntry(
 	char const*		inUID)
 {
-	for(int i = 0; i < MStaticArrayLength(gEEPROMEntryList); ++i)
+	for(uint32_t i = 0; i < MStaticArrayLength(gEEPROMEntryList); ++i)
 	{
 		if(strcmp(gEEPROMEntryList[i].uid, inUID) == 0)
 			return gEEPROMEntryList + i;
@@ -276,13 +278,13 @@ CModule::SetupAll(
 	if(eepromVersion == eEEPROM_Version && eepromModuleCount == MStaticArrayLength(gEEPROMEntryList))
 	{
 		LoadDataFromEEPROM(gEEPROMEntryList, eEEPROM_ListStart, sizeof(gEEPROMEntryList));
-		for(int i = 0; i < MStaticArrayLength(gEEPROMEntryList); ++i)
+		for(uint32_t i = 0; i < MStaticArrayLength(gEEPROMEntryList); ++i)
 		{
 			gEEPROMEntryList[i].inUse = false;
 		}
 
 		int	totalEEPROMSize = eEEPROM_ListStart + sizeof(gEEPROMEntryList);
-		for(int i = 0; i < gModuleCount; ++i)
+		for(uint32_t i = 0; i < gModuleCount; ++i)
 		{
 			CModule*	curModule = gModuleList[i];
 			if(curModule->eepromSize == 0)
@@ -318,7 +320,7 @@ CModule::SetupAll(
 		SystemMsg(eMsgLevel_Basic, "EEPROM version mismatch old=%d new=%d\n", eepromVersion, eEEPROM_Version);
 
 		changes = true;
-		for(int i = 0; i < MStaticArrayLength(gEEPROMEntryList); ++i)
+		for(uint32_t i = 0; i < MStaticArrayLength(gEEPROMEntryList); ++i)
 		{
 			gEEPROMEntryList[i].inUse = false;
 		}
@@ -329,7 +331,7 @@ CModule::SetupAll(
 		// since changes have been made compress all module eeprom data into low eeprom space
 		uint16_t		curOffset = eEEPROM_ListStart + sizeof(gEEPROMEntryList);
 		SEEPROMEntry*	curEEPROM = gEEPROMEntryList;
-		for(int i = 0; i < gModuleCount; ++i)
+		for(uint32_t i = 0; i < gModuleCount; ++i)
 		{
 			CModule*	curModule = gModuleList[i];
 			if(curModule->eepromSize == 0)
@@ -368,7 +370,7 @@ CModule::SetupAll(
 	gCurLocalMS = millis();
 	gCurLocalUS = micros();
 
-	for(int i = 0; i < gModuleCount; ++i)
+	for(uint32_t i = 0; i < gModuleCount; ++i)
 	{
 		CModule*	curModule = gModuleList[i];
 		curModule->SetupIfNeeded();
@@ -385,7 +387,7 @@ void
 CModule::TearDownAll(
 	void)
 {
-	for(int i = 0; i < gModuleCount; ++i)
+	for(uint32_t i = 0; i < gModuleCount; ++i)
 	{
 		#if MDebugModules
 		SystemMsg(eMsgLevel_Medium, "Module: TearDown %s\n", gModuleList[i]->uid);
@@ -409,7 +411,7 @@ CModule::ResetAllState(
 
 	TearDownAll();
 
-	for(int i = 0; i < gModuleCount; ++i)
+	for(uint32_t i = 0; i < gModuleCount; ++i)
 	{
 		SystemMsg(eMsgLevel_Medium, "Module: ResetState %s\n", gModuleList[i]->uid);
 		#if MDebugModules
@@ -446,7 +448,7 @@ CModule::LoopAll(
 		}
 	}
 
-	for(int i = 0; i < gModuleCount; ++i)
+	for(uint32_t i = 0; i < gModuleCount; ++i)
 	{
 		if(gTearingDown)
 		{
@@ -487,6 +489,8 @@ StartingModuleConstruction(
 	char const*	inClassName,
 	uint32_t	inClassSize)
 {
+	SystemMsg("%s StartConstruction: class size = %ld, free mem = %ld", inClassName, inClassSize, GetFreeMemory());
+	MAssert(sizeof(inClassName) <= GetFreeMemory());
 	gCurrentModuleConstructingName = inClassName;
 	gCurrentModuleClassSize = inClassSize;
 }

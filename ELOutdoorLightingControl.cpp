@@ -1,3 +1,33 @@
+/*
+	Author: Brent Pease (embeddedlibraryfeedback@gmail.com)
+
+	The MIT License (MIT)
+
+	Copyright (c) 2015-FOREVER Brent Pease
+
+	Permission is hereby granted, free of charge, to any person obtaining a copy
+	of this software and associated documentation files (the "Software"), to deal
+	in the Software without restriction, including without limitation the rights
+	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	copies of the Software, and to permit persons to whom the Software is
+	furnished to do so, subject to the following conditions:
+
+	The above copyright notice and this permission notice shall be included in all
+	copies or substantial portions of the Software.
+
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+	SOFTWARE.
+*/
+
+/*
+	ABOUT
+
+*/
 #include <EL.h>
 #include <ELAssert.h>
 #include <ELModule.h>
@@ -97,17 +127,17 @@ CModule_OutdoorLightingControl::Setup(
 		MDigitalIORegisterEventHandler(motionSensorPin, false, CModule_OutdoorLightingControl::MotionSensorTrigger, NULL);
 	}
 
-	MCommandRegister("set_ledstate", CModule_OutdoorLightingControl::SetLEDState, "[on | off] : Turn LEDs on or off until the next event");
-	MCommandRegister("set_latenightstarttime", CModule_OutdoorLightingControl::SetLateNightStartTime, "[hour] [min] : Set the hour and minute of late night");
-	MCommandRegister("get_latenightstarttime", CModule_OutdoorLightingControl::GetLateNightStartTime, "[hour] [min] : Get the hour and minute of late night");
-	MCommandRegister("set_triggerlux", CModule_OutdoorLightingControl::SetTriggerLux, "");
-	MCommandRegister("get_triggerlux", CModule_OutdoorLightingControl::GetTriggerLux, "");
-	MCommandRegister("set_motionTO", CModule_OutdoorLightingControl::SetMotionTripTimeout, "");
-	MCommandRegister("get_motionTO", CModule_OutdoorLightingControl::GetMotionTripTimeout, "");
-	MCommandRegister("set_latenightTO", CModule_OutdoorLightingControl::SetLateNightTimeout, "");
-	MCommandRegister("get_latenightTO", CModule_OutdoorLightingControl::GetLateNightTimeout, "");
-	MCommandRegister("set_override", CModule_OutdoorLightingControl::SetOverride, "");
-	MCommandRegister("get_override", CModule_OutdoorLightingControl::GetOverride, "");
+	MCommandRegister("ledstate_set", CModule_OutdoorLightingControl::SetLEDState, "[on | off] : Turn LEDs on or off until the next event");
+	MCommandRegister("latenight_set", CModule_OutdoorLightingControl::SetLateNightStartTime, "[hour] [min] : Set the hour and minute of late night");
+	MCommandRegister("latenight_get", CModule_OutdoorLightingControl::GetLateNightStartTime, "[hour] [min] : Get the hour and minute of late night");
+	MCommandRegister("triggerlux_set", CModule_OutdoorLightingControl::SetTriggerLux, "");
+	MCommandRegister("triggerlux_get", CModule_OutdoorLightingControl::GetTriggerLux, "");
+	MCommandRegister("motiontimeout_set", CModule_OutdoorLightingControl::SetMotionTripTimeout, "");
+	MCommandRegister("motiontimeout_get", CModule_OutdoorLightingControl::GetMotionTripTimeout, "");
+	MCommandRegister("latenighttimeout_set", CModule_OutdoorLightingControl::SetLateNightTimeout, "");
+	MCommandRegister("latenighttimeout_get", CModule_OutdoorLightingControl::GetLateNightTimeout, "");
+	MCommandRegister("override_set", CModule_OutdoorLightingControl::SetOverride, "[active 0|1] [state 0|1] : Set override and overrided state on or off");
+	MCommandRegister("override_get", CModule_OutdoorLightingControl::GetOverride, "");
 
 	// Setup the initial state given the current time of day and sunset/sunrise time
 	TEpochTime	curTime = gRealTime->GetEpochTime(false);

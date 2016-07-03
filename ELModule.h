@@ -35,6 +35,7 @@
 	A module's constructor can only initialize itself, it can not access other modules
 	A module's Setup() method may reference other modules, any module included during a constructor will itself be constructed and added to the module list
 */
+#include <new>
 
 #include <EL.h>
 #include <ELUtilities.h>
@@ -176,29 +177,30 @@ inClassName::Include(									\
 {
 
 #define MModuleImplementation_FinishGlobal(inClassName, inGlobalVariable, ...)		\
-	static bool	initialized = false;												\
-	if(initialized)																	\
+	static inClassName* currentConstruction = NULL;									\
+	if(currentConstruction != NULL)													\
 	{																				\
-		return NULL;																\
+		return currentConstruction;													\
 	}																				\
-	initialized = true;																\
 	StartingModuleConstruction(#inClassName, sizeof(inClassName));					\
-	inClassName*	result = new inClassName(__VA_ARGS__);							\
+	currentConstruction = (inClassName*)malloc(sizeof(inClassName));				\
+	inClassName*	result = new(currentConstruction) inClassName(__VA_ARGS__);		\
 	result->DoneConstructing();														\
 	inGlobalVariable = result;														\
 	return result;																	\
 }
 
 #define MModuleImplementation_Finish(inClassName, ...)								\
-	static bool	initialized = false;												\
-	if(initialized)																	\
+	static inClassName* currentConstruction = NULL;									\
+	if(currentConstruction != NULL)													\
 	{																				\
-		return NULL;																\
+		return currentConstruction;													\
 	}																				\
-	initialized = true;																\
 	StartingModuleConstruction(#inClassName, sizeof(inClassName));					\
-	inClassName*	result = new inClassName(__VA_ARGS__);							\
+	currentConstruction = (inClassName*)malloc(sizeof(inClassName));				\
+	inClassName*	result = new(currentConstruction) inClassName(__VA_ARGS__);		\
 	result->DoneConstructing();														\
+	currentConstruction = NULL;														\
 	return result;																	\
 }
 
