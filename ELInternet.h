@@ -161,7 +161,8 @@ private:
 
 	void
 	SendData(
-		char const*	inData);
+		char const*	inData,
+		bool		inFlush);
 	
 	void
 	ProcessResponseData(
@@ -192,6 +193,7 @@ private:
 	uint8_t		responseState;
 	bool		waitingOnResponse;
 	bool		openInProgress;
+	bool		flushPending;
 
 	friend class CModule_Internet;
 };
@@ -287,17 +289,18 @@ public:
 
 	void
 	OpenConnection(
-		uint16_t								inServerPort,
-		char const*								inServerAddress,
-		IInternetHandler*						inHandlerObject,			// The object of the handlers
-		TInternetResponseHandlerMethod			inHandlerMethod);			// The response handler
+		uint16_t						inServerPort,
+		char const*						inServerAddress,
+		IInternetHandler*				inHandlerObject,			// The object of the handlers
+		TInternetResponseHandlerMethod	inHandlerMethod);			// The response handler
 	
 	// The OpenConnection completion method must have been called before calling SendData
 	bool
 	SendData(
-		uint16_t						inLocalPort,
-		size_t							inDataSize,
-		char const*						inData);
+		uint16_t	inLocalPort,
+		size_t		inDataSize,
+		char const*	inData,
+		bool		inFlush);
 
 	void
 	CloseConnection(
@@ -317,10 +320,10 @@ public:
 	// Higher level HTTP service
 	CHTTPConnection*
 	CreateHTTPConnection(
-		char const*							inServer,
-		uint16_t							inPort,
-		IInternetHandler*					inInternetHandler,	// The object of the handler
-		THTTPResponseHandlerMethod			inResponseMethod);	// The method of the response handler
+		char const*					inServer,
+		uint16_t					inPort,
+		IInternetHandler*			inInternetHandler,	// The object of the handler
+		THTTPResponseHandlerMethod	inResponseMethod);	// The method of the response handler
 
 private:
 	

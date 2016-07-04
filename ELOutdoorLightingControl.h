@@ -106,6 +106,15 @@ private:
 		uint32_t inDeltaTimeUS);
 
 	void
+	UpdateTimes(
+		void);
+
+	void
+	TimeChangeMethod(
+		char const*	inName,
+		bool		inTimeZone);
+
+	void
 	CommandHomePageHandler(
 		IOutputDirector*	inOutput);
 

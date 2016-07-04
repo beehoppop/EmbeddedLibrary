@@ -29,6 +29,8 @@
 #include <ELUtilities.h>
 #include <ELDigitalIO.h>
 
+#define MDigitalDebug 0
+
 enum 
 {
 	eState_WaitingForChangeToActive,
@@ -64,55 +66,67 @@ CModule_DigitalIO::Update(
 		{
 			bool	value = digitalReadFast(i) > 0;
 
-			switch(curState->lastState)
+			switch(curState->curState)
 			{
 				case eState_WaitingForChangeToActive:
 					if(value == curState->activeHigh)
 					{
-						SystemMsg(eMsgLevel_Verbose, "dio pin %d triggered\n", i);
+						#if MDigitalDebug
+						Serial.printf("dio %d: %d %ld eState_WaitingForChangeToActive -> eState_WaitingForSettleActive\n", i, (int)gCurLocalMS, inDeltaTimeUS);
+						#endif
 						curState->time = gCurLocalMS;
-						curState->lastState = eState_WaitingForSettleActive;
+						curState->curState = eState_WaitingForSettleActive;
 					}
 					break;
 
 				case eState_WaitingForSettleActive:
-					if(value != curState->activeHigh)
-					{
-						SystemMsg(eMsgLevel_Verbose, "dio pin %d UN triggered\n", i);
-						curState->lastState = eState_WaitingForChangeToActive;
-						break;
-					}
-
 					if(gCurLocalMS - curState->time >= curState->settleMS)
 					{
-						SystemMsg(eMsgLevel_Verbose, "dio pin %d activated\n", i);
-						curState->lastState = eState_WaitingForChangeToDeactive;
+						#if MDigitalDebug
+						Serial.printf("dio %d: %d %ld eState_WaitingForSettleActive -> eState_WaitingForChangeToDeactive\n", i, (int)gCurLocalMS, inDeltaTimeUS);
+						#endif
+						curState->curState = eState_WaitingForChangeToDeactive;
 						
 						((curState->object)->*(curState->method))(i, eDigitalIO_PinActivated, curState->reference);
+					}
+
+					else if(value != curState->activeHigh)
+					{
+						#if MDigitalDebug
+						Serial.printf("dio %d: %d %ld eState_WaitingForSettleActive -> eState_WaitingForChangeToActive\n", i, (int)gCurLocalMS, inDeltaTimeUS);
+						#endif
+						curState->curState = eState_WaitingForChangeToActive;
 					}
 					break;
 
 				case eState_WaitingForChangeToDeactive:
 					if(value != curState->activeHigh)
 					{
+						#if MDigitalDebug
+						Serial.printf("dio %d: %d %ld eState_WaitingForChangeToDeactive -> eState_WaitingForSettleDeactive\n", i, (int)gCurLocalMS, inDeltaTimeUS);
+						#endif
 						curState->time = gCurLocalMS;
-						curState->lastState = eState_WaitingForSettleDeactive;
+						curState->curState = eState_WaitingForSettleDeactive;
 					}
 					break;
 
 				case eState_WaitingForSettleDeactive:
-					if(value == curState->activeHigh)
-					{
-						curState->lastState = eState_WaitingForChangeToDeactive;
-						break;
-					}
-
 					if(gCurLocalMS - curState->time >= curState->settleMS)
 					{
-						SystemMsg(eMsgLevel_Verbose, "dio pin %d deactivated\n", i);
-						curState->lastState = eState_WaitingForChangeToActive;
+						#if MDigitalDebug
+						Serial.printf("dio %d: %d %ld eState_WaitingForSettleDeactive -> eState_WaitingForChangeToActive\n", i, (int)gCurLocalMS, inDeltaTimeUS);
+						#endif
+						curState->curState = eState_WaitingForChangeToActive;
 						
 						((curState->object)->*(curState->method))(i, eDigitalIO_PinDeactivated, curState->reference);
+					}
+
+					else if(value == curState->activeHigh)
+					{
+						#if MDigitalDebug
+						Serial.printf("dio %d: %d %ld eState_WaitingForSettleDeactive -> eState_WaitingForChangeToDeactive\n", i, (int)gCurLocalMS);
+						#endif
+						curState->curState = eState_WaitingForChangeToDeactive;
 					}
 					break;
 			}
@@ -147,7 +161,7 @@ CModule_DigitalIO::RegisterEventHandler(
 	targetState->reference = inReference;
 	targetState->settleMS = inSettleTimeMS;
 	targetState->time = 0;
-	targetState->lastState = eState_WaitingForChangeToActive;
+	targetState->curState = eState_WaitingForChangeToActive;
 
 	pinMode(inPin, inActiveHigh ? INPUT : INPUT_PULLUP);
 }
@@ -168,7 +182,7 @@ CModule_DigitalIO::SetPinMode(
 	targetState->reference = NULL;
 	targetState->settleMS = 0;
 	targetState->time = 0;
-	targetState->lastState = 0;
+	targetState->curState = 0;
 
 	if(inMode == ePinMode_Input)
 	{

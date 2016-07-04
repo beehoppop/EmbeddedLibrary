@@ -38,7 +38,7 @@
 enum
 {
 	eDigitalIO_PinCount = 34,
-	eDigitalIO_DefaultSettleMS = 50,
+	eDigitalIO_DefaultSettleMS = 10,
 };
 
 enum EPinInOutMode
@@ -119,7 +119,7 @@ private:
 	{
 		uint8_t		mode;
 		bool		activeHigh;
-		uint8_t		lastState;
+		uint8_t		curState;
 		uint32_t	settleMS;
 		uint64_t	time;
 

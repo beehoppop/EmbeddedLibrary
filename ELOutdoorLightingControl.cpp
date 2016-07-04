@@ -115,12 +115,10 @@ CModule_OutdoorLightingControl::Setup(
 	digitalWriteFast(transformerPin, false);
 
 	// Register the alarms, events, and commands
-	MSunsetRegisterEvent("Sunset1", eAlarm_Any, eAlarm_Any, eAlarm_Any, eAlarm_Any, CModule_OutdoorLightingControl::Sunset);
-	MSunriseRegisterEvent("Sunrise1", eAlarm_Any, eAlarm_Any, eAlarm_Any, eAlarm_Any, CModule_OutdoorLightingControl::Sunrise);
-	MRealTimeRegisterAlarm("LateNightAlarm", eAlarm_Any, eAlarm_Any, eAlarm_Any, eAlarm_Any, settings.lateNightStartHour, settings.lateNightStartMin, 0, CModule_OutdoorLightingControl::LateNightAlarm, NULL);
+	MRealTimeRegisterTimeChange("OutdoorLighting", CModule_OutdoorLightingControl::TimeChangeMethod);
 	if(togglePin != 0xFF)
 	{
-		MDigitalIORegisterEventHandler(togglePin, false, CModule_OutdoorLightingControl::ButtonPush, NULL, 100);
+		MDigitalIORegisterEventHandler(togglePin, false, CModule_OutdoorLightingControl::ButtonPush, NULL);
 	}
 	if(motionSensorPin != 0xFF)
 	{
@@ -139,7 +137,29 @@ CModule_OutdoorLightingControl::Setup(
 	MCommandRegister("override_set", CModule_OutdoorLightingControl::SetOverride, "[active 0|1] [state 0|1] : Set override and overrided state on or off");
 	MCommandRegister("override_get", CModule_OutdoorLightingControl::GetOverride, "");
 
-	// Setup the initial state given the current time of day and sunset/sunrise time
+	MRealTimeRegisterEvent("LuxPeriodic", 1 * 60 * 1000000, false, CModule_OutdoorLightingControl::LuxPeriodic, NULL);
+
+	UpdateTimes();
+
+	// Update lux trigger
+	if(luminosityInterface != NULL)
+	{
+		float	curLux = luminosityInterface->GetActualLux();
+		luxTriggerState = settings.triggerLux < curLux;
+	}
+
+	MInternetRegisterFrontPage(CModule_OutdoorLightingControl::CommandHomePageHandler);
+}
+
+void
+CModule_OutdoorLightingControl::UpdateTimes(
+	void)
+{
+	MSunsetRegisterEvent("Sunset1", eAlarm_Any, eAlarm_Any, eAlarm_Any, eAlarm_Any, CModule_OutdoorLightingControl::Sunset);
+	MSunriseRegisterEvent("Sunrise1", eAlarm_Any, eAlarm_Any, eAlarm_Any, eAlarm_Any, CModule_OutdoorLightingControl::Sunrise);
+	MRealTimeRegisterAlarm("LateNightAlarm", eAlarm_Any, eAlarm_Any, eAlarm_Any, eAlarm_Any, settings.lateNightStartHour, settings.lateNightStartMin, 0, CModule_OutdoorLightingControl::LateNightAlarm, NULL);
+
+	// Setup the state given the current time of day and sunset/sunrise time
 	TEpochTime	curTime = gRealTime->GetEpochTime(false);
 	int	year, month, day, dow, hour, min, sec;
 	gRealTime->GetComponentsFromEpochTime(curTime, year, month, day, dow, hour, min, sec);
@@ -179,16 +199,14 @@ CModule_OutdoorLightingControl::Setup(
 
 	ledsOn = timeOfDay == eTimeOfDay_Night;
 
-	MRealTimeRegisterEvent("LuxPeriodic", 1 * 60 * 1000000, false, CModule_OutdoorLightingControl::LuxPeriodic, NULL);
+}
 
-	// Update lux trigger
-	if(luminosityInterface != NULL)
-	{
-		float	curLux = luminosityInterface->GetActualLux();
-		luxTriggerState = settings.triggerLux < curLux;
-	}
-
-	MInternetRegisterFrontPage(CModule_OutdoorLightingControl::CommandHomePageHandler);
+void
+CModule_OutdoorLightingControl::TimeChangeMethod(
+	char const*	inName,
+	bool		inTimeZone)
+{
+	UpdateTimes();
 }
 
 void
@@ -207,7 +225,7 @@ CModule_OutdoorLightingControl::Update(
 		if(toggleCount == ePushCount_ToggleState)
 		{
 			ledsOn = !ledsOn;
-			SystemMsg("Toggle state to %d\n", ledsOn);
+			SystemMsg("Toggle led state to %d\n", ledsOn);
 
 			if(timeOfDay == eTimeOfDay_LateNight)
 			{
@@ -375,13 +393,10 @@ CModule_OutdoorLightingControl::ButtonPush(
 	EPinEvent	inEvent,
 	void*		inReference)
 {
-	SystemMsg("Pushbutton");
-
 	if(inEvent == eDigitalIO_PinActivated)
 	{
 		toggleLastTimeMS = gCurLocalMS;
 		++toggleCount;
-		SystemMsg("toggleCount = %d\n", toggleCount);
 	}
 }
 
@@ -409,11 +424,11 @@ CModule_OutdoorLightingControl::MotionSensorTrigger(
 {
 	if(inEvent == eDigitalIO_PinActivated)
 	{
-		SystemMsg("Motion sensor tripped\n");
 		motionSensorTrip = true;
 
 		if(timeOfDay != eTimeOfDay_Day)
 		{
+			SystemMsg("Motion sensor tripped\n");
 			ledsOn = true;
 		}
 	}
@@ -428,7 +443,6 @@ CModule_OutdoorLightingControl::MotionSensorTrigger(
 		}
 		else
 		{
-			SystemMsg("Motion sensor off, daytime, no cooldown timer\n");
 			motionSensorTrip = false;
 			ledsOn = false;
 		}
@@ -498,6 +512,8 @@ CModule_OutdoorLightingControl::SetLateNightStartTime(
 	MRealTimeRegisterAlarm("LateNightAlarm", eAlarm_Any, eAlarm_Any, eAlarm_Any, eAlarm_Any, settings.lateNightStartHour, settings.lateNightStartMin, 0, CModule_OutdoorLightingControl::LateNightAlarm, NULL);
 
 	EEPROMSave();
+
+	UpdateTimes();
 
 	return eCmd_Succeeded;
 }
@@ -637,7 +653,7 @@ CModule_OutdoorLightingControl::SetTransformerState(
 		return;
 	}
 
-	SystemMsg("Transformer state to %d\n", inState);
+	//SystemMsg("Transformer state to %d\n", inState);
 
 	curTransformerTransitionState = inState;
 
@@ -663,7 +679,7 @@ CModule_OutdoorLightingControl::TransformerTransitionEvent(
 	char const*	inName,
 	void*		inRef)
 {
-	SystemMsg("Transformer transition %d\n", curTransformerTransitionState);
+	//SystemMsg("Transformer transition %d\n", curTransformerTransitionState);
 	curTransformerState = curTransformerTransitionState;
 	digitalWriteFast(transformerPin, curTransformerState);
 }

@@ -39,9 +39,9 @@
 #include <ELInternetDevice_ESP8266.h>
 
 #if 0
-#define MESPDebugMsg(...) SystemMsg(__VA_ARGS__)
-#else
 #define MESPDebugMsg(inMsg, ...) Serial.printf(inMsg, ## __VA_ARGS__)
+#else
+#define MESPDebugMsg(inMsg, ...)
 #endif
 
 MModuleImplementation_Start(CModule_ESP8266,
@@ -96,7 +96,7 @@ CModule_ESP8266::Setup(
 	if(rstPin != 0xFF)
 	{
 		pinMode(rstPin, OUTPUT);
-		delay(10);	// This is a bit of a mystery but 4 hours of experimentation says that the device will not work without this delay right exactly here
+		delay(10);	// Allow time for reset to settle
 		digitalWriteFast(rstPin, 1);
 	}
 
@@ -142,7 +142,7 @@ CModule_ESP8266::ProcessPendingCommand(
 		// We have a pending command ready to go
 		curCommand->commandStartMS = millis();
 
-		MESPDebugMsg("Processing cmd: %s", curCommand->command);
+		MESPDebugMsg("Processing cmd: %s\n", curCommand->command);
 
 		if(strcmp(curCommand->command, "ready") == 0)
 		{
@@ -151,7 +151,7 @@ CModule_ESP8266::ProcessPendingCommand(
 		else if(targetChannel == NULL)
 		{
 			// Always send out commands not associated with a channel
-			MESPDebugMsg("  Sending");
+			MESPDebugMsg("  Sending\n");
 			serialPort->write(curCommand->command);
 			serialPort->write("\r\n");
 		}
@@ -163,14 +163,14 @@ CModule_ESP8266::ProcessPendingCommand(
 			{
 				targetChannel->linkIndex = linkIndex;
 				curCommand->command[12] = '0' + linkIndex;
-				MESPDebugMsg("  Sending Start %s", curCommand->command);
+				MESPDebugMsg("  Sending Start %s\n", curCommand->command);
 				serialPort->write(curCommand->command);
 				serialPort->write("\r\n");
 			}
 			else
 			{
 				// no link is available
-				MESPDebugMsg("  No link is available");
+				MESPDebugMsg("  No link is available\n");
 				targetChannel->connectionFailed = true;
 				++commandTail;
 			}
@@ -181,13 +181,13 @@ CModule_ESP8266::ProcessPendingCommand(
 			// When this command is acknowledged and the '>' is received the actual data is sent
 			if(targetChannel->linkIndex >= 0 && !targetChannel->connectionFailed)
 			{
-				MESPDebugMsg("  Sending");
+				MESPDebugMsg("  Sending\n");
 				serialPort->write(curCommand->command);
 				serialPort->write("\r\n");
 			}
 			else
 			{
-				MESPDebugMsg("  Not issuing send data cmd lnk=%d inuse=%d cf=%d", targetChannel->linkIndex, targetChannel->inUse, targetChannel->connectionFailed);
+				MESPDebugMsg("  Not issuing send data cmd lnk=%d inuse=%d cf=%d\n", targetChannel->linkIndex, targetChannel->inUse, targetChannel->connectionFailed);
 				targetChannel->outgoingTotalBytes = 0;
 				++commandTail;
 			}
@@ -197,13 +197,13 @@ CModule_ESP8266::ProcessPendingCommand(
 			// Only close if we have a valid connection
 			if(targetChannel->linkIndex >= 0)
 			{
-				MESPDebugMsg("  Sending");
+				MESPDebugMsg("  Sending\n");
 				serialPort->write(curCommand->command);
 				serialPort->write("\r\n");
 			}
 			else
 			{
-				MESPDebugMsg("Not closing lnk=%d inuse=%d cf=%d", targetChannel->linkIndex, targetChannel->inUse, targetChannel->connectionFailed);
+				MESPDebugMsg("Not closing lnk=%d inuse=%d cf=%d\n", targetChannel->linkIndex, targetChannel->inUse, targetChannel->connectionFailed);
 				++commandTail;
 			}
 			targetChannel->inUse = false;
@@ -217,7 +217,7 @@ CModule_ESP8266::ProcessPendingCommand(
 	else if(millis() - curCommand->commandStartMS >= curCommand->timeoutMS)
 	{
 		// command has timed out
-		MESPDebugMsg("Command TIMEOUT \"%s\"", curCommand->command);
+		MESPDebugMsg("Command TIMEOUT \"%s\"\n", curCommand->command);
 		if(targetChannel != NULL)
 		{
 			targetChannel->connectionFailed = true;
@@ -253,7 +253,7 @@ CModule_ESP8266::ProcessSerialInput(
 			if(curIPDChannel->incomingBufferIndex >= curIPDChannel->incomingTotalBytes)
 			{
 				// we have all the ipd data now so stop collecting, hold on to the data until it is collected from the GetData() method
-				MESPDebugMsg("Finished ipd lnk=%d bytes=%d", curIPDChannel->linkIndex, curIPDChannel->incomingBufferIndex);
+				MESPDebugMsg("Finished ipd lnk=%d bytes=%d\n", curIPDChannel->linkIndex, curIPDChannel->incomingBufferIndex);
 				curIPDChannel->lastUseTimeMS = millis();
 				curIPDChannel = NULL;
 			}
@@ -269,7 +269,7 @@ CModule_ESP8266::ProcessSerialInput(
 				serialInputBuffer[serialInputBufferLength++] = 0;
 				int	curIPDLinkIndex, intPDBBytes;
 				sscanf(serialInputBuffer, "%d,%d", &curIPDLinkIndex, &intPDBBytes);
-				MESPDebugMsg("Collecting ipd lnk=%d bytes=%d", curIPDLinkIndex, intPDBBytes);
+				MESPDebugMsg("Collecting ipd lnk=%d bytes=%d\n", curIPDLinkIndex, intPDBBytes);
 				curIPDChannel = FindChannel(curIPDLinkIndex);
 				if(curIPDChannel != NULL)
 				{
@@ -279,7 +279,7 @@ CModule_ESP8266::ProcessSerialInput(
 				else
 				{
 					// We should have received a CONNECT msg from the chip
-					MESPDebugMsg("WARNING: IPD lnk=%d not in use", curIPDLinkIndex);
+					MESPDebugMsg("WARNING: IPD lnk=%d not in use\n", curIPDLinkIndex);
 				}
 
 				ipdParsing = false;
@@ -319,7 +319,7 @@ CModule_ESP8266::ProcessSerialInput(
 				SPendingCommand*	curCommand = GetCurrentCommand();
 				SChannel*			targetChannel = curCommand->targetChannel;
 				MAssert(targetChannel != NULL);
-				MESPDebugMsg("Sending data lnk=%d bytes=%d", targetChannel->linkIndex, targetChannel->outgoingTotalBytes);
+				MESPDebugMsg("Sending data lnk=%d bytes=%d\n", targetChannel->linkIndex, targetChannel->outgoingTotalBytes);
 				if(targetChannel->linkIndex >= 0)
 				{
 					serialPort->write((uint8_t*)targetChannel->outgoingBuffer, targetChannel->outgoingTotalBytes);
@@ -352,7 +352,7 @@ CModule_ESP8266::ProcessInputResponse(
 		if(IsCommandPending())
 		{
 			SPendingCommand*	curCommand = GetCurrentCommand();
-			MESPDebugMsg("CMD FAILED \"%s\"", curCommand->command); 
+			MESPDebugMsg("CMD FAILED \"%s\"\n", curCommand->command); 
 
 			SChannel*	targetChannel = curCommand->targetChannel;
 			if(targetChannel != NULL)
@@ -364,13 +364,13 @@ CModule_ESP8266::ProcessInputResponse(
 		}
 		else
 		{
-			MESPDebugMsg("Got ERROR without pending cmd");
+			MESPDebugMsg("Got ERROR without pending cmd\n");
 		}
 	}
 	else if(strcmp(inCmd, "ready") == 0)
 	{
 		// Command completed successfully
-		MESPDebugMsg("Got ready");
+		MESPDebugMsg("Got ready\n");
 
 		if(IsCommandPending())
 		{
@@ -380,7 +380,7 @@ CModule_ESP8266::ProcessInputResponse(
 	else if(strcmp(inCmd, "OK") == 0)
 	{
 		// Command completed successfully
-		MESPDebugMsg("Got OK");
+		MESPDebugMsg("Got OK\n");
 
 		if(IsCommandPending())
 		{
@@ -395,7 +395,7 @@ CModule_ESP8266::ProcessInputResponse(
 	else if(strcmp(inCmd, "SEND OK") == 0)
 	{
 		// Command completed successfully
-		MESPDebugMsg("Got SEND OK");
+		MESPDebugMsg("Got SEND OK\n");
 
 		if(IsCommandPending())
 		{
@@ -412,7 +412,7 @@ CModule_ESP8266::ProcessInputResponse(
 		int	linkIndex = inCmd[0] - '0';
 		SChannel*	targetChannel = FindChannel(linkIndex);
 		bool		isServer = targetChannel == NULL;
-		MESPDebugMsg("Incoming Connect lnk=%d server=%d", linkIndex, isServer);
+		MESPDebugMsg("Incoming Connect lnk=%d server=%d\n", linkIndex, isServer);
 		if(isServer)
 		{
 			targetChannel = FindAvailableChannel();
@@ -426,7 +426,7 @@ CModule_ESP8266::ProcessInputResponse(
 	{
 		int	linkIndex = inCmd[0] - '0';
 		SChannel*	targetChannel = FindChannel(linkIndex);
-		MESPDebugMsg("Incoming CONNECT FAIL lnk=%d %s", linkIndex, targetChannel != NULL ? (targetChannel->serverPort ? "server" : "client") : "unknown");
+		MESPDebugMsg("Incoming CONNECT FAIL lnk=%d %s\n", linkIndex, targetChannel != NULL ? (targetChannel->serverPort ? "server" : "client") : "unknown");
 		if(targetChannel != NULL)
 		{
 			targetChannel->ConnectionFailed();
@@ -436,7 +436,7 @@ CModule_ESP8266::ProcessInputResponse(
 	{
 		int	linkIndex = inCmd[0] - '0';
 		SChannel*	targetChannel = FindChannel(linkIndex);
-		MESPDebugMsg("Incoming Close lnk=%d %s", linkIndex, targetChannel != NULL ? (targetChannel->serverPort ? "server" : "client") : "unknown");
+		MESPDebugMsg("Incoming Close lnk=%d %s\n", linkIndex, targetChannel != NULL ? (targetChannel->serverPort ? "server" : "client") : "unknown");
 		if(targetChannel)
 		{
 			targetChannel->ConnectionClosed();
@@ -445,7 +445,7 @@ CModule_ESP8266::ProcessInputResponse(
 	}
 	else
 	{
-		MESPDebugMsg("Received: \"%s\"", inCmd); 
+		MESPDebugMsg("Received: \"%s\"\n", inCmd); 
 	}
 }
 
@@ -458,10 +458,19 @@ CModule_ESP8266::ProcessChannelTimeouts(
 	{
 		if(curChannel->serverPort && curChannel->linkIndex >= 0 && millis() - curChannel->lastUseTimeMS > eConnectionTimeoutMS)
 		{
-			MESPDebugMsg("chn=%d timedout lnk=%d", i, curChannel->linkIndex);
+			MESPDebugMsg("chn=%d timedout lnk=%d\n", i, curChannel->linkIndex);
 			curChannel->lastUseTimeMS = millis();	// prevent this from timing out repeatedly
 			CloseConnection(i);
-			break;
+		}
+	}
+
+	if(curIPDChannel != NULL)
+	{
+		if(millis() - curIPDChannel->lastUseTimeMS > eIPDTimeout)
+		{
+			MESPDebugMsg("ipd timedout lnk=%d, this probably means serial buffer overrun, increase RX_BUFFER_SIZE in serial1.c\n", curChannel->linkIndex);
+			curIPDChannel->ConnectionFailed();
+			curIPDChannel = NULL;
 		}
 	}
 }
@@ -538,7 +547,7 @@ CModule_ESP8266::Client_RequestOpen(
 		return -1;
 	}
 
-	MESPDebugMsg("Client_RequestOpen chn=%d", targetChannel - channelArray);
+	MESPDebugMsg("Client_RequestOpen chn=%d\n", targetChannel - channelArray);
 
 	targetChannel->Initialize(false);
 
@@ -566,7 +575,7 @@ CModule_ESP8266::Client_OpenCompleted(
 
 	if(targetChannel->connectionFailed || !targetChannel->inUse)
 	{
-		MESPDebugMsg("Client_OpenCompleted failed chn=%d", inOpenRef);
+		MESPDebugMsg("Client_OpenCompleted failed chn=%d\n", inOpenRef);
 		targetChannel->inUse = false;
 		DumpState();
 
@@ -575,7 +584,7 @@ CModule_ESP8266::Client_OpenCompleted(
 
 	if(targetChannel->isConnected)
 	{
-		MESPDebugMsg("Client_OpenCompleted success chn=%d", inOpenRef);
+		MESPDebugMsg("Client_OpenCompleted success chn=%d\n", inOpenRef);
 		DumpState();
 
 		outLocalPort = inOpenRef;
@@ -600,7 +609,7 @@ CModule_ESP8266::GetData(
 		//MESPDebugMsg("chn=%d inuse=%d lnk=%d bytes=%d", i, curChannel->inUse, curChannel->linkIndex, curChannel->incomingTotalBytes);
 		if(curChannel->inUse && curChannel->incomingTotalBytes > 0 && curChannel->incomingBufferIndex >= curChannel->incomingTotalBytes)
 		{
-			MESPDebugMsg("Got data chn=%d lnk=%d srp=%d bytes=%d bi=%d", i, curChannel->linkIndex, curChannel->serverPort, curChannel->incomingTotalBytes, curChannel->incomingBufferIndex);
+			MESPDebugMsg("Got data chn=%d lnk=%d srp=%d bytes=%d bi=%d\n", i, curChannel->linkIndex, curChannel->serverPort, curChannel->incomingTotalBytes, curChannel->incomingBufferIndex);
 
 			ioBufferSize = MMin(ioBufferSize, curChannel->incomingTotalBytes);
 			memcpy(outBuffer, curChannel->incomingBuffer, ioBufferSize);
@@ -702,7 +711,7 @@ void
 CModule_ESP8266::CloseConnection(
 	uint16_t	inPort)
 {
-	MESPDebugMsg("CloseConnection chn=%d", inPort);
+	MESPDebugMsg("CloseConnection chn=%d\n", inPort);
 	MReturnOnError(inPort >= channelCount);
 
 	SChannel*	targetChannel = channelArray + inPort;
@@ -749,15 +758,16 @@ CModule_ESP8266::WaitPendingTransmitComplete(
 
 	while(inChannel->sendPending)
 	{
+
 		MReturnOnError(inChannel->connectionFailed || inChannel->linkIndex < 0, false);
 
 		if(!waitingOn)
 		{
-			MESPDebugMsg("Waiting on transmit");
+			MESPDebugMsg("Waiting on transmit\n");
 			waitingOn = true;
 		}
 
-		// Allow time for the usb serial port
+		// Allow time for the serial port
 		delay(1);
 
 		// Check serial input to monitor the send command
@@ -767,7 +777,7 @@ CModule_ESP8266::WaitPendingTransmitComplete(
 		if(millis() - waitStartTime > eTransmitTimeoutMS)
 		{
 			// we have timed out
-			MESPDebugMsg("transmit has timed out");
+			MESPDebugMsg("transmit has timed out\n");
 			inChannel->connectionFailed = true;
 			return false;
 		}
@@ -775,7 +785,7 @@ CModule_ESP8266::WaitPendingTransmitComplete(
 
 	if(waitingOn)
 	{
-		MESPDebugMsg("Done waiting on transmit");
+		MESPDebugMsg("Done waiting on transmit\n");
 	}
 
 	return true;
@@ -795,7 +805,7 @@ CModule_ESP8266::IssueCommand(
 	{
 		if(!waitingOn)
 		{
-			MESPDebugMsg("Waiting on command queue");
+			MESPDebugMsg("Waiting on command queue\n");
 			waitingOn = true;
 		}
 		delay(1);
@@ -803,7 +813,7 @@ CModule_ESP8266::IssueCommand(
 	}
 	if(waitingOn)
 	{
-		MESPDebugMsg("Done waiting on command queue");
+		MESPDebugMsg("Done waiting on command queue\n");
 	}
 
 	SPendingCommand*	targetCommand = commandQueue + (commandHead++ % eMaxPendingCommands);
@@ -892,12 +902,12 @@ void
 CModule_ESP8266::DumpState(
 	void)
 {
-	MESPDebugMsg("***");
+	MESPDebugMsg("***\n");
 
 	SChannel*	curChannel = channelArray;
 	for(int i = 0; i < channelCount; ++i, ++curChannel)
 	{
-		MESPDebugMsg("chn=%d lnk=%d inu=%d srp=%d cnf=%d sdp=%d", 
+		MESPDebugMsg("chn=%d lnk=%d inu=%d srp=%d cnf=%d sdp=%d\n", 
 			i,
 			curChannel->linkIndex,
 			curChannel->inUse,
@@ -906,5 +916,5 @@ CModule_ESP8266::DumpState(
 			curChannel->sendPending);
 	}
 
-	MESPDebugMsg("***");
+	MESPDebugMsg("***\n");
 }

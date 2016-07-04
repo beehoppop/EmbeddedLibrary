@@ -124,6 +124,7 @@ private:
 
 		eConnectionTimeoutMS = 10000,
 		eTransmitTimeoutMS = 5000,
+		eIPDTimeout = 2000,
 	};
 
 	struct SChannel
@@ -171,6 +172,8 @@ private:
 			linkIndex = -1;
 			sendPending = false;
 			isConnected = false;
+			incomingBufferIndex = 0;
+			incomingTotalBytes = 0;
 			outgoingTotalBytes = 0;
 		}
 

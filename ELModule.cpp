@@ -44,8 +44,8 @@ enum
 	eMaxEEPROMModules = 16,
 };
 
-#define MDebugDelayEachModule 1
-#define MDebugDelayStart 0
+#define MDebugDelayEachModule 0
+#define MDebugModules 0
 #define MDebugTargetNode 0xFF
 
 struct SEEPROMEntry
@@ -150,7 +150,9 @@ CModule::DoneConstructing(
 
 	SetupIfNeeded();
 
+	#if MDebugModules
 	SystemMsg("%s DoneConstruction: free mem = %ld", uid, GetFreeMemory());
+	#endif
 }
 
 void
@@ -159,10 +161,8 @@ CModule::SetupIfNeeded(
 {
 	if(gSetupStarted && enabled && !hasBeenSetup)
 	{
-		#if MDebugDelayEachModule || MDebugDelayStart
-			SystemMsg("Module: Setup %s\n", uid);
-		#endif
 		#if MDebugDelayEachModule
+			SystemMsg("Module: Setup %s\n", uid);
 			//Need to fix this code to not reference gConfigModule since it has not been initialized yet
 			//if(MDebugTargetNode == 0xFF || MDebugTargetNode == gConfigModule->GetVal(eConfigVar_NodeID))
 			{
@@ -358,13 +358,6 @@ CModule::SetupAll(
 		EEPROM.write(eEEPROM_ModuleCountOffset, MStaticArrayLength(gEEPROMEntryList));
 	}
 
-	#if MDebugDelayStart
-		if(MDebugTargetNode == 0xFF /*|| MDebugTargetNode == gConfigModule->GetVal(eConfigVar_NodeID)*/)	// 		Need to fix this code to not reference gConfigModule since it has not been initialized yet
-		{
-			WaitForSerialPort();
-		}
-	#endif
-
 	gSetupStarted = true;
 
 	gCurLocalMS = millis();
@@ -378,7 +371,7 @@ CModule::SetupAll(
 
 	gConfigModule->SetupFinished();
 
-	#if MDebugDelayEachModule || MDebugDelayStart
+	#if MDebugDelayEachModule
 		SystemMsg("Module: Setup Complete\n"); delay(100);
 	#endif
 }
@@ -477,8 +470,19 @@ CModule::UpdateIfNeeded(
 	{
 		if(enabled)
 		{
-			//Serial.printf("Updating %s %d\n", gModuleList[i]->uid, gModuleList[i]->enabled); delay(100);
+			//Serial.printf("Updating %s\n", uid); delay(100);
+			#if 0
+			uint32_t startMS = millis();
+			#endif
 			Update((uint32_t)updateDeltaUS);
+			#if 0
+			uint32_t doneMS = millis();
+			uint32_t	result = doneMS - startMS;
+			if(result > 0)
+			{
+				Serial.printf("%s = %d\n", uid, result);
+			}
+			#endif
 			lastUpdateUS = gCurLocalUS;
 		}
 	}
@@ -489,7 +493,9 @@ StartingModuleConstruction(
 	char const*	inClassName,
 	uint32_t	inClassSize)
 {
+	#if MDebugModules
 	SystemMsg("%s StartConstruction: class size = %ld, free mem = %ld", inClassName, inClassSize, GetFreeMemory());
+	#endif
 	MAssert(sizeof(inClassName) <= GetFreeMemory());
 	gCurrentModuleConstructingName = inClassName;
 	gCurrentModuleClassSize = inClassSize;

@@ -60,6 +60,7 @@ CHTTPConnection::CHTTPConnection(
 	localPort = 0xFF;
 	openInProgress = false;
 	waitingOnResponse = false;
+	flushPending = false;
 	requestIndex = 0;
 }
 
@@ -75,7 +76,7 @@ CHTTPConnection::StartRequest(
 	snprintf(buffer, sizeof(buffer), "%s %s HTTP/1.1\r\n", inVerb, inURL);
 	buffer[sizeof(buffer) - 1] = 0;
 
-	SendData(buffer);
+	SendData(buffer, false);
 }
 
 void
@@ -117,7 +118,7 @@ CHTTPConnection::SendHeaders(
 
 	va_end(valist);
 
-	SendData(buffer);
+	SendData(buffer, false);
 }
 
 void
@@ -175,8 +176,8 @@ CHTTPConnection::SendBody(
 	SendHeaders(4, "Content-Length", itoa(bodyLen, blBuffer, 10), "User-Agent", "EmbeddedLibrary", "Host", serverAddress, "Accept", "*/*"); 
 
 	// Add a blank line
-	SendData("\r\n");
-	SendData(inBody);
+	SendData("\r\n", false);
+	SendData(inBody, true);
 
 	waitingOnResponse = true;
 	responseContentSize = 0;
@@ -211,8 +212,9 @@ CHTTPConnection::ResponseHandlerMethod(
 			localPort = inLocalPort;
 			if(requestIndex > 0)
 			{
-				gInternetModule->SendData(localPort, requestIndex, buffer);
+				gInternetModule->SendData(localPort, requestIndex, buffer, flushPending);
 				requestIndex = 0;
+				flushPending = false;
 			}
 			break;
 
@@ -236,11 +238,12 @@ CHTTPConnection::ResponseHandlerMethod(
 
 void
 CHTTPConnection::SendData(
-	char const*	inData)
+	char const*	inData,
+	bool		inFlush)
 {
 	if(localPort != 0xFF)
 	{
-		gInternetModule->SendData(localPort, strlen(inData), inData);
+		gInternetModule->SendData(localPort, strlen(inData), inData, inFlush);
 	}
 	else
 	{
@@ -259,9 +262,10 @@ CHTTPConnection::SendData(
 
 		memcpy(buffer + requestIndex, inData, dataLen);
 		requestIndex += dataLen;
+		flushPending |= inFlush;
 	}
 }
-	
+
 void
 CHTTPConnection::ProcessResponseData(
 	int			inDataSize,
@@ -528,7 +532,8 @@ bool
 CModule_Internet::SendData(
 	uint16_t						inLocalPort,
 	size_t							inDataSize,
-	char const*						inData)
+	char const*						inData,
+	bool							inFlush)
 {
 	SConnection*	target = NULL;
 	SConnection*	curConnection = connectionList;
@@ -543,7 +548,7 @@ CModule_Internet::SendData(
 
 	MReturnOnError(target == NULL || target->openRef > 0, false);
 
-	if(internetDevice->SendData(inLocalPort, inDataSize, inData, true) == false)
+	if(internetDevice->SendData(inLocalPort, inDataSize, inData, inFlush) == false)
 	{
 		CloseConnection(inLocalPort);
 		return false;
@@ -594,17 +599,16 @@ void
 CModule_Internet::Setup(
 	void)
 {
-	if(internetDevice != NULL)
-	{
-		if(settings.ssid[0] != 0)
-		{
-			internetDevice->ConnectToAP(settings.ssid, settings.pw, EWirelessPWEnc(settings.securityType));
-		}
+	MReturnOnError(internetDevice == NULL);	// Internet device needs to be setup before the general internet module
 
-		if(settings.ipAddr != 0)
-		{
-			internetDevice->SetIPAddr(settings.ipAddr, settings.subnetAddr, settings.gatewayAddr);
-		}
+	if(settings.ssid[0] != 0)
+	{
+		internetDevice->ConnectToAP(settings.ssid, settings.pw, EWirelessPWEnc(settings.securityType));
+	}
+
+	if(settings.ipAddr != 0)
+	{
+		internetDevice->SetIPAddr(settings.ipAddr, settings.subnetAddr, settings.gatewayAddr);
 	}
 
 	MCommandRegister("wireless_set", CModule_Internet::SerialCmd_WirelessSet, "[ssid] [pw] [wpa2|wep|open] : Set the wireless configuration");
