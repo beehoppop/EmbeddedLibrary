@@ -108,7 +108,7 @@ private:
 		int					inArgC,
 		char const*			inArgV[])
 	{
-		inOutput->printf("ALIVE node=%d ver=%s build date=%s %s\n", gConfigModule->GetVal(gConfigModule->nodeIDIndex), gVersionStr, __DATE__, __TIME__);
+		inOutput->printf("ALIVE node=%d ver=%s\n", gConfigModule->GetVal(gConfigModule->nodeIDIndex), gVersionStr);
 		
 		return eCmd_Succeeded;
 	}

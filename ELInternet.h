@@ -263,6 +263,11 @@ public:
 	virtual void
 	CloseConnection(
 		uint16_t	inPort) = 0;	// The open port
+
+	// Return true if a valid connection exists
+	virtual bool
+	ConnectedToInternet(
+		void) = 0;
 };
 
 class CModule_Internet : public CModule, public IOutputDirector, public ICmdHandler
@@ -324,6 +329,10 @@ public:
 		uint16_t					inPort,
 		IInternetHandler*			inInternetHandler,	// The object of the handler
 		THTTPResponseHandlerMethod	inResponseMethod);	// The method of the response handler
+	
+	bool
+	ConnectedToInternet(
+		void);
 
 private:
 	

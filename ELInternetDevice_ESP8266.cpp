@@ -73,7 +73,12 @@ CModule_ESP8266::CModule_ESP8266(
 	commandTail(0),
 	serialInputBufferLength(0),
 	serverPort(0),
-	channelCount(inChannelCount)
+	channelCount(inChannelCount),
+	ipdCurLinkIndex(-1),
+	ipdTotalBytes(0),
+	ipdCurByte(0),
+	wifiConnected(false),
+	gotIP(false)
 {
 	channelArray = (SChannel*)malloc(sizeof(SChannel) * channelCount);
 	MAssert(channelArray != NULL);
@@ -218,7 +223,14 @@ CModule_ESP8266::ProcessPendingCommand(
 	{
 		// command has timed out
 		MESPDebugMsg("Command TIMEOUT \"%s\"\n", curCommand->command);
-		if(targetChannel != NULL)
+		if(strstr(curCommand->command, "AT+CIPCLOSE") != NULL)
+		{
+			if(targetChannel != NULL)
+			{
+				targetChannel->ConnectionClosed();
+			}
+		}
+		else if(targetChannel != NULL)
 		{
 			targetChannel->connectionFailed = true;
 			targetChannel->outgoingTotalBytes = 0;
@@ -242,20 +254,37 @@ CModule_ESP8266::ProcessSerialInput(
 	bytesAvailable = MMin(bytesAvailable, sizeof(tmpBuffer));
 	serialPort->readBytes(tmpBuffer, bytesAvailable);
 
+	if(curIPDChannel != NULL)
+	{
+		curIPDChannel->lastUseTimeMS = millis();
+	}
+
 	for(size_t i = 0; i < bytesAvailable; ++i)
 	{
 		char c = tmpBuffer[i];
 
-		if(curIPDChannel != NULL)
+		if(ipdTotalBytes > 0)
 		{
 			// We are collecting incoming data from the IPD command
-			curIPDChannel->incomingBuffer[curIPDChannel->incomingBufferIndex++] = c;
-			if(curIPDChannel->incomingBufferIndex >= curIPDChannel->incomingTotalBytes)
+			if(curIPDChannel != NULL)
+			{
+				curIPDChannel->incomingBuffer[ipdCurByte++] = c;
+			}
+
+			if(ipdCurByte >= ipdTotalBytes)
 			{
 				// we have all the ipd data now so stop collecting, hold on to the data until it is collected from the GetData() method
-				MESPDebugMsg("Finished ipd lnk=%d bytes=%d\n", curIPDChannel->linkIndex, curIPDChannel->incomingBufferIndex);
-				curIPDChannel->lastUseTimeMS = millis();
-				curIPDChannel = NULL;
+				MESPDebugMsg("Finished ipd lnk=%d bytes=%d\n", ipdCurLinkIndex, ipdCurByte);
+
+				if(curIPDChannel != NULL)
+				{
+					curIPDChannel->incomingTotalBytes = ipdTotalBytes;
+					curIPDChannel = NULL;
+				}
+
+				ipdCurLinkIndex = -1;
+				ipdTotalBytes = 0;
+				ipdCurByte = 0;
 			}
 
 			continue;
@@ -267,19 +296,18 @@ CModule_ESP8266::ProcessSerialInput(
 			{
 				// we are done processing the IPD command
 				serialInputBuffer[serialInputBufferLength++] = 0;
-				int	curIPDLinkIndex, intPDBBytes;
-				sscanf(serialInputBuffer, "%d,%d", &curIPDLinkIndex, &intPDBBytes);
-				MESPDebugMsg("Collecting ipd lnk=%d bytes=%d\n", curIPDLinkIndex, intPDBBytes);
-				curIPDChannel = FindChannel(curIPDLinkIndex);
+				ipdCurByte = 0;
+				sscanf(serialInputBuffer, "%d,%d", &ipdCurLinkIndex, &ipdTotalBytes);
+				MESPDebugMsg("Collecting ipd lnk=%d bytes=%d\n", ipdCurLinkIndex, ipdTotalBytes);
+				curIPDChannel = FindChannel(ipdCurLinkIndex);
 				if(curIPDChannel != NULL)
 				{
-					curIPDChannel->incomingBufferIndex = 0;
-					curIPDChannel->incomingTotalBytes = (size_t)intPDBBytes;
+					curIPDChannel->lastUseTimeMS = millis();
 				}
 				else
 				{
 					// We should have received a CONNECT msg from the chip
-					MESPDebugMsg("WARNING: IPD lnk=%d not in use\n", curIPDLinkIndex);
+					MESPDebugMsg("WARNING: IPD lnk=%d not in use\n", ipdCurLinkIndex);
 				}
 
 				ipdParsing = false;
@@ -442,6 +470,18 @@ CModule_ESP8266::ProcessInputResponse(
 			targetChannel->ConnectionClosed();
 		}
 		DumpState();
+	}
+	else if(strcmp(inCmd, "WIFI CONNECTED") == 0)
+	{
+		wifiConnected = true;
+	}
+	else if(strcmp(inCmd, "WIFI DISCONNECTED") == 0)
+	{
+		wifiConnected = false;
+	}
+	else if(strcmp(inCmd, "WIFI GOT IP") == 0)
+	{
+		gotIP = true;
 	}
 	else
 	{
@@ -607,15 +647,14 @@ CModule_ESP8266::GetData(
 	for(int i = 0; i < channelCount; ++i, ++curChannel)
 	{
 		//MESPDebugMsg("chn=%d inuse=%d lnk=%d bytes=%d", i, curChannel->inUse, curChannel->linkIndex, curChannel->incomingTotalBytes);
-		if(curChannel->inUse && curChannel->incomingTotalBytes > 0 && curChannel->incomingBufferIndex >= curChannel->incomingTotalBytes)
+		if(curChannel->inUse && curChannel->incomingTotalBytes > 0)
 		{
-			MESPDebugMsg("Got data chn=%d lnk=%d srp=%d bytes=%d bi=%d\n", i, curChannel->linkIndex, curChannel->serverPort, curChannel->incomingTotalBytes, curChannel->incomingBufferIndex);
+			MESPDebugMsg("Got data chn=%d lnk=%d srp=%d bytes=%d\n", i, curChannel->linkIndex, curChannel->serverPort, curChannel->incomingTotalBytes);
 
 			ioBufferSize = MMin(ioBufferSize, curChannel->incomingTotalBytes);
 			memcpy(outBuffer, curChannel->incomingBuffer, ioBufferSize);
 			outReplyPort = i;
 			curChannel->incomingTotalBytes = 0;
-			curChannel->incomingBufferIndex = 0;
 			outPort = curChannel->serverPort ? serverPort : i;
 			return;
 		}
@@ -635,7 +674,9 @@ CModule_ESP8266::SendData(
 
 	SChannel*	targetChannel = channelArray + inPort;
 
-	MReturnOnError(!targetChannel->inUse || targetChannel->linkIndex < 0 || targetChannel->connectionFailed, false);
+	MReturnOnError(!targetChannel->inUse, false);
+	MReturnOnError(targetChannel->linkIndex < 0, false);
+	MReturnOnError(targetChannel->connectionFailed, false);
 
 	while(inBufferSize > 0)
 	{
@@ -731,6 +772,13 @@ CModule_ESP8266::CloseConnection(
 	targetChannel->inUse = false;
 
 	DumpState();
+}
+
+bool
+CModule_ESP8266::ConnectedToInternet(
+	void)
+{
+	return wifiConnected && gotIP;
 }
 
 void

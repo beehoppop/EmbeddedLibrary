@@ -116,6 +116,10 @@ private:
 	CloseConnection(
 		uint16_t	inPort);
 
+	virtual bool
+	ConnectedToInternet(
+		void);
+
 		
 	enum
 	{
@@ -146,7 +150,6 @@ private:
 			isConnected = false;
 
 			linkIndex = -1;
-			incomingBufferIndex = 0;
 			incomingTotalBytes = 0;
 			outgoingTotalBytes = 0;
 			lastUseTimeMS = millis();
@@ -172,7 +175,6 @@ private:
 			linkIndex = -1;
 			sendPending = false;
 			isConnected = false;
-			incomingBufferIndex = 0;
 			incomingTotalBytes = 0;
 			outgoingTotalBytes = 0;
 		}
@@ -186,17 +188,16 @@ private:
 		}
 
 		uint32_t	lastUseTimeMS;
-		char	incomingBuffer[eMaxIncomingPacketSize];
-		char	outgoingBuffer[eMaxOutgoingPacketSize];
-		size_t	incomingBufferIndex;
-		size_t	incomingTotalBytes;
-		size_t	outgoingTotalBytes;
-		int		linkIndex;
-		bool	inUse;
-		bool	serverPort;
-		bool	connectionFailed;
-		bool	sendPending;
-		bool	isConnected;
+		char		incomingBuffer[eMaxIncomingPacketSize];
+		char		outgoingBuffer[eMaxOutgoingPacketSize];
+		uint16_t	outgoingTotalBytes;
+		uint16_t	incomingTotalBytes;
+		int			linkIndex;
+		bool		inUse;
+		bool		serverPort;
+		bool		connectionFailed;
+		bool		sendPending;
+		bool		isConnected;
 	};
 
 	struct SPendingCommand
@@ -282,6 +283,13 @@ private:
 
 	uint8_t		channelCount;
 	SChannel*	channelArray;
+
+	int	ipdCurLinkIndex;
+	int	ipdTotalBytes;
+	int	ipdCurByte;
+
+	bool	wifiConnected;
+	bool	gotIP;
 };
 
 #endif /* _ELINTERNETDEVICE_ESP8266_H_ */

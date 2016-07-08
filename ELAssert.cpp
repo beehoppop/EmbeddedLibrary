@@ -275,3 +275,11 @@ RemoveSysMsgHandler(
 		}
 	}
 }
+
+void
+AllowABreakpoint(
+	void)
+{
+	// Allow a breakpoint to be set on this line if MReturnOnError encounters an error
+	static int a = 1;
+}

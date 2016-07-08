@@ -108,10 +108,10 @@ void
 CModule_Loggly::Update(
 	uint32_t	inDeltaUS)
 {
-	if(connection != NULL && requestInProgress == false && head > tail)
+	if(gInternetModule->ConnectedToInternet() && connection != NULL && requestInProgress == false && head > tail)
 	{
 		char	tagsBuffer[128];
-		char	msgBuffer[256];
+		char	msgBuffer[512];
 
 		connection->StartRequest("POST", url);
 		connection->SendHeaders(1, "content-type", "text/plain");
@@ -159,36 +159,48 @@ CModule_Loggly::Update(
 			}
 		}
 
-		if(hasTags || globalTags[0] != 0)
+		tagsBuffer[0] = 0;
+
+		#if WIN32
+			strcat(tagsBuffer, "WIN32,");
+		#endif
+
+		if(gVersionStr[0] != 0)
 		{
-			char*	ctp = tagsBuffer;
-			char*	etp = ctp + sizeof(tagsBuffer) - 1;
-			strncpy(ctp, globalTags, sizeof(tagsBuffer));
-			tagsBuffer[sizeof(tagsBuffer) - 1] = 0;
-			ctp += strlen(tagsBuffer);
+			strcat(tagsBuffer, gVersionStr);
+			strcat(tagsBuffer, ",");
+		}
 
-			if(hasTags && ctp < etp)
+		if(globalTags[0] != 0)
+		{
+			strcat(tagsBuffer, globalTags);
+		}
+
+		char*	ctp = tagsBuffer;
+		char*	etp = ctp + sizeof(tagsBuffer) - 1;
+		ctp += strlen(tagsBuffer);
+
+		if(hasTags && ctp < etp)
+		{
+			*ctp++ = ',';
+			for(;;)
 			{
-				*ctp++ = ',';
-				for(;;)
+				char c = buffer[tail++ % sizeof(buffer)];
+				if(c == ':')
 				{
-					char c = buffer[tail++ % sizeof(buffer)];
-					if(c == ':')
-					{
-						++tail;
-						break;
-					}
+					++tail;
+					break;
+				}
 
-					if(ctp < etp)
-					{
-						*ctp++ = c;
-					}
+				if(ctp < etp)
+				{
+					*ctp++ = c;
 				}
 			}
-			*ctp++ = 0;
-
-			connection->SendHeaders(1, "X-LOGGLY-TAG", tagsBuffer);
 		}
+		*ctp++ = 0;
+
+		connection->SendHeaders(1, "X-LOGGLY-TAG", tagsBuffer);
 
 		for(;;)
 		{

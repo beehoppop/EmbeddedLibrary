@@ -474,6 +474,7 @@ CModule_RealTime::SetEpochTime(
 
 	if(oldEpochTime != GetEpochTime(inUTC))
 	{
+		SystemMsg("Time has been changed, old=%lu new=%lu", oldEpochTime, GetEpochTime(inUTC));
 		STimeChangeHandler*	curHandler = timeChangeHandlerArray;
 		for(int i = 0; i < eTimeChangeHandler_MaxCount; ++i, ++curHandler)
 		{
@@ -1201,14 +1202,14 @@ CModule_RealTime::ScheduleAlarm(
 		{
 			inAlarm->nextTriggerTimeUTC = LocalToUTC(inAlarm->nextTriggerTimeUTC);
 		}
-		SystemMsg(eMsgLevel_Medium, "%s scheduled for %02d/%02d/%04d %02d:%02d:%02d", inAlarm->name, month, day, year, hour, min, sec);
+		SystemMsg("%s scheduled for %02d/%02d/%04d %02d:%02d:%02d", inAlarm->name, month, day, year, hour, min, sec);
 	}
 	else
 	{
-		SystemMsg(eMsgLevel_Basic, "ScheduleAlarm: %s could not be scheduled", inAlarm->name);
-		SystemMsg(eMsgLevel_Medium, "  target was %02d/%02d/%04d %02d:%02d:%02d", inAlarm->month, inAlarm->dayOfMonth, inAlarm->year, inAlarm->hour, inAlarm->minute, inAlarm->second);
+		SystemMsg("ScheduleAlarm: %s could not be scheduled", inAlarm->name);
+		SystemMsg("  target was %02d/%02d/%04d %02d:%02d:%02d", inAlarm->month, inAlarm->dayOfMonth, inAlarm->year, inAlarm->hour, inAlarm->minute, inAlarm->second);
 		GetComponentsFromEpochTime(GetEpochTime(inAlarm->utc), year, month, day, dow, hour, min, sec);
-		SystemMsg(eMsgLevel_Medium, "  now is %02d/%02d/%04d %02d:%02d:%02d", month, day, year, hour, min, sec);
+		SystemMsg("  now is %02d/%02d/%04d %02d:%02d:%02d", month, day, year, hour, min, sec);
 		inAlarm->name = NULL;
 	}
 }
@@ -1674,7 +1675,7 @@ CModule_RealTime::GetNextDateTime(
 	int&	ioSec,
 	bool	inUTC)
 {
-	return GetNextDateTimeFromTime(GetEpochTime(inUTC), ioYear, ioMonth, ioDay, ioDayOfWeek, ioHour, ioMin, ioSec);
+	return GetNextDateTimeFromTime(GetEpochTime(inUTC) + 1, ioYear, ioMonth, ioDay, ioDayOfWeek, ioHour, ioMin, ioSec);
 }
 
 int

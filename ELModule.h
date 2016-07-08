@@ -159,6 +159,7 @@ private:
 
 extern uint64_t		gCurLocalMS;	// The accumulated ms since boot, its 64-bit so it will never overflow
 extern uint64_t		gCurLocalUS;	// The accumulated us since boot, its 64-bit so it will never overflow
+extern char const*	gVersionStr;
 
 void
 StartingModuleConstruction(

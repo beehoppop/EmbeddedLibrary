@@ -197,8 +197,8 @@ CModule_OutdoorLightingControl::UpdateTimes(
 
 	SystemMsg("Setup time of day = %d\n", timeOfDay);
 
-	ledsOn = timeOfDay == eTimeOfDay_Night;
-
+	curLEDOnState = ledsOn = timeOfDay == eTimeOfDay_Night;
+	olInterface->LEDStateChange(curLEDOnState);
 }
 
 void
@@ -286,6 +286,9 @@ CModule_OutdoorLightingControl::CommandHomePageHandler(
 	IOutputDirector*	inOutput)
 {
 	// Send html via in Output to add to the command server home page served to clients
+
+	inOutput->printf("<form action=\"cmd_data.asp\"><input type=\"submit\" value=\"LEDs On\"><input type=\"hidden\" name=\"Command\" value=\"ledstate_set on\"></form>");
+	inOutput->printf("<form action=\"cmd_data.asp\"><input type=\"submit\" value=\"LEDs Off\"><input type=\"hidden\" name=\"Command\" value=\"ledstate_set off\"></form>");
 
 	inOutput->printf("<table border=\"1\">");
 	inOutput->printf("<tr><th>Parameter</th><th>Value</th></tr>");
@@ -438,13 +441,13 @@ CModule_OutdoorLightingControl::MotionSensorTrigger(
 		{
 			SystemMsg("Motion sensor off, setting cooldown timer\n");
 
-			// Set an event for settings.motionTripTimeoutMins mins from now
+			// Set an event for settings.motionTripTimeoutMins mins from now, when it expires motionSensorTrip will be set to false
 			MRealTimeRegisterEvent("MotionTripCD", settings.motionTripTimeoutMins * 60 * 1000000, true, CModule_OutdoorLightingControl::MotionTripCooldown, NULL);
 		}
 		else
 		{
+			// Its daytime so just immediately set motionSensorTrip to false 
 			motionSensorTrip = false;
-			ledsOn = false;
 		}
 	}
 }
@@ -481,10 +484,12 @@ CModule_OutdoorLightingControl::SetLEDState(
 
 	if(strcmp(inArgv[1], "on") == 0)
 	{
+		SystemMsg("ledsOn set to true\n");
 		ledsOn = true;
 	}
 	else if(strcmp(inArgv[1], "off") == 0)
 	{
+		SystemMsg("ledsOn set to false\n");
 		ledsOn = false;
 	}
 	else
@@ -508,9 +513,7 @@ CModule_OutdoorLightingControl::SetLateNightStartTime(
 
 	settings.lateNightStartHour = atoi(inArgv[1]);
 	settings.lateNightStartMin = atoi(inArgv[2]);
-		
-	MRealTimeRegisterAlarm("LateNightAlarm", eAlarm_Any, eAlarm_Any, eAlarm_Any, eAlarm_Any, settings.lateNightStartHour, settings.lateNightStartMin, 0, CModule_OutdoorLightingControl::LateNightAlarm, NULL);
-
+	
 	EEPROMSave();
 
 	UpdateTimes();
@@ -629,6 +632,8 @@ CModule_OutdoorLightingControl::SetOverride(
 
 	overrideActive = atoi(inArgv[1]) > 0;
 	overrideState = atoi(inArgv[2]) > 0;
+
+	SystemMsg("Setting override to overrideActive=%d overrideState=%d\n", overrideActive, overrideState);
 
 	return eCmd_Succeeded;
 }

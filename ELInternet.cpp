@@ -40,9 +40,11 @@ static char const*	gCmdHomePageGet = "GET / HTTP";
 static char const*	gCmdProcessPageGet = "GET /cmd_data.asp?Command=";
 static char const*	gReplyStringPreOutput = 
 	"HTTP/1.1 200 OK\r\n"
-	"Content-Type: text/html\r\n\r\n"
+	"Content-Type: text/html\r\n"
+	"Connection: close\r\n"
+	"\r\n"
 	"<!DOCTYPE html><html><body>"
-	"<form action=\"cmd_data.asp\">Command: <input type=\"text\" name=\"Command\"<br><input type=\"submit\" value=\"Submit\"></form><p>Click the \"Submit\" button and the command will be sent to the server.</p><code>"
+	"<form action=\"cmd_data.asp\">Command: <input type=\"text\" name=\"Command\" autocapitalize=\"none\"><br><input type=\"submit\" value=\"Submit\"></form><p>Click the \"Submit\" button and the command will be sent to the server.</p><code>"
 	;
 static char const*	gReplyStringPostOutput = "</code></body></html>";
 	
@@ -594,6 +596,13 @@ CModule_Internet::CreateHTTPConnection(
 	MReturnOnError(internetDevice == NULL, NULL);
 	return new CHTTPConnection(inServer, inPort, inInternetHandler, inResponseMethod);
 }
+	
+bool
+CModule_Internet::ConnectedToInternet(
+	void)
+{
+	return internetDevice && internetDevice->ConnectedToInternet();
+}
 
 void
 CModule_Internet::Setup(
@@ -783,7 +792,7 @@ CModule_Internet::Update(
 					}
 				}
 
-				if(curConnection->openRef < 0 && !(portState & ePortState_IsOpen))
+				else if(curConnection->openRef < 0 && !(portState & ePortState_IsOpen))
 				{
 					(curConnection->handlerObject->*curConnection->handlerResponseMethod)(eConnectionResponse_Closed, curConnection->localPort, 0, NULL);
 					if(curConnection->localPort != 0xFF)
