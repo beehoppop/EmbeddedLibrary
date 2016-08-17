@@ -428,7 +428,7 @@ CModule::LoopAll(
 	void)
 {
 
-	if(gFlashLED && gConfigModule->GetVal(gBlinkLEDIndex) == 1)
+	if(gFlashLED /*&& gConfigModule->GetVal(gBlinkLEDIndex) == 1*/)
 	{
 		static bool	on = false;
 		static uint64_t	lastBlinkTime;

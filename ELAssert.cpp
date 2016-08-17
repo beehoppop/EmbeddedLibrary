@@ -281,5 +281,7 @@ AllowABreakpoint(
 	void)
 {
 	// Allow a breakpoint to be set on this line if MReturnOnError encounters an error
+	#if WIN32
 	static int a = 1;
+	#endif
 }

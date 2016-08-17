@@ -435,9 +435,9 @@ CModule_ESP8266::ProcessInputResponse(
 			++commandTail;
 		}
 	}
-	else if(strcmp(inCmd + 1, ",CONNECT") == 0 && isdigit(inCmd[0]))
+	else if(strstr(inCmd, ",CONNECT") != NULL)
 	{
-		int	linkIndex = inCmd[0] - '0';
+		int	linkIndex = atoi(inCmd);
 		SChannel*	targetChannel = FindChannel(linkIndex);
 		bool		isServer = targetChannel == NULL;
 		MESPDebugMsg("Incoming Connect lnk=%d server=%d\n", linkIndex, isServer);
