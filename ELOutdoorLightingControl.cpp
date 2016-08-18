@@ -81,6 +81,7 @@ CModule_OutdoorLightingControl::CModule_OutdoorLightingControl(
 	curTransformerState = false;
 	curTransformerTransitionState = false;
 	luxTriggerState = false;
+	ledsOn = false;
 	curLEDOnState = false;
 	curMotionSensorTrip = false;
 	overrideActive = false;
@@ -197,8 +198,7 @@ CModule_OutdoorLightingControl::UpdateTimes(
 
 	SystemMsg("Setup time of day = %d\n", timeOfDay);
 
-	curLEDOnState = ledsOn = timeOfDay == eTimeOfDay_Night;
-	olInterface->LEDStateChange(curLEDOnState);
+	ledsOn = timeOfDay == eTimeOfDay_Night;
 }
 
 void
