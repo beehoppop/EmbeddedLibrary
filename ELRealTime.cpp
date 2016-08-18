@@ -52,7 +52,7 @@ public:
 	{
 	}
 
-	virtual void
+	virtual bool
 	SetUTCDateAndTime(
 		int			inYear,			// 20xx
 		int			inMonth,		// 1 to 12
@@ -65,12 +65,13 @@ public:
 	}
 
 	// This requests a syncronization from the provider which must call gRealTime->SetDateAndTime() to set the time, this allows the fetching of the date and time to be asyncronous
-	virtual void
+	virtual bool
 	RequestSync(
 		void)
 	{
 		time_t	localTime = time(NULL) /*- 33 * 60*/;
 		gRealTime->SetEpochTime((TEpochTime)localTime);
+		return true;
 	}
 };
 
@@ -101,6 +102,7 @@ public:
 		SPI.begin();
 		SPI.beginTransaction(spiSettings);
 		digitalWrite(chipselect, LOW);  
+		delayMicroseconds(1);
 		//set control register 
 		SPI.transfer(0x8E);
 		SPI.transfer(0x60); //60= disable Oscillator and Battery SQ wave @1hz, temp compensation, Alarms disabled
@@ -114,11 +116,9 @@ public:
 			SPI.setMOSI(11);
 			SPI.setSCK(13);
 		}
-
-		delay(10);
 	}
 
-	virtual void
+	virtual bool
 	SetUTCDateAndTime(
 		int			inYear,			// xxxx or xx
 		int			inMonth,		// 1 to 12
@@ -151,16 +151,17 @@ public:
 		{
 			// This is an invalid year so bail
 			SystemMsg("SetUTCDateAndTime: Invalid year");
-			return;
+			return false;
 		}
 
 		if(inMonth < 1 || inMonth > 12 || inDayOfMonth < 1 || inDayOfMonth > 31 || inHour < 0 || inHour > 23 || inMin < 0 || inMin > 59 || inSec < 0 || inSec > 59)
 		{
 			SystemMsg("SetUTCDateAndTime: Invalid date");
-			return;
+			return false;
 		}
 
 		int TimeDate [7] = {inSec, inMin, inHour, 0, inDayOfMonth, inMonth, inYear};
+		SystemMsg("set %d %d %d %d %d %d\n", TimeDate[6], TimeDate[5], TimeDate[4], TimeDate[2], TimeDate[1], TimeDate[0]);
 
 		if(useAltSPI)
 		{
@@ -186,10 +187,26 @@ public:
 			
 			SPI.beginTransaction(spiSettings);
 			digitalWrite(chipselect, LOW);
+			delayMicroseconds(1);
 			SPI.transfer(i + 0x80); 
 			SPI.transfer(TimeDate[i]);        
 			digitalWrite(chipselect, HIGH);
 			SPI.endTransaction();
+
+			SPI.beginTransaction(spiSettings);
+			digitalWrite(chipselect, LOW);
+			delayMicroseconds(1);
+			SPI.transfer(i + 0x00);
+			int n = SPI.transfer(0x00);
+			digitalWrite(chipselect, HIGH);
+			SPI.endTransaction();
+
+			if(TimeDate[i] != n)
+			{
+				SystemMsg("Date written incorrectly, i=%d wr=%x rd=%x", i, TimeDate[i], n);
+				return false;
+			}
+
 		}
 		SPI.end();
 		if(useAltSPI)
@@ -198,9 +215,11 @@ public:
 			SPI.setMOSI(11);
 			SPI.setSCK(13);
 		}
+
+		return true;
 	}
 
-	virtual void
+	virtual bool
 	RequestSync(
 		void)
 	{
@@ -212,6 +231,7 @@ public:
 			SPI.setMOSI(7);
 			SPI.setSCK(14);
 		}
+
 		SPI.begin();
 		for(int i = 0; i < 7; ++i)
 		{
@@ -220,8 +240,10 @@ public:
 
 			SPI.beginTransaction(spiSettings);
 			digitalWrite(chipselect, LOW);
+			delayMicroseconds(1);
 			SPI.transfer(i + 0x00); 
-			unsigned int n = SPI.transfer(0x00);        
+			int n = SPI.transfer(0x00);
+			//SystemMsg("%x", n);
 			digitalWrite(chipselect, HIGH);
 			SPI.endTransaction();
 
@@ -237,31 +259,27 @@ public:
 			}
 		}
 		SPI.end();
-		if(useAltSPI)
+
+		if (useAltSPI)
 		{
 			SPI.setMISO(12);
 			SPI.setMOSI(11);
 			SPI.setSCK(13);
 		}
 
-		if(TimeDate[6] >= 70 && TimeDate[6] <= 99)
-		{
-			TimeDate[6] += 1900;
-		}
-		else
-		{
-			TimeDate[6] += 2000;
-		}
+		TimeDate[6] += (TimeDate[6] >= 70 && TimeDate[6] <= 99) ? 1900 : 2000;
 
-		//SystemMsg("got %d %d %d %d %d %d\n", TimeDate[6], TimeDate[5], TimeDate[4], TimeDate[2], TimeDate[1], TimeDate[0]);
+		SystemMsg("got %d %d %d %d %d %d\n", TimeDate[6], TimeDate[5], TimeDate[4], TimeDate[2], TimeDate[1], TimeDate[0]);
 
-		if(TimeDate[5] < 1 || TimeDate[5] > 12 || TimeDate[4] < 1 || TimeDate[4] > 31 || TimeDate[2] < 0 || TimeDate[2] > 23 || TimeDate[1] < 0 || TimeDate[1] > 59 || TimeDate[0] < 0 || TimeDate[0] > 59)
+		if (TimeDate[5] < 1 || TimeDate[5] > 12 || TimeDate[4] < 1 || TimeDate[4] > 31 || TimeDate[2] < 0 || TimeDate[2] > 23 || TimeDate[1] < 0 || TimeDate[1] > 59 || TimeDate[0] < 0 || TimeDate[0] > 59)
 		{
-			SystemMsg(eMsgLevel_Basic, "RequestSync: Invalid date from hardware");
-			return;
+			SystemMsg("RequestSync: Invalid date from hardware");
+			return false;
 		}
 
 		gRealTime->SetDateAndTime(TimeDate[6], TimeDate[5], TimeDate[4], TimeDate[2], TimeDate[1], TimeDate[0], true);
+
+		return true;
 	}
 
 	int			chipselect;
@@ -345,7 +363,7 @@ void
 CModule_RealTime::Update(
 	uint32_t	inDeltaTimeUS)
 {
-	if(provider != NULL && (gCurLocalMS - localMSAtLastSet) / 1000 >= providerSyncPeriod && timeMultiplier == 1)
+	if(provider != NULL && timeMultiplier == 1 && (millis() - localMSAtLastSet) / 1000 >= providerSyncPeriod)
 	{
 		provider->RequestSync();
 	}
@@ -459,29 +477,30 @@ CModule_RealTime::SetEpochTime(
 	TEpochTime	inEpochTime,
 	bool		inUTC)
 {
-	TEpochTime	oldEpochTime = GetEpochTime(inUTC);
+	TEpochTime	oldEpochTime = GetEpochTime(true);
 
-	localMSAtLastSet = gCurLocalMS;
-
-	if(inUTC)
+	if(!inUTC)
 	{
-		epocUTCTimeAtLastSet = inEpochTime;
-	}
-	else
-	{
-		epocUTCTimeAtLastSet = LocalToUTC(inEpochTime);
+		inEpochTime = LocalToUTC(inEpochTime);
 	}
 
-	if(oldEpochTime != GetEpochTime(inUTC))
+	if(abs(inEpochTime - oldEpochTime) <= 1)
 	{
-		SystemMsg("Time has been changed, old=%lu new=%lu", oldEpochTime, GetEpochTime(inUTC));
-		STimeChangeHandler*	curHandler = timeChangeHandlerArray;
-		for(int i = 0; i < eTimeChangeHandler_MaxCount; ++i, ++curHandler)
+		// Don't update the time if it is off by 1 second or less
+		return;
+	}
+
+	SystemMsg("Time has been changed, old=%lu new=%lu diff=%ld", oldEpochTime, inEpochTime, oldEpochTime - inEpochTime);
+
+	localMSAtLastSet = millis();
+	epocUTCTimeAtLastSet = inEpochTime;
+
+	STimeChangeHandler*	curHandler = timeChangeHandlerArray;
+	for(int i = 0; i < eTimeChangeHandler_MaxCount; ++i, ++curHandler)
+	{
+		if(curHandler->name != NULL && curHandler->object != NULL)
 		{
-			if(curHandler->name != NULL && curHandler->object != NULL)
-			{
-				(curHandler->object->*curHandler->method)(curHandler->name, false);
-			}
+			(curHandler->object->*curHandler->method)(curHandler->name, false);
 		}
 	}
 }
@@ -504,7 +523,7 @@ TEpochTime
 CModule_RealTime::GetEpochTime(
 	bool	inUTC)
 {
-	TEpochTime	result = epocUTCTimeAtLastSet + (uint32_t)((gCurLocalMS - localMSAtLastSet) * timeMultiplier / 1000);
+	TEpochTime	result = epocUTCTimeAtLastSet + ((millis() - localMSAtLastSet + 500) / 1000) * timeMultiplier;
 
 	if(!inUTC)
 	{
@@ -1279,7 +1298,10 @@ CModule_RealTime::SerialSetTime(
 
 	if(provider != NULL)
 	{
-		provider->SetUTCDateAndTime(year, month, day, hour, min, sec);
+		if(provider->SetUTCDateAndTime(year, month, day, hour, min, sec) == false)
+		{
+			return eCmd_Failed;
+		}
 	}
 
 	SetDateAndTime(year, month, day, hour, min, sec, true);
@@ -1305,7 +1327,12 @@ CModule_RealTime::SerialGetTime(
 
 	if(timeMultiplier == 1 && provider != NULL)
 	{
-		provider->RequestSync();
+		if(provider->RequestSync() == false)
+		{
+			inOutput->printf("Time provider sync failed\n");
+
+			return eCmd_Failed;
+		}
 	}
 
 	GetDateAndTime(year, month, day, dow, hour, min, sec, utc);

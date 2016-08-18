@@ -99,7 +99,7 @@ class IRealTimeDataProvider
 {
 public:
 	
-	virtual void
+	virtual bool
 	SetUTCDateAndTime(
 		int			inYear,			// 20xx
 		int			inMonth,		// 1 to 12
@@ -109,7 +109,7 @@ public:
 		int			inSecond) = 0;	// 00 to 59
 
 	// This requests a syncronization from the provider which must call gRealTime->SetDateAndTime() to set the time, this allows the fetching of the date and time to be asyncronous
-	virtual void
+	virtual bool
 	RequestSync(
 		void) = 0;
 };
@@ -446,7 +446,7 @@ private:
 	uint32_t				providerSyncPeriod;
 
 	TEpochTime	epocUTCTimeAtLastSet;
-	uint64_t	localMSAtLastSet;
+	uint32_t	localMSAtLastSet;
 
 	STimeZoneRule	timeZoneInfo;
 	TEpochTime	dstStartUTCEpocTime;
