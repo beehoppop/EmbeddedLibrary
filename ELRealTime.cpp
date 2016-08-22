@@ -61,7 +61,7 @@ public:
 		int			inMinute,		// 00 to 59
 		int			inSecond)		// 00 to 59
 	{
-
+		return true;
 	}
 
 	// This requests a syncronization from the provider which must call gRealTime->SetDateAndTime() to set the time, this allows the fetching of the date and time to be asyncronous
@@ -484,7 +484,7 @@ CModule_RealTime::SetEpochTime(
 		inEpochTime = LocalToUTC(inEpochTime);
 	}
 
-	if(abs(inEpochTime - oldEpochTime) <= 1)
+	if(abs((int32_t)(inEpochTime - oldEpochTime)) <= 1)
 	{
 		// Don't update the time if it is off by 1 second or less
 		return;
