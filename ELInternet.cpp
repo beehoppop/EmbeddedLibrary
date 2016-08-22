@@ -36,15 +36,13 @@
 
 CModule_Internet*	gInternetModule;
 
-static char const*	gCmdHomePageGet = "GET / HTTP";
-static char const*	gCmdProcessPageGet = "GET /cmd_data.asp?Command=";
 static char const*	gReplyStringPreOutput = 
 	"HTTP/1.1 200 OK\r\n"
 	"Content-Type: text/html\r\n"
 	"Connection: close\r\n"
 	"\r\n"
 	"<!DOCTYPE html><html><body>"
-	"<form action=\"cmd_data.asp\">Command: <input type=\"text\" name=\"Command\" autocapitalize=\"none\"><br><input type=\"submit\" value=\"Submit\"></form><p>Click the \"Submit\" button and the command will be sent to the server.</p><code>"
+	"<form action=\"cmd_data\">Command: <input type=\"text\" name=\"Command\" autocapitalize=\"none\"><br><input type=\"submit\" value=\"Submit\"></form><p>Click the \"Submit\" button and the command will be sent to the server. Return <a href=\"/\">Home</a></p><code>"
 	;
 static char const*	gReplyStringPostOutput = "</code></body></html>";
 	
@@ -396,8 +394,8 @@ CModule_Internet::CModule_Internet(
 	memset(serverList, 0, sizeof(serverList));
 	memset(connectionList, 0, sizeof(connectionList));
 	memset(&settings, 0, sizeof(settings));
-	memset(commandServerFrontPageHandlerList, 0, sizeof(commandServerFrontPageHandlerList));
-	commandServerPort = 0;
+	memset(webServerPageHandlerList, 0, sizeof(webServerPageHandlerList));
+	webServerPort = 0;
 	respondingServer = false;
 	respondingServerPort = 0;
 	respondingReplyPort = 0;
@@ -560,25 +558,31 @@ CModule_Internet::SendData(
 }
 
 void
-CModule_Internet::CommandServer_Start(
+CModule_Internet::WebServer_Start(
 	uint16_t	inPort)
 {
 	MReturnOnError(internetDevice == NULL);
-	commandServerPort = inPort;
+
+	MInternetRegisterPage("/", CModule_Internet::CommandHomePageHandler);
+	MInternetRegisterPage("/cmd_data", CModule_Internet::CommandProcessPageHandler);
+
+	webServerPort = inPort;
 	internetDevice->Server_Open(inPort);
 }
 
 void
-CModule_Internet::CommandServer_RegisterFrontPage(
+CModule_Internet::WebServer_RegisterPageHandler(
+	char const*					inPage,
 	IInternetHandler*			inInternetHandler,
 	TInternetServerPageMethod	inMethod)
 {
-	for(int i = 0; i < eCommandServerFrontPageHandlerMax; ++i)
+	for(int i = 0; i < eWebServerPageHandlerMax; ++i)
 	{
-		if(commandServerFrontPageHandlerList[i].commandServerObject == NULL)
+		if(webServerPageHandlerList[i].object == NULL)
 		{
-			commandServerFrontPageHandlerList[i].commandServerObject = inInternetHandler;
-			commandServerFrontPageHandlerList[i].commandServerMethod = inMethod;
+			webServerPageHandlerList[i].pageName = inPage;
+			webServerPageHandlerList[i].object = inInternetHandler;
+			webServerPageHandlerList[i].method = inMethod;
 			return;
 		}
 	}
@@ -662,81 +666,48 @@ CModule_Internet::Update(
 	
 	if(bufferSize > 0)
 	{
-		if(localPort == commandServerPort)
+		if(localPort == webServerPort)
 		{
 			//DebugMsgLocal("Got cmd server data chn=%d", replyPort);
-			if(strncmp(buffer, gCmdHomePageGet, strlen(gCmdHomePageGet)) == 0)
+
+			char*	verb = NULL;
+			char*	url = NULL;
+			char*	httpStr = NULL;
+			char*	nextSpace;
+
+			verb = buffer;
+			nextSpace = strchr(verb, ' ');
+			if(nextSpace != NULL)
 			{
-				internetDevice->SendData(replyPort, strlen(gReplyStringPreOutput), gReplyStringPreOutput);
+				*nextSpace = 0;
+				url = nextSpace + 1;
 
-				respondingServer = true;
-				respondingServerPort = commandServerPort;
-				respondingReplyPort = replyPort;
-				for(int i = 0; i < eCommandServerFrontPageHandlerMax; ++i)
+				nextSpace = strchr(url, ' ');
+				if(nextSpace != NULL)
 				{
-					if(commandServerFrontPageHandlerList[i].commandServerObject != NULL)
-					{
-						(commandServerFrontPageHandlerList[i].commandServerObject->*(commandServerFrontPageHandlerList[i].commandServerMethod))(this);
-					}
+					*nextSpace = 0;
+					httpStr = nextSpace + 1;
 				}
-
-				internetDevice->SendData(replyPort, strlen(gReplyStringPostOutput), gReplyStringPostOutput);
-				internetDevice->CloseConnection(replyPort);
 			}
-			else if(strncmp(buffer, gCmdProcessPageGet, strlen(gCmdProcessPageGet)) == 0)
+
+			if(verb != NULL && strcmp(verb, "GET") == 0 && url != NULL)
 			{
-				char*	httpStr = strrstr(buffer, "HTTP/1.1");
-				MReturnOnError(httpStr == NULL);
-				--httpStr;
-				*httpStr = 0;
+				char const*	paramList[32];	
+				int		paramCount = 32;
+				char*	pageName;
 
-				char*	csp = buffer + strlen(gCmdProcessPageGet);
-				//SystemMsg(eMsgLevel_Always, "Parsing Command: %s", csp);
-
-				char*		cdp = buffer;
-				char const*	argList[64];
-				int			argIndex = 0;
-
-				argList[argIndex++] = cdp;
-				while(csp < httpStr)
-				{
-					char c = *csp++;
-
-					if(c == '+')
-					{
-						*cdp++ = 0;
-						argList[argIndex++] = cdp;
-					}
-					else if(c == '%')
-					{
-						char numBuffer[3];
-						numBuffer[0] = csp[0];
-						numBuffer[1] = csp[1];
-						numBuffer[2] = 0;
-						*cdp++ = (char)strtol(numBuffer, NULL, 16);
-						csp += 2;
-					}
-					else
-					{
-						*cdp++ = c;
-					}
-				}
-				*cdp++ = 0;
+				ProcessURLParameters(paramCount, paramList, pageName, sizeof(buffer) - 16, buffer, url);
 
 				internetDevice->SendData(replyPort, strlen(gReplyStringPreOutput), gReplyStringPreOutput);
 
 				respondingServer = true;
-				respondingServerPort = commandServerPort;
+				respondingServerPort = webServerPort;
 				respondingReplyPort = replyPort;
-
-				// Call the front page handlers to provide html
-				gCommandModule->ProcessCommand(this, argIndex, argList);
-
-				for(int i = 0; i < eCommandServerFrontPageHandlerMax; ++i)
+				for(int i = 0; i < eWebServerPageHandlerMax; ++i)
 				{
-					if(commandServerFrontPageHandlerList[i].commandServerObject != NULL)
+					if(webServerPageHandlerList[i].object != NULL && strcmp(pageName, webServerPageHandlerList[i].pageName) == 0)
 					{
-						(commandServerFrontPageHandlerList[i].commandServerObject->*(commandServerFrontPageHandlerList[i].commandServerMethod))(this);
+						(webServerPageHandlerList[i].object->*(webServerPageHandlerList[i].method))(this, paramCount, paramList);
 					}
 				}
 
@@ -974,4 +945,134 @@ CModule_Internet::SerialCmd_IPAddrGet(
 	inOutput->printf("subnet: %d.%d.%d.%d\n", ((settings.subnetAddr >> 24) & 0xFF), ((settings.subnetAddr >> 16) & 0xFF), ((settings.subnetAddr >> 8) & 0xFF), ((settings.subnetAddr >> 0) & 0xFF));
 
 	return eCmd_Succeeded;
+}
+
+void
+CModule_Internet::CommandHomePageHandler(
+	IOutputDirector*	inOutput,
+	int					inParamCount,
+	char const**		inParamList)
+{
+	// Nothing to do here
+}
+
+void
+CModule_Internet::CommandProcessPageHandler(
+	IOutputDirector*	inOutput,
+	int					inParamCount,
+	char const**		inParamList)
+{
+	if(inParamCount != 2 || strcmp(inParamList[0], "Command") != 0)
+	{
+		return;
+	}
+
+	char*		cdp = (char*)inParamList[1];
+	char const*	argList[64];
+	int			argIndex = 0;
+	
+	argList[argIndex++] = cdp;
+	for(;;)
+	{
+		char c = *cdp++;
+
+		if(c == 0)
+		{
+			break;
+		}
+
+		if(c == ' ')
+		{
+			cdp[-1] = 0;
+			argList[argIndex++] = cdp;
+			if(argIndex >= 64)
+			{
+				break;
+			}
+		}
+	}
+
+	gCommandModule->ProcessCommand(inOutput, argIndex, argList);
+}
+
+void
+CModule_Internet::ProcessURLParameters(
+	int&			ioParameterCount,
+	char const**	outParameterList,
+	char*&			outPageName,
+	int				inParameterBufferSize,
+	char*			inParameterBuffer,
+	char const*		inURL)
+{
+	int		maxCount = ioParameterCount;
+	int		curParameterIndex = 0;
+	char*	dp = inParameterBuffer;
+	char*	edp = inParameterBuffer + inParameterBufferSize - 1;
+
+	char const*	cp = strchr(inURL, '?');
+
+	outPageName = dp;
+	if(cp == NULL)
+	{
+		strcpy(dp, inURL);
+		ioParameterCount = 0;
+		return;
+	}
+	else
+	{
+		strncpy(dp, inURL, cp - inURL);
+		dp +=  cp - inURL;
+		*dp++ = 0;
+		++cp;
+	}
+
+	outParameterList[0] = dp;
+
+	while(dp < edp)
+	{
+		char c = *cp++;
+
+		if(c == 0)
+		{
+			break;
+		}
+
+		if(c == '=' || c == '&')
+		{
+			*dp++ = 0;
+			++curParameterIndex;
+			if(curParameterIndex >= maxCount)
+			{
+				break;
+			}
+			outParameterList[curParameterIndex] = dp;
+		}
+		else if(c == '+')
+		{
+			*dp++ = ' ';
+		}
+		else if(c == '%')
+		{
+			char hexData[3];
+			hexData[0] = *cp++;
+			if(hexData[0] == 0)
+			{
+				break;
+			}
+			hexData[1] = *cp++;
+			if(hexData[2] == 0)
+			{
+				break;
+			}
+			hexData[2] = 0;
+			*dp++ = (char)strtol(hexData, NULL, 16);
+		}
+		else
+		{
+			*dp++ = c;
+		}
+	}
+
+	*dp++ = 0;
+	ioParameterCount = curParameterIndex + 1;
 }

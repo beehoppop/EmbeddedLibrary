@@ -149,7 +149,7 @@ CModule_OutdoorLightingControl::Setup(
 		luxTriggerState = settings.triggerLux < curLux;
 	}
 
-	MInternetRegisterFrontPage(CModule_OutdoorLightingControl::CommandHomePageHandler);
+	MInternetRegisterPage("/", CModule_OutdoorLightingControl::CommandHomePageHandler);
 }
 
 void
@@ -283,12 +283,14 @@ CModule_OutdoorLightingControl::Update(
 
 void
 CModule_OutdoorLightingControl::CommandHomePageHandler(
-	IOutputDirector*	inOutput)
+	IOutputDirector*	inOutput,
+	int					inParamCount,
+	char const**		inParamList)
 {
 	// Send html via in Output to add to the command server home page served to clients
 
-	inOutput->printf("<form action=\"cmd_data.asp\"><input type=\"submit\" value=\"LEDs On\"><input type=\"hidden\" name=\"Command\" value=\"ledstate_set on\"></form>");
-	inOutput->printf("<form action=\"cmd_data.asp\"><input type=\"submit\" value=\"LEDs Off\"><input type=\"hidden\" name=\"Command\" value=\"ledstate_set off\"></form>");
+	inOutput->printf("<form action=\"cmd_data\"><input type=\"submit\" value=\"LEDs On\"><input type=\"hidden\" name=\"Command\" value=\"ledstate_set on\"></form>");
+	inOutput->printf("<form action=\"cmd_data\"><input type=\"submit\" value=\"LEDs Off\"><input type=\"hidden\" name=\"Command\" value=\"ledstate_set off\"></form>");
 
 	inOutput->printf("<table border=\"1\">");
 	inOutput->printf("<tr><th>Parameter</th><th>Value</th></tr>");
@@ -396,6 +398,7 @@ CModule_OutdoorLightingControl::ButtonPush(
 	EPinEvent	inEvent,
 	void*		inReference)
 {
+	SystemMsg("Button pushed");
 	if(inEvent == eDigitalIO_PinActivated)
 	{
 		toggleLastTimeMS = gCurLocalMS;
@@ -425,6 +428,8 @@ CModule_OutdoorLightingControl::MotionSensorTrigger(
 	EPinEvent	inEvent,
 	void*		inReference)
 {
+	SystemMsg("Motion sensor trigger");
+
 	if(inEvent == eDigitalIO_PinActivated)
 	{
 		motionSensorTrip = true;

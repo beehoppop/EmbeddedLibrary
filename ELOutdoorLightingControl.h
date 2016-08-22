@@ -116,7 +116,9 @@ private:
 
 	void
 	CommandHomePageHandler(
-		IOutputDirector*	inOutput);
+		IOutputDirector*	inOutput,
+		int					inParamCount,
+		char const**		inParamList);
 
 	void
 	Sunset(

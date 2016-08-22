@@ -42,7 +42,7 @@ enum
 	eMaxConnectionsCount = 4,
 	eServerMaxAddressLength = 63,
 
-	eCommandServerFrontPageHandlerMax = 8,
+	eWebServerPageHandlerMax = 8,
 
 	eMaxIncomingPacketSize = 1500,
 	eMaxOutgoingPacketSize = 1400,
@@ -51,8 +51,6 @@ enum
 	ePortState_CanSendData		= 1 << 1,
 	ePortState_HasIncommingData	= 1 << 2,
 	ePortState_Failure			= 1 << 3,
-
-
 };
 
 enum EConnectionResponse
@@ -72,7 +70,7 @@ enum EWirelessPWEnc
 
 // Utility macro for registering a response handler when opening a connection to a server
 #define MInternetOpenConnection(inServerPort, inServerAddress, inMethod) gInternetModule->OpenConnection(inServerPort, inServerAddress, this, static_cast<TInternetResponseHandlerMethod>(&inMethod))
-#define MInternetRegisterFrontPage(inMethod) gInternetModule->CommandServer_RegisterFrontPage(this, static_cast<TInternetServerPageMethod>(&inMethod))
+#define MInternetRegisterPage(inPage, inMethod) gInternetModule->WebServer_RegisterPageHandler(inPage, this, static_cast<TInternetServerPageMethod>(&inMethod))
 #define MInternetCreateHTTPConnection(inServerPort, inServerAddress, inMethod) gInternetModule->CreateHTTPConnection(inServerPort, inServerAddress, this, static_cast<THTTPResponseHandlerMethod>(&inMethod))
 
 class CModule_Internet;
@@ -85,7 +83,9 @@ public:
 // This will be called when a client connects to the command server
 typedef void
 (IInternetHandler::*TInternetServerPageMethod)(
-	IOutputDirector*	inOutput);
+	IOutputDirector*	inOutput,
+	int					inParamCount,
+	char const**		inParamList);
 
 // This will be called when data arrives to a opened server
 typedef void
@@ -270,7 +270,7 @@ public:
 		void) = 0;
 };
 
-class CModule_Internet : public CModule, public IOutputDirector, public ICmdHandler
+class CModule_Internet : public CModule, public IOutputDirector, public ICmdHandler, public IInternetHandler
 {
 public:
 	
@@ -311,16 +311,16 @@ public:
 	CloseConnection(
 		uint16_t	inLocalPort);
 
-	// Configure the internet connection to serve commands on the given port
+	// Configure the internet connection to serve web pages on the given port
 	void
-	CommandServer_Start(
+	WebServer_Start(
 		uint16_t inPort);
 
 	void
-	CommandServer_RegisterFrontPage(
-		IInternetHandler*			inInternetHandler,			// The object of the handlers
-		TInternetServerPageMethod	inMethod);					// This method will be called when a client connects to the server, use the inOutput parameter to send html code to the client
-		
+	WebServer_RegisterPageHandler(
+		char const*					inPage,					// This must be a static const string
+		IInternetHandler*			inInternetHandler,		// The object of the handlers
+		TInternetServerPageMethod	inMethod);				// This method will be called when a client connects to the server, use the inOutput parameter to send html code back to the client
 
 	// Higher level HTTP service
 	CHTTPConnection*
@@ -333,6 +333,16 @@ public:
 	bool
 	ConnectedToInternet(
 		void);
+
+	// Utility functions
+	static void
+	ProcessURLParameters(
+		int&			ioParameterCount,	// in -> max parameters, out -> actual parameter count
+		char const**	outParameterList,	// An array of char* to parameter data each string must be at least eMaxURLParamSize bytes
+		char*&			outPageName,
+		int				inParameterBufferSize,
+		char*			inParameterBuffer,
+		char const*		inURL);
 
 private:
 	
@@ -376,6 +386,18 @@ private:
 		char const* inMsg,
 		size_t		inBytes);
 
+	void
+	CommandHomePageHandler(
+		IOutputDirector*	inOutput,
+		int					inParamCount,
+		char const**		inParamList);
+
+	void
+	CommandProcessPageHandler(
+		IOutputDirector*	inOutput,
+		int					inParamCount,
+		char const**		inParamList);
+
 	struct SServer
 	{
 		uint16_t						port;
@@ -395,10 +417,11 @@ private:
 		TInternetResponseHandlerMethod			handlerResponseMethod;
 	};
 
-	struct SCommandServerFrontPageHandler
+	struct SWebServerPageHandler
 	{
-		IInternetHandler*			commandServerObject;
-		TInternetServerPageMethod	commandServerMethod;
+		char const*					pageName;
+		IInternetHandler*			object;
+		TInternetServerPageMethod	method;
 	};
 
 	struct SSettings
@@ -417,9 +440,9 @@ private:
 
 	SSettings	settings;
 
-	uint16_t						commandServerPort;
+	uint16_t						webServerPort;
 	
-	SCommandServerFrontPageHandler	commandServerFrontPageHandlerList[eCommandServerFrontPageHandlerMax];
+	SWebServerPageHandler	webServerPageHandlerList[eWebServerPageHandlerMax];
 
 	bool		respondingServer;
 	uint16_t	respondingServerPort;
