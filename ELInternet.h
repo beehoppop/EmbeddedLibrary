@@ -42,7 +42,7 @@ enum
 	eMaxConnectionsCount = 4,
 	eServerMaxAddressLength = 63,
 
-	eWebServerPageHandlerMax = 8,
+	eWebServerPageHandlerMax = 16,
 
 	eMaxIncomingPacketSize = 1500,
 	eMaxOutgoingPacketSize = 1400,

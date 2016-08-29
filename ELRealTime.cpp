@@ -269,7 +269,7 @@ public:
 
 		TimeDate[6] += (TimeDate[6] >= 70 && TimeDate[6] <= 99) ? 1900 : 2000;
 
-		SystemMsg("got %d %d %d %d %d %d\n", TimeDate[6], TimeDate[5], TimeDate[4], TimeDate[2], TimeDate[1], TimeDate[0]);
+		//SystemMsg("got %d %d %d %d %d %d\n", TimeDate[6], TimeDate[5], TimeDate[4], TimeDate[2], TimeDate[1], TimeDate[0]);
 
 		if (TimeDate[5] < 1 || TimeDate[5] > 12 || TimeDate[4] < 1 || TimeDate[4] > 31 || TimeDate[2] < 0 || TimeDate[2] > 23 || TimeDate[1] < 0 || TimeDate[1] > 59 || TimeDate[0] < 0 || TimeDate[0] > 59)
 		{
@@ -365,6 +365,7 @@ CModule_RealTime::Update(
 {
 	if(provider != NULL && timeMultiplier == 1 && (millis() - localMSAtLastSet) / 1000 >= providerSyncPeriod)
 	{
+		SystemMsg("Requesting periodic RTC sync");
 		provider->RequestSync();
 	}
 
@@ -484,23 +485,22 @@ CModule_RealTime::SetEpochTime(
 		inEpochTime = LocalToUTC(inEpochTime);
 	}
 
-	if(abs((int32_t)(inEpochTime - oldEpochTime)) <= 1)
-	{
-		// Don't update the time if it is off by 1 second or less
-		return;
-	}
-
-	SystemMsg("Time has been changed, old=%lu new=%lu diff=%ld", oldEpochTime, inEpochTime, oldEpochTime - inEpochTime);
-
+	// This must be set otherwise the periodic sync will always fire because localMSAtLastSet was not updated
 	localMSAtLastSet = millis();
 	epocUTCTimeAtLastSet = inEpochTime;
 
-	STimeChangeHandler*	curHandler = timeChangeHandlerArray;
-	for(int i = 0; i < eTimeChangeHandler_MaxCount; ++i, ++curHandler)
+	// Since precision of RTC is 1 sec only notify of time change if it's greater then 1 sec
+	if(abs((int32_t)(inEpochTime - oldEpochTime)) > 1)
 	{
-		if(curHandler->name != NULL && curHandler->object != NULL)
+		SystemMsg("Time has been changed, old=%lu new=%lu diff=%ld", oldEpochTime, inEpochTime, oldEpochTime - inEpochTime);
+
+		STimeChangeHandler*	curHandler = timeChangeHandlerArray;
+		for(int i = 0; i < eTimeChangeHandler_MaxCount; ++i, ++curHandler)
 		{
-			(curHandler->object->*curHandler->method)(curHandler->name, false);
+			if(curHandler->name != NULL && curHandler->object != NULL)
+			{
+				(curHandler->object->*curHandler->method)(curHandler->name, false);
+			}
 		}
 	}
 }

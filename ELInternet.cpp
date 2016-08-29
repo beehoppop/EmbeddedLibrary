@@ -407,7 +407,7 @@ CModule_Internet::CModule_Internet(
 		cur->localPort = 0xFF;
 	}
 }
-	
+
 void
 CModule_Internet::Configure(
 	IInternetDevice*	inInternetDevice)
@@ -672,7 +672,7 @@ CModule_Internet::Update(
 
 			char*	verb = NULL;
 			char*	url = NULL;
-			char*	httpStr = NULL;
+			//char*	httpStr = NULL;
 			char*	nextSpace;
 
 			verb = buffer;
@@ -686,7 +686,7 @@ CModule_Internet::Update(
 				if(nextSpace != NULL)
 				{
 					*nextSpace = 0;
-					httpStr = nextSpace + 1;
+					//httpStr = nextSpace + 1;
 				}
 			}
 

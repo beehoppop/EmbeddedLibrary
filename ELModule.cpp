@@ -268,7 +268,7 @@ CModule::SetupAll(
 	CModule_SysMsgSerialHandler::Include();
 	CModuleManager::Include();
 
-	SystemMsg(eMsgLevel_Basic, "Module: count=%d\n", gModuleCount);
+	SystemMsg(eMsgLevel_Verbose, "Module: count=%d\n", gModuleCount);
 
 	MAssert(gTooManyModules == false);
 
