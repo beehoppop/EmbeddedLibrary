@@ -24,11 +24,6 @@
 	SOFTWARE.
 */
 
-/*
-	ABOUT
-
-*/
-
 #include <EL.h>
 #include <ELCalendarEvent.h>
 #include <ELRealTime.h>

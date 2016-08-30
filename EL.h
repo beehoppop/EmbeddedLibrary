@@ -29,8 +29,8 @@
 /*
 	ABOUT
 
-	This is a common header file for the library which every file includes. This allows me to include the appropriate
-	header files based on the platform and if I am running the API simulator on Windows (and someday OSX)
+	This is a common header file for the library which every file includes. This allows the library to include the appropriate
+	header files based on the platform and if running on the simulator
 */
 
 #if defined(ARDUINO) && ARDUINO >= 100

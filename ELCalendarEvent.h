@@ -29,6 +29,7 @@
 /*
 	ABOUT
 
+	Get information about holidays from dates
 */
 
 #include "EL.h"

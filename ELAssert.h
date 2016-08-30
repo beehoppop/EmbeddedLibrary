@@ -29,7 +29,11 @@
 /*
 	ABOUT
 
-	Commonly needed functionality for logging, debugging, verifying program correctness, and handling errors gracefully
+	This is used to verify program correctness and aid in debugging.
+
+	One call, SystemMsg(), is used to output messages from the program. The actual output
+	is then sent to multiple IOutputDirector objects (serial, internet logging, CAN bus, etc).
+	IOutputDirector objects are registered at program start via AddSysMsgHandler()
 */
 
 #include <EL.h>
@@ -57,7 +61,7 @@ enum
 	eMsgBuffer_Size = 2 * 1024,
 };
 
-// Instantiate this module to dump a log of system messages using the "msg_dump" command
+// Inlcude() this module to dump a log of system messages using the "msg_dump" command
 class CModule_SysMsgCmdHandler : public CModule, public ICmdHandler, public IOutputDirector
 {
 public:

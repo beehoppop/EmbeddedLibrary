@@ -1,5 +1,20 @@
 Release Notes
 =============
+9/1/2016 - 0.3.0 - Major new functionality, API improvements, and bug fixes
+  - Added asyncronous ESP8266 support
+  - Added server/client networking support
+  - Added support for serving web pages and submitting forms
+  - Commands can be entered via webpage
+  - Added support for sending log data to internet based logging services (Loggy)
+  - Added support for getting holiday information from a date
+  - Added a general module for helping with outdoor lighting projects that need time of day support, motion sensing, and lumination sensing (lumination sensing not totally tested yet)
+  - Commands can provide help information
+  - Added "help" command that lists all registered commands and their help message
+  - Improved module system to be easier to use
+  - Modules only take up RAM if they are included in a project
+  - Support for the ILI9341 display with very fast font rendering with little to no update blinking.
+  - Added a simple display layout module
+ 
 1/24/2016 - 0.2.0 - General Stabilization and API improvements
   - The EmbeddedLibrary has now been deployed on two complicated systems that are used daily. (One is at https://github.com/beehoppop/FrontHouseLEDProject)
   - Command system has been generalized to handle input from any source (currently a serial port and the CAN bus)
@@ -29,6 +44,7 @@ IO pin becomes active the user's registered event handler is called for that pin
 of configuring the IO pin, managing the state, and handling debouncing.
  
 In addition to the module and event systems this library provides the following functionality:
+ - Async wireless networking via the ESP8266. Webpages can be served simultaneiously with acting as a client for other web services
  - A unified real world time system that supports time providers such as the DS3234, understands time zones, and supports
 	real world time based alarms and periodic time based events.
  - A module for computing sunrise and sunset times as well as calling event handlers for sunset and sunrise events
