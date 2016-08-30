@@ -1,19 +1,22 @@
 Release Notes
 =============
-9/1/2016 - 0.3.0 - Major new functionality, API improvements, and bug fixes
+8/30/2016 - 0.3.0 - Major new functionality, API improvements, and bug fixes
   - Added asyncronous ESP8266 support
   - Added server/client networking support
   - Added support for serving web pages and submitting forms
+  - CRITICAL: In order to use the ESP8266 web server functionality you must increase the size of the serial port buffer. 
+    In C:\Program Files (x86)\Arduino\hardware\teensy\avr\cores\teensy3\serial1.c Set TX_BUFFER_SIZE and RX_BUFFER_SIZE t0 1024
   - Commands can be entered via webpage
   - Added support for sending log data to internet based logging services (Loggy)
   - Added support for getting holiday information from a date
-  - Added a general module for helping with outdoor lighting projects that need time of day support, motion sensing, and lumination sensing (lumination sensing not totally tested yet)
+  - Added a general module for helping with outdoor lighting projects that need time of day support, motion sensing, and 
+    lumination sensing (lumination sensing not totally tested yet)
+  - Added a simple display layout module
+  - Support for the ILI9341 display with very fast font rendering with little to no update flicker.
   - Commands can provide help information
   - Added "help" command that lists all registered commands and their help message
   - Improved module system to be easier to use
   - Modules only take up RAM if they are included in a project
-  - Support for the ILI9341 display with very fast font rendering with little to no update blinking.
-  - Added a simple display layout module
  
 1/24/2016 - 0.2.0 - General Stabilization and API improvements
   - The EmbeddedLibrary has now been deployed on two complicated systems that are used daily. (One is at https://github.com/beehoppop/FrontHouseLEDProject)
@@ -38,30 +41,29 @@ needs. Each module can have the following:
  - Periodic updates at a specified interval
  - Initialization done according to priorities to allow correct module initialization ordering
  
-Another core concept is being event based. The sketch registers event handlers to implement its unique
+Another core concept is using events for library to sketch communication. The sketch registers event handlers to implement its unique
 functionality. An event handler is just a method on a C++ object. For example when a digital
-IO pin becomes active the user's registered event handler is called for that pin. The framework handles the details
+IO pin becomes active the user's registered event handler method is called for that pin. The framework handles the details
 of configuring the IO pin, managing the state, and handling debouncing.
  
 In addition to the module and event systems this library provides the following functionality:
- - Async wireless networking via the ESP8266. Webpages can be served simultaneiously with acting as a client for other web services
+ - Async wireless networking via the ESP8266. Webpages can be served simultaneously with acting as a client for other web services
  - A unified real world time system that supports time providers such as the DS3234, understands time zones, and supports
-	real world time based alarms and periodic time based events.
+   real world time based alarms and periodic time based events.
+ - A display module for the ILI9341 with fast font drawing for mostly flicker free single buffer drawing
  - A module for computing sunrise and sunset times as well as calling event handlers for sunset and sunrise events
  - Handling of commands coming over any input source in a similar fashion to linux command line tools with
-	arguments being broken up and passed into an event handler as an array of c strings.
+   arguments being broken up and passed into an event handler as an array of c strings.
  - A Digital IO module that handles debouncing and calling a specified event on both active and deactive events. Also
-	supports setting an output to an active state for a specified period of time before returning to the 
-	deactive state.
+   supports setting an output to an active state for a specified period of time before returning to the 
+   deactive state.
  - A touch module for the Teensyduino analog touch input pins.
  - A simple config value module for setting and getting persistent global config data.
- - A debugging facility for asserts and reporting errors to the user over the serial port
+ - A debugging facility for asserts and reporting errors to the user over the serial port or other configurable communication mechanisms
  - A CANBus event handling module
  - A module for the Sparkfun TSL2561 luminosity sensor
 
 In Development:
- - A generalized internet device system
- - ESP8266 support
  - More thorough examples
 
 Repository Contents
