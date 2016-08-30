@@ -28,6 +28,7 @@
 #include <math.h>
 
 #if !defined(WIN32)
+// This uses RamMonitor which is included in EL and available here: https://sourceforge.net/projects/teensy-3-x-rammonitor/files/
 #include <RamMonitor.h>
 RamMonitor gRamMonitor;
 #endif
