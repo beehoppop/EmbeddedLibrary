@@ -227,11 +227,12 @@ private:
 		char const*			inArgv[]);
 
 	void
-	SetTransformerState(
-		bool	inState);
+	TransformerTransitionOnCompleted(
+		char const*	inName,
+		void*		inRef);
 
 	void
-	TransformerTransitionEvent(
+	TransformerTransitionOffCompleted(
 		char const*	inName,
 		void*		inRef);
 
@@ -250,7 +251,6 @@ private:
 	uint8_t			transformerPin;
 	uint8_t			togglePin;
 	ILuminosity*	luminosityInterface;
-
 	IOutdoorLightingInterface*		olInterface;
 
 	int			toggleCount;
@@ -258,8 +258,6 @@ private:
 
 	uint8_t	timeOfDay;
 	bool	motionSensorTrip;
-	bool	curTransformerState;
-	bool	curTransformerTransitionState;
 	bool	luxTriggerState;
 	bool	ledsOn;
 

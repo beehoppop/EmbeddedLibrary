@@ -490,7 +490,7 @@ CModule_RealTime::SetEpochTime(
 	epocUTCTimeAtLastSet = inEpochTime;
 
 	// Since precision of RTC is 1 sec only notify of time change if it's greater then 1 sec
-	if(abs((int32_t)(inEpochTime - oldEpochTime)) > 1)
+	if(oldEpochTime > 0 && abs((int32_t)(inEpochTime - oldEpochTime)) > 1)
 	{
 		SystemMsg("Time has been changed, old=%lu new=%lu diff=%ld", oldEpochTime, inEpochTime, oldEpochTime - inEpochTime);
 
@@ -519,11 +519,44 @@ CModule_RealTime::GetDateAndTime(
 	GetComponentsFromEpochTime(GetEpochTime(inUTC), outYear, outMonth, outDayOfMonth, outDayOfWeek, outHour, outMinute, outSecond);
 }
 
+void
+CModule_RealTime::GetDateAndTimeMS(
+	int&	outYear,
+	int&	outMonth,
+	int&	outDayOfMonth,
+	int&	outDayOfWeek,
+	int&	outHour,
+	int&	outMinute,
+	int&	outSecond,
+	int&	outMillisecond,
+	bool	inUTC)
+{
+	GetComponentsFromEpochTime(GetEpochTimeWithMS(outMillisecond, inUTC), outYear, outMonth, outDayOfMonth, outDayOfWeek, outHour, outMinute, outSecond);
+}
+
 TEpochTime 
 CModule_RealTime::GetEpochTime(
 	bool	inUTC)
 {
-	TEpochTime	result = epocUTCTimeAtLastSet + ((millis() - localMSAtLastSet + 500) / 1000) * timeMultiplier;
+	uint32_t	deltaMS = millis() - localMSAtLastSet;
+	TEpochTime	result = epocUTCTimeAtLastSet + (deltaMS / 1000) * timeMultiplier;
+
+	if(!inUTC)
+	{
+		result = UTCToLocal(result);
+	}
+
+	return result;
+}
+
+TEpochTime 
+CModule_RealTime::GetEpochTimeWithMS(
+	int&	outMilliseconds,
+	bool	inUTC)
+{
+	uint32_t	deltaMS = millis() - localMSAtLastSet;
+	TEpochTime	result = epocUTCTimeAtLastSet + (deltaMS / 1000) * timeMultiplier;
+	outMilliseconds = deltaMS % 1000;
 
 	if(!inUTC)
 	{

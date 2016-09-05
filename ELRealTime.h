@@ -185,9 +185,27 @@ public:
 		int&	outMinute,		// 00 to 59
 		int&	outSecond,		// 00 to 59
 		bool	inUTC = false);
+	
+	// Get the current date and time components
+	void
+	GetDateAndTimeMS(
+		int&	outYear,		// xxxx 4 digit year
+		int&	outMonth,		// 1 to 12
+		int&	outDayOfMonth,	// 1 to 31
+		int&	outDayOfWeek,	// 1 to 7
+		int&	outHour,		// 00 to 23
+		int&	outMinute,		// 00 to 59
+		int&	outSecond,		// 00 to 59
+		int&	outMillisecond,	// 000 to 999
+		bool	inUTC = false);
 
 	TEpochTime
 	GetEpochTime(
+		bool	inUTC = false);
+
+	TEpochTime
+	GetEpochTimeWithMS(
+		int&	outMilliseconds,
 		bool	inUTC = false);
 	
 	int

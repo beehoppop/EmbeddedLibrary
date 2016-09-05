@@ -74,6 +74,7 @@ CTSL2561Sensor::CTSL2561Sensor(
 	i2cAddress(inAddress),
 	error(0)
 {
+	isPresent = false;
 	Wire.begin();
 		
 	uint8_t	sensorID;
@@ -123,6 +124,8 @@ CTSL2561Sensor::SetupSensor(
 
 	// Write 0x03 to command byte (power on)
 	WriteI2CByte(TSL2561_REG_CONTROL,0x03);
+
+	isPresent = true;
 }
 
 bool
@@ -199,6 +202,15 @@ CTSL2561Sensor::GetLux(
 
 	return true;
 }
+
+bool
+CTSL2561Sensor::IsPresent(
+	void)
+{
+	return isPresent;
+}
+
+
 float
 CTSL2561Sensor::GetActualLux(
 	void)

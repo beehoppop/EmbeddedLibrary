@@ -41,7 +41,8 @@
 
 enum
 {
-	eTransformerWarmUpSecs = 2,		// The number of seconds to allow the transformer to warm up before use
+	eTransformerWarmUpMicros = 2000000,		// The number of microseconds to allow the transformer to warm up before use
+	eLEDsCoolDownMicros = 500000,			// The number of microseconds to allow the LEDs to turn off before turning off the transformer
 	eToggleCountResetMS = 1000,		// The time in ms to reset the pushbutton toggle count
 
 	ePushCount_ToggleState = 1,		// The number of pushes to toggle state
@@ -78,8 +79,6 @@ CModule_OutdoorLightingControl::CModule_OutdoorLightingControl(
 	gOutdoorLighting = this;
 	timeOfDay = eTimeOfDay_Day;
 	motionSensorTrip = false;
-	curTransformerState = false;
-	curTransformerTransitionState = false;
 	luxTriggerState = false;
 	ledsOn = false;
 	curLEDOnState = false;
@@ -123,7 +122,7 @@ CModule_OutdoorLightingControl::Setup(
 	}
 	if(motionSensorPin != 0xFF)
 	{
-		MDigitalIORegisterEventHandler(motionSensorPin, false, CModule_OutdoorLightingControl::MotionSensorTrigger, NULL);
+		MDigitalIORegisterEventHandler(motionSensorPin, false, CModule_OutdoorLightingControl::MotionSensorTrigger, NULL, 500);
 	}
 
 	MCommandRegister("ledstate_set", CModule_OutdoorLightingControl::SetLEDState, "[on | off] : Turn LEDs on or off until the next event");
@@ -164,8 +163,6 @@ CModule_OutdoorLightingControl::UpdateTimes(
 	TEpochTime	curTime = gRealTime->GetEpochTime(false);
 	int	year, month, day, dow, hour, min, sec;
 	gRealTime->GetComponentsFromEpochTime(curTime, year, month, day, dow, hour, min, sec);
-
-	SystemMsg("Setup time is %02d/%02d/%04d %02d:%02d:%02d\n", month, day, year, hour, min, sec);
 
 	TEpochTime sunriseTime, sunsetTime;
 	gSunRiseAndSet->GetSunRiseAndSetEpochTime(sunriseTime, sunsetTime, year, month, day, false);
@@ -250,17 +247,6 @@ CModule_OutdoorLightingControl::Update(
 
 		toggleCount = 0;
 	}
-	if(luminosityInterface != NULL)
-	{
-		// Update lux trigger
-		float	curLux = luminosityInterface->GetActualLux();
-		luxTriggerState = curLux < settings.triggerLux;
-
-		if(timeOfDay == eTimeOfDay_Day)
-		{
-			ledsOn = luxTriggerState;
-		}
-	}
 
 	if(motionSensorTrip != curMotionSensorTrip)
 	{
@@ -271,13 +257,22 @@ CModule_OutdoorLightingControl::Update(
 	bool newLEDOnState = overrideActive ? overrideState : ledsOn;
 	if(newLEDOnState != curLEDOnState)
 	{
-		SetTransformerState(newLEDOnState);
+		curLEDOnState = newLEDOnState;
 
-		if(curTransformerState == newLEDOnState)
+		SystemMsg("Setting led state to %d", curLEDOnState);
+
+		if(curLEDOnState)
 		{
-			olInterface->LEDStateChange(newLEDOnState);
-			curLEDOnState = newLEDOnState;
+			gRealTime->CancelEvent("XfmrToOff");
+			MRealTimeRegisterEvent("XfmrToOn", eTransformerWarmUpMicros, true, CModule_OutdoorLightingControl::TransformerTransitionOnCompleted, NULL);
+			digitalWriteFast(transformerPin, true);
 		}
+		else
+		{
+			gRealTime->CancelEvent("XfmrToOn");
+			MRealTimeRegisterEvent("XfmrToOff", eLEDsCoolDownMicros, true, CModule_OutdoorLightingControl::TransformerTransitionOffCompleted, NULL);
+			olInterface->LEDStateChange(false);
+		}		
 	}
 }
 
@@ -326,9 +321,6 @@ CModule_OutdoorLightingControl::CommandHomePageHandler(
 	// add motionSensorTrip
 	inOutput->printf("<tr><td>Motion Sensor Trip</td><td>%s</td></tr>", motionSensorTrip ? "On" : "Off");
 
-	// add curTransformerState
-	inOutput->printf("<tr><td>Transformer State</td><td>%s</td></tr>", curTransformerState ? "On" : "Off");
-
 	// add luxTriggerState
 	inOutput->printf("<tr><td>Lux Trigger State</td><td>%s</td></tr>", luxTriggerState ? "On" : "Off");
 
@@ -361,7 +353,7 @@ CModule_OutdoorLightingControl::Sunset(
 
 	if(luminosityInterface != NULL)
 	{
-		SystemMsg("lux: lux = %f\n", luminosityInterface->GetActualLux());
+		SystemMsg("lux: sunset lux = %f\n", luminosityInterface->GetActualLux());
 	}
 }
 
@@ -383,12 +375,26 @@ CModule_OutdoorLightingControl::LuxPeriodic(
 	char const*	inName,
 	void*		inRef)
 {
-	if(luminosityInterface != NULL)
+	if(luminosityInterface == NULL)
 	{
-		// Update lux trigger
-		float	curLux = luminosityInterface->GetActualLux();
+		return;
+	}
 
+	// Update lux trigger
+	float	curLux = luminosityInterface->GetActualLux();
+
+	luxTriggerState = curLux < settings.triggerLux;
+
+	/*
+	if(curLux > 0.0f)
+	{
 		SystemMsg("lux: lux = %f, luxTriggerState=%d\n", curLux, luxTriggerState);
+	}
+	*/
+
+	if(timeOfDay == eTimeOfDay_Day)
+	{
+		ledsOn = luxTriggerState;
 	}
 }
 
@@ -398,9 +404,9 @@ CModule_OutdoorLightingControl::ButtonPush(
 	EPinEvent	inEvent,
 	void*		inReference)
 {
-	SystemMsg("Button pushed");
 	if(inEvent == eDigitalIO_PinActivated)
 	{
+		SystemMsg("Button pushed");
 		toggleLastTimeMS = gCurLocalMS;
 		++toggleCount;
 	}
@@ -428,7 +434,10 @@ CModule_OutdoorLightingControl::MotionSensorTrigger(
 	EPinEvent	inEvent,
 	void*		inReference)
 {
-	SystemMsg("Motion sensor trigger");
+	if(timeOfDay != eTimeOfDay_Day)
+	{
+		SystemMsg("Motion sensor %s", inEvent == eDigitalIO_PinActivated ? "activated" : "deactivated");
+	}
 
 	if(inEvent == eDigitalIO_PinActivated)
 	{
@@ -436,7 +445,6 @@ CModule_OutdoorLightingControl::MotionSensorTrigger(
 
 		if(timeOfDay != eTimeOfDay_Day)
 		{
-			SystemMsg("Motion sensor tripped\n");
 			ledsOn = true;
 		}
 	}
@@ -464,7 +472,11 @@ CModule_OutdoorLightingControl::MotionTripCooldown(
 {
 	SystemMsg("Motion trip cooled down\n");
 	motionSensorTrip = false;
-	ledsOn = false;
+
+	if(timeOfDay == eTimeOfDay_LateNight)
+	{
+		ledsOn = false;
+	}
 }
 
 void
@@ -655,41 +667,19 @@ CModule_OutdoorLightingControl::GetOverride(
 }
 
 void
-CModule_OutdoorLightingControl::SetTransformerState(
-	bool	inState)
-{
-	if(curTransformerTransitionState == inState)
-	{
-		return;
-	}
-
-	//SystemMsg("Transformer state to %d\n", inState);
-
-	curTransformerTransitionState = inState;
-
-	if(inState)
-	{
-		digitalWriteFast(transformerPin, true);
-
-		// Let transformer warm up for 2 seconds
-		MRealTimeRegisterEvent("XfmrWarmup", eTransformerWarmUpSecs * 1000000, true, CModule_OutdoorLightingControl::TransformerTransitionEvent, NULL);
-	}
-	else
-	{
-		// Set the cur state to false right away to stop updating leds
-		curTransformerState = false;
-
-		// Let led update finish
-		MRealTimeRegisterEvent("XfmrWarmup", eTransformerWarmUpSecs * 1000000, true, CModule_OutdoorLightingControl::TransformerTransitionEvent, NULL);
-	}
-}
-
-void
-CModule_OutdoorLightingControl::TransformerTransitionEvent(
+CModule_OutdoorLightingControl::TransformerTransitionOnCompleted(
 	char const*	inName,
 	void*		inRef)
 {
-	//SystemMsg("Transformer transition %d\n", curTransformerTransitionState);
-	curTransformerState = curTransformerTransitionState;
-	digitalWriteFast(transformerPin, curTransformerState);
+	SystemMsg("Transformer transition on completed");
+	olInterface->LEDStateChange(true);
+}
+
+void
+CModule_OutdoorLightingControl::TransformerTransitionOffCompleted(
+	char const*	inName,
+	void*		inRef)
+{
+	SystemMsg("Transformer transition off completed");
+	digitalWriteFast(transformerPin, false);
 }

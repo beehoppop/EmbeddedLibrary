@@ -44,7 +44,7 @@ enum
 	eMaxEEPROMModules = 16,
 };
 
-#define MDebugDelayEachModule 0
+#define MDebugModuleDelayMS 1000
 #define MDebugModules 0
 #define MDebugTargetNode 0xFF
 
@@ -65,7 +65,7 @@ static bool			gTearingDown = false;
 static uint32_t		gLastMillis;
 static uint32_t		gLastMicros;
 static bool			gFlashLED;
-static int			gBlinkLEDIndex;		// config index for blink LED config var
+static int			gDontBlinkLEDIndex;		// config index for blink LED config var
 static char const*	gCurrentModuleConstructingName;
 static uint32_t		gCurrentModuleClassSize;
 static bool			gSetupStarted;
@@ -99,7 +99,7 @@ private:
 		MAssert(gCommandModule != NULL);
 		MAssert(gConfigModule != NULL);
 		MCommandRegister("alive", CModuleManager::SerialCmdAlive, "Return the build date and version as proof of life");
-		gBlinkLEDIndex = gConfigModule->RegisterConfigVar("blink_led");
+		gDontBlinkLEDIndex = gConfigModule->RegisterConfigVar("dont_blink_led");
 	}
 
 	uint8_t
@@ -161,12 +161,12 @@ CModule::SetupIfNeeded(
 {
 	if(gSetupStarted && enabled && !hasBeenSetup)
 	{
-		#if MDebugDelayEachModule
+		#if MDebugModules
 			SystemMsg("Module: Setup %s\n", uid);
 			//Need to fix this code to not reference gConfigModule since it has not been initialized yet
 			//if(MDebugTargetNode == 0xFF || MDebugTargetNode == gConfigModule->GetVal(eConfigVar_NodeID))
 			{
-				delay(1000);
+				delay(MDebugModuleDelayMS);
 			}
 		#endif
 		// Set this module up now
@@ -268,7 +268,9 @@ CModule::SetupAll(
 	CModule_SysMsgSerialHandler::Include();
 	CModuleManager::Include();
 
-	SystemMsg(eMsgLevel_Verbose, "Module: count=%d\n", gModuleCount);
+	#if MDebugModules
+		SystemMsg("Module: count=%d\n", gModuleCount);
+	#endif
 
 	MAssert(gTooManyModules == false);
 
@@ -371,7 +373,7 @@ CModule::SetupAll(
 
 	gConfigModule->SetupFinished();
 
-	#if MDebugDelayEachModule
+	#if MDebugModules
 		SystemMsg("Module: Setup Complete\n"); delay(100);
 	#endif
 }
@@ -384,7 +386,7 @@ CModule::TearDownAll(
 	{
 		#if MDebugModules
 		SystemMsg(eMsgLevel_Medium, "Module: TearDown %s\n", gModuleList[i]->uid);
-		delay(3000);
+		delay(MDebugModuleDelayMS);
 		#endif
 		gModuleList[i]->TearDown();
 	}
@@ -408,7 +410,7 @@ CModule::ResetAllState(
 	{
 		SystemMsg(eMsgLevel_Medium, "Module: ResetState %s\n", gModuleList[i]->uid);
 		#if MDebugModules
-		delay(3000);
+		delay(MDebugModuleDelayMS);
 		#endif
 		gModuleList[i]->ResetState();
 	}
@@ -427,8 +429,7 @@ void
 CModule::LoopAll(
 	void)
 {
-
-	if(gFlashLED /*&& gConfigModule->GetVal(gBlinkLEDIndex) == 1*/)
+	if(gFlashLED && gConfigModule->GetVal(gDontBlinkLEDIndex) == 0)
 	{
 		static bool	on = false;
 		static uint64_t	lastBlinkTime;

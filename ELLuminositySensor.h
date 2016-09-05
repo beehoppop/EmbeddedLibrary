@@ -51,6 +51,10 @@ enum ELuminositySensor
 class ILuminosity
 {
 public:
+	
+	virtual bool
+	IsPresent(
+		void) = 0;
 
 	virtual float
 	GetActualLux(
@@ -96,6 +100,10 @@ public:
 		uint8_t	inAddress,
 		uint8_t	inGain,
 		uint8_t	inTime);
+
+	virtual bool
+	IsPresent(
+		void);
 
 	virtual float
 	GetActualLux(
@@ -175,6 +183,7 @@ private:
 
 	char i2cAddress;
 	byte error;
+	bool	isPresent;
 };
 
 #endif /* _FHLUMINOSITYSENSOR_H_ */

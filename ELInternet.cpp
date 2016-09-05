@@ -220,6 +220,19 @@ CHTTPConnection::ResponseHandlerMethod(
 
 		case eConnectionResponse_Closed:
 		case eConnectionResponse_Error:
+			if(waitingOnResponse)
+			{
+				if(inResponse == eConnectionResponse_Error)
+				{
+					responseHTTPCode = 504;
+				}
+				else
+				{
+					responseHTTPCode = 500;
+				}
+				FinishResponse();
+			}
+
 			gInternetModule->CloseConnection(localPort);
 			openInProgress = false;
 			waitingOnResponse = false;

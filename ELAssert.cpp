@@ -28,6 +28,7 @@
 #include "ELModule.h"
 #include "ELConfig.h"
 #include "ELOutput.h"
+#include "ELRealtime.h"
 
 struct SOutputEntry
 {
@@ -142,14 +143,11 @@ DebugMsgVA(
 	vabuffer[sizeof(vabuffer) - 1] = 0;
 
 	char	timestamp[32];
-	uint32_t	remaining = uint32_t(gCurLocalMS / 1000);
-	uint32_t	hours = remaining / (60 * 60);
-	remaining -= hours * 60 * 60;
-	uint32_t	mins = remaining / 60;
-	remaining -= mins * 60;
-	uint32_t	secs = remaining;
 
-	snprintf(timestamp, sizeof(timestamp), "%02lu:%02lu:%02lu:%03lu", hours, mins, secs, uint32_t(gCurLocalMS) % 1000);
+	int	year, month, day, dow, hour, minute, sec, ms;
+	gRealTime->GetDateAndTimeMS(year, month, day, dow, hour, minute, sec, ms);
+
+	snprintf(timestamp, sizeof(timestamp), "%02d:%02d:%02d:%02d:%03d", day, hour, minute, sec, ms);
 	timestamp[sizeof(timestamp) - 1] = 0;
 
 	char finalBuffer[256];
