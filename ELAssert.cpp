@@ -144,8 +144,22 @@ DebugMsgVA(
 
 	char	timestamp[32];
 
-	int	year, month, day, dow, hour, minute, sec, ms;
-	gRealTime->GetDateAndTimeMS(year, month, day, dow, hour, minute, sec, ms);
+	int	year = 0;
+	int	month = 0;
+	int	day = 0;
+	int	dow = 0;
+	int	hour = 0;
+	int	minute = 0;
+	int	sec = 0;
+	int	ms = 0;
+	if(gRealTime != NULL)
+	{
+		gRealTime->GetDateAndTimeMS(year, month, day, dow, hour, minute, sec, ms);
+	}
+	else
+	{
+		ms = millis();
+	}
 
 	snprintf(timestamp, sizeof(timestamp), "%02d:%02d:%02d:%02d:%03d", day, hour, minute, sec, ms);
 	timestamp[sizeof(timestamp) - 1] = 0;

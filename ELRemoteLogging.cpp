@@ -31,25 +31,20 @@
 
 #include "ELRemoteLogging.h"
 #include "ELAssert.h"
+#include "ELCommand.h"
 
 MModuleImplementation_Start(
 	CModule_Loggly,
-	char const*	inGlobalTags,
-	char const*	inServerAddress,
-	char const*	inURL)
-MModuleImplementation_Finish(CModule_Loggly, inGlobalTags, inServerAddress, inURL)
+	char const*	inGlobalTags)
+MModuleImplementation_Finish(CModule_Loggly, inGlobalTags)
 
 CModule_Loggly::CModule_Loggly(
-	char const*	inGlobalTags,
-	char const*	inServerAddress,
-	char const*	inURL)
+	char const*	inGlobalTags)
 	:
-	CModule(0, 0, NULL, 50000)
+	CModule(sizeof(SSettings), 1, &settings, 50000)
 {
 	head = tail = 0;
 	globalTags = inGlobalTags;
-	serverAddress = inServerAddress;
-	url = inURL;
 	requestInProgress = false;
 
 	CModule_Internet::Include();
@@ -101,14 +96,30 @@ void
 CModule_Loggly::Setup(
 	void)
 {
-	connection = MInternetCreateHTTPConnection(serverAddress, 80, CModule_Loggly::HTTPResponseHandlerMethod);
+	UpdateServerData();
+	MCommandRegister("remotelogging_set", CModule_Loggly::Command_SetUUID, "[serveraddress] [uuid] : Set the Loggly UUID");
+	MCommandRegister("remotelogging_get", CModule_Loggly::Command_GetUUID, ": Get the Loggly UUID");
+}
+
+uint16_t
+CModule_Loggly::GetQueueLength(
+	void)
+{
+	return (uint16_t)(head - tail);
+}
+
+uint16_t
+CModule_Loggly::GetQueueLengthFromGivenTail(
+	uint16_t	inTail)
+{
+	return (uint16_t)(head - inTail);
 }
 
 void
 CModule_Loggly::Update(
 	uint32_t	inDeltaUS)
 {
-	if(gInternetModule->ConnectedToInternet() && connection != NULL && requestInProgress == false && head > tail)
+	if(gInternetModule->ConnectedToInternet() && connection != NULL && requestInProgress == false && GetQueueLength() > 0)
 	{
 		char	tagsBuffer[128];
 		char	msgBuffer[512];
@@ -121,7 +132,7 @@ CModule_Loggly::Update(
 		
 		if(buffer[tail % sizeof(buffer)] == '[')
 		{
-			while(tail < head)
+			while(GetQueueLength() > 0)
 			{
 				char c = buffer[tail++ % sizeof(buffer)];
 				if(c == 0)
@@ -142,9 +153,9 @@ CModule_Loggly::Update(
 		}
 
 		// Check to see if there are tags
-		bool	hasTags = false;
+		bool		hasTags = false;
 		uint16_t	tmpTail = tail;
-		while(tmpTail < head)
+		while(GetQueueLengthFromGivenTail(tmpTail) > 0)
 		{
 			char c = buffer[tmpTail++ % sizeof(buffer)];
 			if(c == ':')
@@ -231,3 +242,52 @@ CModule_Loggly::HTTPResponseHandlerMethod(
 {
 	requestInProgress = false;
 }
+	
+uint8_t
+CModule_Loggly::Command_SetUUID(
+	IOutputDirector*	inOutput,
+	int					inArgC,
+	char const*			inArgV[])
+{
+	if(inArgC != 3)
+	{
+		return eCmd_Failed;
+	}
+
+	memset(settings.serverAddress, 0, sizeof(settings.serverAddress));
+	strncpy(settings.serverAddress, inArgV[1], sizeof(settings.serverAddress) - 1);
+	memset(settings.uuid, 0, sizeof(settings.uuid));
+	strncpy(settings.uuid, inArgV[2], sizeof(settings.uuid) - 1);
+
+	UpdateServerData();
+
+	EEPROMSave();
+
+	return eCmd_Succeeded;
+}
+	
+uint8_t
+CModule_Loggly::Command_GetUUID(
+	IOutputDirector*	inOutput,
+	int					inArgC,
+	char const*			inArgV[])
+{
+	inOutput->printf("serverAddress=%s uuid=%s\n", settings.serverAddress, settings.uuid);
+
+	return eCmd_Succeeded;
+}
+	
+void
+CModule_Loggly::UpdateServerData(
+	void)
+{
+	memset(url, 0, sizeof(url));
+	connection = 0;
+
+	if(settings.serverAddress[0] != 0 && settings.uuid[0] != 0)
+	{
+		connection = MInternetCreateHTTPConnection(settings.serverAddress, 80, CModule_Loggly::HTTPResponseHandlerMethod);
+		snprintf(url, sizeof(url) - 1, "/inputs/%s", settings.uuid);
+	}
+}
+

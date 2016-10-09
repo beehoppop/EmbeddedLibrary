@@ -46,7 +46,7 @@ enum
 	eCmd_MaxCommandArgs = 64,
 };
 
-// This is a conveniences macro for registering commands
+// This is a convenience macro for registering commands
 #define MCommandRegister(inCommandName, inCommandMethod, inDescription) gCommandModule->RegisterCommand(inCommandName, this, static_cast<TCmdHandlerMethod>(&inCommandMethod), inDescription)
 
 // A dummy class for the command handler method object

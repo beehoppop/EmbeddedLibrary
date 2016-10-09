@@ -64,6 +64,10 @@ public:
 	GetNormalizedBrightness(
 		void) = 0;
 
+	virtual float
+	GetNormalizedBrightness(
+		float	inLux) = 0;
+
 	virtual void
 	SetMinMaxLux(
 		float	inMinLux,
@@ -112,6 +116,10 @@ public:
 	virtual float
 	GetNormalizedBrightness(
 		void);
+
+	virtual float
+	GetNormalizedBrightness(
+		float inLux);
 
 	virtual void
 	SetMinMaxLux(

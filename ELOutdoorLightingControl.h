@@ -62,6 +62,10 @@ public:
 		bool	inMotionSensorTriggered) = 0;
 
 	virtual void
+	LuxSensorStateChange(
+		bool	inTriggered) = 0;
+
+	virtual void
 	PushButtonStateChange(
 		int	inToggleCount) = 0;
 
@@ -87,6 +91,14 @@ public:
 	SetOverride(
 		bool	inOverrideActive,
 		bool	inOverrideState);
+
+	float
+	GetAvgBrightness(
+		void);
+
+	float
+	GetAvgLux(
+		void);
 
 private:
 
@@ -191,6 +203,18 @@ private:
 		char const*			inArgv[]);
 
 	uint8_t
+	SetLuxMonitor(
+		IOutputDirector*	inOutput,
+		int					inArgC,
+		char const*			inArgv[]);
+
+	uint8_t
+	GetLuxMonitor(
+		IOutputDirector*	inOutput,
+		int					inArgC,
+		char const*			inArgv[]);
+
+	uint8_t
 	SetMotionTripTimeout(
 		IOutputDirector*	inOutput,
 		int					inArgC,
@@ -238,11 +262,18 @@ private:
 
 	struct SSettings
 	{
-		float		triggerLux;
+		float		triggerLuxLow;	// When normalized brightness falls below this during the day turn on LEDs
+		float		triggerLuxHigh;	// After low trigger when brightness returns above this turn LEDs off
 		int			lateNightStartHour;
 		int			lateNightStartMin;
 		int			motionTripTimeoutMins;
 		int			lateNightTimeoutMins;
+		bool		monitorLux;
+	};
+
+	enum
+	{
+		eLuxBufferSize = 20,
 	};
 
 	SSettings	settings;
@@ -256,13 +287,17 @@ private:
 	int			toggleCount;
 	uint64_t	toggleLastTimeMS;
 
+	float		luxBuffer[eLuxBufferSize];
+	uint8_t		luxBufferIndex;
+
 	uint8_t	timeOfDay;
 	bool	motionSensorTrip;
-	bool	luxTriggerState;
+	bool	luxLowWater;
 	bool	ledsOn;
 
 	bool	curLEDOnState;
 	bool	curMotionSensorTrip;
+	bool	curLuxTrigger;
 
 	bool	overrideActive;
 	bool	overrideState;

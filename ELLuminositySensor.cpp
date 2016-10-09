@@ -239,6 +239,16 @@ CTSL2561Sensor::GetNormalizedBrightness(
 	return float((lux - minBrightnessLux) / (maxBrightnessLux - minBrightnessLux));
 }
 
+float
+CTSL2561Sensor::GetNormalizedBrightness(
+	float	inLux)
+{
+	if(inLux < minBrightnessLux) inLux = minBrightnessLux;
+	if(inLux > maxBrightnessLux) inLux = maxBrightnessLux;
+	
+	return float((inLux - minBrightnessLux) / (maxBrightnessLux - minBrightnessLux));
+}
+
 void
 CTSL2561Sensor::SetMinMaxLux(
 	float	inMinLux,

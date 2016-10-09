@@ -79,12 +79,15 @@ CModule_OutdoorLightingControl::CModule_OutdoorLightingControl(
 	gOutdoorLighting = this;
 	timeOfDay = eTimeOfDay_Day;
 	motionSensorTrip = false;
-	luxTriggerState = false;
 	ledsOn = false;
 	curLEDOnState = false;
 	curMotionSensorTrip = false;
 	overrideActive = false;
 	overrideState = false;
+
+	luxLowWater = false;
+	curLuxTrigger = false;
+	luxBufferIndex = 0;
 
 	toggleCount = 0;
 	toggleLastTimeMS = 0;
@@ -128,8 +131,10 @@ CModule_OutdoorLightingControl::Setup(
 	MCommandRegister("ledstate_set", CModule_OutdoorLightingControl::SetLEDState, "[on | off] : Turn LEDs on or off until the next event");
 	MCommandRegister("latenight_set", CModule_OutdoorLightingControl::SetLateNightStartTime, "[hour] [min] : Set the hour and minute of late night");
 	MCommandRegister("latenight_get", CModule_OutdoorLightingControl::GetLateNightStartTime, "[hour] [min] : Get the hour and minute of late night");
-	MCommandRegister("triggerlux_set", CModule_OutdoorLightingControl::SetTriggerLux, "");
-	MCommandRegister("triggerlux_get", CModule_OutdoorLightingControl::GetTriggerLux, "");
+	MCommandRegister("luxtrigger_set", CModule_OutdoorLightingControl::SetTriggerLux, "");
+	MCommandRegister("luxtrigger_get", CModule_OutdoorLightingControl::GetTriggerLux, "");
+	MCommandRegister("luxmonitor_set", CModule_OutdoorLightingControl::SetLuxMonitor, "");
+	MCommandRegister("luxmonitor_get", CModule_OutdoorLightingControl::GetLuxMonitor, "");
 	MCommandRegister("motiontimeout_set", CModule_OutdoorLightingControl::SetMotionTripTimeout, "");
 	MCommandRegister("motiontimeout_get", CModule_OutdoorLightingControl::GetMotionTripTimeout, "");
 	MCommandRegister("latenighttimeout_set", CModule_OutdoorLightingControl::SetLateNightTimeout, "");
@@ -140,13 +145,6 @@ CModule_OutdoorLightingControl::Setup(
 	MRealTimeRegisterEvent("LuxPeriodic", 1 * 60 * 1000000, false, CModule_OutdoorLightingControl::LuxPeriodic, NULL);
 
 	UpdateTimes();
-
-	// Update lux trigger
-	if(luminosityInterface != NULL)
-	{
-		float	curLux = luminosityInterface->GetActualLux();
-		luxTriggerState = settings.triggerLux < curLux;
-	}
 
 	MInternetRegisterPage("/", CModule_OutdoorLightingControl::CommandHomePageHandler);
 }
@@ -193,7 +191,7 @@ CModule_OutdoorLightingControl::UpdateTimes(
 	}
 	olInterface->TimeOfDayChange(timeOfDay);
 
-	SystemMsg("Setup time of day = %d\n", timeOfDay);
+	SystemMsg("Setup time of day = %s\n", gTimeOfDayStr[timeOfDay]);
 
 	ledsOn = timeOfDay == eTimeOfDay_Night;
 }
@@ -204,6 +202,30 @@ CModule_OutdoorLightingControl::TimeChangeMethod(
 	bool		inTimeZone)
 {
 	UpdateTimes();
+}
+
+float
+CModule_OutdoorLightingControl::GetAvgBrightness(
+	void)
+{
+	if(luminosityInterface == NULL)
+	{
+		return 0;
+	}
+
+	return luminosityInterface->GetNormalizedBrightness(GetAvgLux());
+}
+
+float
+CModule_OutdoorLightingControl::GetAvgLux(
+	void)
+{
+	float totalLux = 0.0f;
+	for(int i = 0; i < eLuxBufferSize; ++i)
+	{
+		totalLux += luxBuffer[i];
+	}
+	return totalLux / (float)eLuxBufferSize;
 }
 
 void
@@ -248,10 +270,50 @@ CModule_OutdoorLightingControl::Update(
 		toggleCount = 0;
 	}
 
+	if(luminosityInterface != NULL)
+	{
+		luxBuffer[luxBufferIndex++ % eLuxBufferSize] = luminosityInterface->GetActualLux();
+
+		if(luxBufferIndex == 1)
+		{
+			// If this is the first entry in the buffer initialize the rest of the buffer to this value
+			for(int i = 1; i < eLuxBufferSize; ++i)
+			{
+				luxBuffer[i] = luxBuffer[0];
+			}
+		}
+
+		// Update lux trigger
+		if(timeOfDay == eTimeOfDay_Day)
+		{
+			if(!luxLowWater)
+			{
+				if(GetAvgLux() <= settings.triggerLuxLow)
+				{
+					ledsOn = true;
+					luxLowWater = true;
+				}
+			}
+			else if(GetAvgLux() >= settings.triggerLuxHigh)
+			{
+				ledsOn = false;
+				luxLowWater = false;
+			}
+		}
+	}
+
 	if(motionSensorTrip != curMotionSensorTrip)
 	{
+		SystemMsg("Motion trip state to %d\n", motionSensorTrip);
 		olInterface->MotionSensorStateChange(motionSensorTrip);
 		curMotionSensorTrip = motionSensorTrip;
+	}
+
+	if(luxLowWater != curLuxTrigger)
+	{
+		SystemMsg("Lux trigger state to %d\n", luxLowWater);
+		olInterface->LuxSensorStateChange(luxLowWater);
+		curLuxTrigger = luxLowWater;
 	}
 
 	bool newLEDOnState = overrideActive ? overrideState : ledsOn;
@@ -306,7 +368,14 @@ CModule_OutdoorLightingControl::CommandHomePageHandler(
 	if(luminosityInterface != NULL)
 	{
 		// Add cur lux
-		inOutput->printf("<tr><td>Actual Lux</td><td>%f</td></tr>", luminosityInterface->GetActualLux());
+		inOutput->printf("<tr><td>Current Lux</td><td>%f</td></tr>", GetAvgLux());
+		inOutput->printf("<tr><td>Current Brightness</td><td>%f</td></tr>", GetAvgBrightness());
+
+		// add monitor lux
+		inOutput->printf("<tr><td>Monitoring Lux</td><td>%s</td></tr>", settings.monitorLux ? "On" : "Off");
+
+		// add lux trigger state
+		inOutput->printf("<tr><td>Lux Low Water State</td><td>%s</td></tr>", luxLowWater ? "On" : "Off");
 	}
 
 	// add ledsOn
@@ -321,11 +390,11 @@ CModule_OutdoorLightingControl::CommandHomePageHandler(
 	// add motionSensorTrip
 	inOutput->printf("<tr><td>Motion Sensor Trip</td><td>%s</td></tr>", motionSensorTrip ? "On" : "Off");
 
-	// add luxTriggerState
-	inOutput->printf("<tr><td>Lux Trigger State</td><td>%s</td></tr>", luxTriggerState ? "On" : "Off");
+	// add settings.triggerLuxLow
+	inOutput->printf("<tr><td>Lux Low Water</td><td>%f</td></tr>", settings.triggerLuxLow);
 
-	// add settings.triggerLux
-	inOutput->printf("<tr><td>Trigger Lux</td><td>%f</td></tr>", settings.triggerLux);
+	// add settings.triggerLuxHigh
+	inOutput->printf("<tr><td>Lux High Water</td><td>%f</td></tr>", settings.triggerLuxHigh);
 
 	// add settings.lateNightStartHour and min
 	inOutput->printf("<tr><td>Late Night Start</td><td>%02d:%02d</td></tr>", settings.lateNightStartHour, settings.lateNightStartMin);
@@ -349,11 +418,12 @@ CModule_OutdoorLightingControl::Sunset(
 	timeOfDay = eTimeOfDay_Night;
 	olInterface->TimeOfDayChange(timeOfDay);
 
+	luxLowWater = false;
 	ledsOn = true;
 
 	if(luminosityInterface != NULL)
 	{
-		SystemMsg("lux: sunset lux = %f\n", luminosityInterface->GetActualLux());
+		SystemMsg("lux: sunset lux = %f brightness = %f\n", GetAvgLux(), GetAvgBrightness());
 	}
 }
 
@@ -375,27 +445,12 @@ CModule_OutdoorLightingControl::LuxPeriodic(
 	char const*	inName,
 	void*		inRef)
 {
-	if(luminosityInterface == NULL)
+	if(luminosityInterface == NULL || !settings.monitorLux)
 	{
 		return;
 	}
 
-	// Update lux trigger
-	float	curLux = luminosityInterface->GetActualLux();
-
-	luxTriggerState = curLux < settings.triggerLux;
-
-	/*
-	if(curLux > 0.0f)
-	{
-		SystemMsg("lux: lux = %f, luxTriggerState=%d\n", curLux, luxTriggerState);
-	}
-	*/
-
-	if(timeOfDay == eTimeOfDay_Day)
-	{
-		ledsOn = luxTriggerState;
-	}
+	SystemMsg("lux: avgLux = %f, avgBrightness = %f, luxLowWater=%d\n", GetAvgLux(), GetAvgBrightness(), luxLowWater);
 }
 
 void
@@ -555,12 +610,13 @@ CModule_OutdoorLightingControl::SetTriggerLux(
 	int					inArgC,
 	char const*			inArgv[])
 {
-	if(inArgC != 2)
+	if(inArgC != 3)
 	{
 		return eCmd_Failed;
 	}
 
-	settings.triggerLux = (float)atof(inArgv[1]);
+	settings.triggerLuxLow = (float)atof(inArgv[1]);
+	settings.triggerLuxHigh = (float)atof(inArgv[2]);
 
 	EEPROMSave();
 
@@ -573,7 +629,36 @@ CModule_OutdoorLightingControl::GetTriggerLux(
 	int					inArgC,
 	char const*			inArgv[])
 {
-	inOutput->printf("%f\n", settings.triggerLux);
+	inOutput->printf("low=%f high=%f\n", settings.triggerLuxLow, settings.triggerLuxHigh);
+
+	return eCmd_Succeeded;
+}
+
+uint8_t
+CModule_OutdoorLightingControl::SetLuxMonitor(
+	IOutputDirector*	inOutput,
+	int					inArgC,
+	char const*			inArgv[])
+{
+	if(inArgC != 2)
+	{
+		return eCmd_Failed;
+	}
+
+	settings.monitorLux = strcmp(inArgv[1], "on") == 0;
+
+	EEPROMSave();
+
+	return eCmd_Succeeded;
+}
+
+uint8_t
+CModule_OutdoorLightingControl::GetLuxMonitor(
+	IOutputDirector*	inOutput,
+	int					inArgC,
+	char const*			inArgv[])
+{
+	inOutput->printf("monitorLux=%d\n", settings.monitorLux);
 
 	return eCmd_Succeeded;
 }

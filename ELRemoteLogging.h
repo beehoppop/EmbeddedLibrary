@@ -34,16 +34,15 @@
 #include "ELModule.h"
 #include "ELOutput.h"
 #include "ELInternet.h"
+#include "ELCommand.h"
 
-class CModule_Loggly : public CModule, public IOutputDirector, IInternetHandler
+class CModule_Loggly : public CModule, public IOutputDirector, IInternetHandler, public ICmdHandler
 {
 public:
 	
 	MModule_Declaration(
 		CModule_Loggly,
-		char const*	inGlobalTags,		// Must be a static string
-		char const*	inServerAddress,	// Must be a static string
-		char const*	inURL)				// Must be a static string
+		char const*	inGlobalTags)		// Must be a static string
 
 	virtual void
 	write(
@@ -59,13 +58,19 @@ public:
 private:
 
 	CModule_Loggly(
-		char const*	inGlobalTags,		// Must be a static string
-		char const*	inServerAddress,	// Must be a static string
-		char const*	inURL);				// Must be a static string
+		char const*	inGlobalTags);		// Must be a static string
 	
 	virtual void
 	Setup(
 		void);
+
+	uint16_t
+	GetQueueLength(
+		void);
+
+	uint16_t
+	GetQueueLengthFromGivenTail(
+		uint16_t	inTail);
 	
 	virtual void
 	Update(
@@ -76,13 +81,35 @@ private:
 		uint16_t			inHTTPReturnCode,
 		int					inDataSize,
 		char const*			inData);
+	
+	uint8_t
+	Command_SetUUID(
+		IOutputDirector*	inOutput,
+		int					inArgC,
+		char const*			inArgV[]);
+	
+	uint8_t
+	Command_GetUUID(
+		IOutputDirector*	inOutput,
+		int					inArgC,
+		char const*			inArgV[]);
+	
+	void
+	UpdateServerData(
+		void);
 
+	struct SSettings
+	{
+		char	uuid[48];
+		char	serverAddress[64];
+	};
+
+	SSettings			settings;
+	char				url[64];
 	uint16_t			head;
 	uint16_t			tail;
 	char				buffer[2048];
-	char const*			url;
 	char const*			globalTags;
-	char const*			serverAddress;
 	bool				requestInProgress;
 	CHTTPConnection*	connection;
 };

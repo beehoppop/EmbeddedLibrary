@@ -180,107 +180,6 @@ public:
 		uint8_t	inClk,
 		uint8_t	inMISO)
 
-	#if 0
-	// sigh...
-	inline void
-	WaitFIFOReady(
-		void)
-	{
-		uint32_t sr;
-		volatile uint32_t MUNUSED tmp;
-		do {
-			sr = (KINETISK_SPI0.SR >> 12) & 0xF;
-		} while (sr > 3);
-	}
-
-	inline void
-	WaitFIFOEmpty(
-		void)
-	{
-		uint32_t sr;
-		volatile uint32_t MUNUSED tmp;
-		do {
-			sr = (KINETISK_SPI0.SR >> 12) & 0xF;
-		} while (sr > 0);
-	}
-
-	inline void
-	WaitEOQ(
-		void)
-	{
-		uint32_t sr;
-		volatile uint32_t MUNUSED tmp;
-		do {
-			sr = KINETISK_SPI0.SR;
-		} while (!(sr & SPI_SR_EOQF));
-		KINETISK_SPI0.SR = SPI_SR_EOQF;
-	}
-
-	inline void 
-	WriteCommand(
-		uint8_t inCommand,
-		bool	inEOQ = false)
-	{
-		WaitFIFOReady();
-		if(inEOQ)
-		{
-			KINETISK_SPI0.PUSHR = inCommand | (pcs_command << 16) | SPI_PUSHR_CTAS(0) | SPI_PUSHR_EOQ;
-		}
-		else
-		{
-			KINETISK_SPI0.PUSHR = inCommand | (pcs_command << 16) | SPI_PUSHR_CTAS(0) | SPI_PUSHR_CONT;
-		}
-	}
-
-	inline void 
-	WriteData8(
-		uint8_t	inData,
-		bool	inEOQ = false)
-	{
-		WaitFIFOReady();
-		if(inEOQ)
-		{
-			KINETISK_SPI0.PUSHR = inData | (pcs_data << 16) | SPI_PUSHR_CTAS(0) | SPI_PUSHR_EOQ;
-		}
-		else
-		{
-			KINETISK_SPI0.PUSHR = inData | (pcs_data << 16) | SPI_PUSHR_CTAS(0) | SPI_PUSHR_CONT;
-		}
-	}
-
-	inline void 
-	WriteData16(
-		uint16_t	inData,
-		bool		inEOQ = false)
-	{
-		WaitFIFOReady();
-		if(inEOQ)
-		{
-			KINETISK_SPI0.PUSHR = inData | (pcs_data << 16) | SPI_PUSHR_CTAS(1) | SPI_PUSHR_EOQ;
-		}
-		else
-		{
-			KINETISK_SPI0.PUSHR = inData | (pcs_data << 16) | SPI_PUSHR_CTAS(1) | SPI_PUSHR_CONT;
-		}
-	}
-
-	inline void
-	BeginTransaction(
-		void)
-	{
-		SPI.beginTransaction(SPISettings(SPICLOCK, MSBFIRST, SPI_MODE0));
-		savedSPIMCR = SPI0_MCR;
-	}
-
-	inline void
-	EndTransaction(
-		void)
-	{
-		SPI0_MCR = savedSPIMCR | SPI_MCR_CLR_RXF;
-		SPI.endTransaction();
-	}
-	#endif
-
 	inline void 
 	WaitFifoNotFull(
 		void) 
@@ -401,91 +300,6 @@ public:
 		WriteData16(y0, false);   // YSTART
 		WriteData16(y1, false);   // YEND
 		pixelCount = (x1 - x0 + 1) * (y1 - y0 + 1);
-	}
-
-	CDisplayDriver_ILI9341(
-		EDisplayOrientation	inDisplayOrientation,
-		uint8_t	inCS,
-		uint8_t	inDC,
-		uint8_t	inMOSI,
-		uint8_t	inClk,
-		uint8_t	inMISO)
-		:
-		CModule(),
-		displayOrientation(inDisplayOrientation),
-		cs(inCS), dc(inDC), mosi(inMOSI), clk(inClk), miso(inMISO)
-	{
-		MReturnOnError(!((mosi == 11 || mosi == 7) && (miso == 12 || miso == 8) && (clk == 13 || clk == 14)));
-
-		SPI.begin();
-		MReturnOnError(!SPI.pinIsChipSelect(cs, dc));
-
-		pcs_data = SPI.setCS(cs);
-		pcs_command = pcs_data | SPI.setCS(dc);
-
-		SPI.beginTransaction(SPISettings(SPICLOCK, MSBFIRST, SPI_MODE0));
-
-		const uint8_t *addr = init_commands;
-		while (1) 
-		{
-			uint8_t count = *addr++;
-			if (count-- == 0)
-			{
-				break;
-			}
-			WriteCommand(*addr++, false);
-			while (count-- > 0)
-			{
-				WriteCommand(*addr++, false);
-			}
-			break;
-		}
-
-		WriteCommand(ILI9341_SLPOUT, true);    // Exit Sleep
-
-		delay(120); 		
-		WriteCommand(ILI9341_DISPON, false);    // Display on
-
-		WriteCommand(ILI9341_MADCTL, false);
-		switch(displayOrientation)
-		{
-			case eDisplayOrientation_LandscapeUpside:
-				displayWidth = ILI9341_TFTHEIGHT;
-				displayHeight = ILI9341_TFTWIDTH;
-				WriteData8(MADCTL_MV | MADCTL_BGR, true);
-				break;
-
-			case eDisplayOrientation_LandscapeUpsideDown:
-				displayWidth = ILI9341_TFTHEIGHT;
-				displayHeight = ILI9341_TFTWIDTH;
-				WriteData8(MADCTL_MX | MADCTL_MY | MADCTL_MV | MADCTL_BGR, true);
-				break;
-
-			case eDisplayOrientation_PortraitUpside:
-				displayWidth = ILI9341_TFTWIDTH;
-				displayHeight = ILI9341_TFTHEIGHT;
-				WriteData8(MADCTL_MX | MADCTL_BGR, true);
-				break;
-
-			case eDisplayOrientation_PortraitUpsideDown:
-				WriteData8(MADCTL_MY | MADCTL_BGR, true);
-				displayWidth = ILI9341_TFTWIDTH;
-				displayHeight = ILI9341_TFTHEIGHT;
-				break;
-
-			default:
-				WriteData8(MADCTL_MV | MADCTL_BGR, true);
-				SystemMsg("Unknown orientation");
-		}
-
-		SPI.endTransaction();
-
-		displayPort.topLeft.x = 0;
-		displayPort.topLeft.y = 0;
-		displayPort.bottomRight.x = displayWidth;
-		displayPort.bottomRight.y = displayHeight;
-
-		drawingActive = false;
 	}
 	
 	virtual int16_t
@@ -796,6 +610,92 @@ public:
 
 		WriteData16(color, true);
 		SPI.endTransaction();
+	}
+
+private:
+	CDisplayDriver_ILI9341(
+		EDisplayOrientation	inDisplayOrientation,
+		uint8_t	inCS,
+		uint8_t	inDC,
+		uint8_t	inMOSI,
+		uint8_t	inClk,
+		uint8_t	inMISO)
+		:
+		CModule(),
+		displayOrientation(inDisplayOrientation),
+		cs(inCS), dc(inDC), mosi(inMOSI), clk(inClk), miso(inMISO)
+	{
+		MReturnOnError(!((mosi == 11 || mosi == 7) && (miso == 12 || miso == 8) && (clk == 13 || clk == 14)));
+
+		SPI.begin();
+		MReturnOnError(!SPI.pinIsChipSelect(cs, dc));
+
+		pcs_data = SPI.setCS(cs);
+		pcs_command = pcs_data | SPI.setCS(dc);
+
+		SPI.beginTransaction(SPISettings(SPICLOCK, MSBFIRST, SPI_MODE0));
+
+		const uint8_t *addr = init_commands;
+		while (1) 
+		{
+			uint8_t count = *addr++;
+			if (count-- == 0)
+			{
+				break;
+			}
+			WriteCommand(*addr++, false);
+			while (count-- > 0)
+			{
+				WriteCommand(*addr++, false);
+			}
+			break;
+		}
+
+		WriteCommand(ILI9341_SLPOUT, true);    // Exit Sleep
+
+		delay(120); 		
+		WriteCommand(ILI9341_DISPON, false);    // Display on
+
+		WriteCommand(ILI9341_MADCTL, false);
+		switch(displayOrientation)
+		{
+			case eDisplayOrientation_LandscapeUpside:
+				displayWidth = ILI9341_TFTHEIGHT;
+				displayHeight = ILI9341_TFTWIDTH;
+				WriteData8(MADCTL_MV | MADCTL_BGR, true);
+				break;
+
+			case eDisplayOrientation_LandscapeUpsideDown:
+				displayWidth = ILI9341_TFTHEIGHT;
+				displayHeight = ILI9341_TFTWIDTH;
+				WriteData8(MADCTL_MX | MADCTL_MY | MADCTL_MV | MADCTL_BGR, true);
+				break;
+
+			case eDisplayOrientation_PortraitUpside:
+				displayWidth = ILI9341_TFTWIDTH;
+				displayHeight = ILI9341_TFTHEIGHT;
+				WriteData8(MADCTL_MX | MADCTL_BGR, true);
+				break;
+
+			case eDisplayOrientation_PortraitUpsideDown:
+				WriteData8(MADCTL_MY | MADCTL_BGR, true);
+				displayWidth = ILI9341_TFTWIDTH;
+				displayHeight = ILI9341_TFTHEIGHT;
+				break;
+
+			default:
+				WriteData8(MADCTL_MV | MADCTL_BGR, true);
+				SystemMsg("Unknown orientation");
+		}
+
+		SPI.endTransaction();
+
+		displayPort.topLeft.x = 0;
+		displayPort.topLeft.y = 0;
+		displayPort.bottomRight.x = displayWidth;
+		displayPort.bottomRight.y = displayHeight;
+
+		drawingActive = false;
 	}
 
 	EDisplayOrientation	displayOrientation;

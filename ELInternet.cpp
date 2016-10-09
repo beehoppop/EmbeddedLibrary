@@ -679,7 +679,7 @@ CModule_Internet::Update(
 	
 	if(bufferSize > 0)
 	{
-		if(localPort == webServerPort)
+		if(webServerPort > 0 && localPort == webServerPort)
 		{
 			//DebugMsgLocal("Got cmd server data chn=%d", replyPort);
 

@@ -30,8 +30,7 @@
 
 #define MMax(x, y) (((x) > (y)) ? (x) : (y))
 #define MMin(x, y) (((x) < (y)) ? (x) : (y))
-#define MPin(x, y, z) ((y) < (x) ? (x) : (y) > (z) ? (z) : (y))
-
+#define MPin(inMin, inValue, inMax) ((inValue) < (inMin) ? (inMin) : (inValue) > (inMax) ? (inMax) : (inValue))
 #define MStaticArrayLength(x) (sizeof(x) / sizeof(x[0]))
 
 bool
@@ -97,5 +96,16 @@ GetRandomFloatGuassian(
 uint32_t
 GetFreeMemory(
 	void);
+
+inline float
+ReMapValue(
+	float	inValue,
+	float	inValueMin,
+	float	inValueMax,
+	float	inNewRangeMin,
+	float	inNewRangeMax)
+{
+	return inNewRangeMin + (inValue - inValueMin) / (inValueMax - inValueMin) * (inNewRangeMax - inNewRangeMin);
+}
 
 #endif /* _ELUTILITIES_H_ */
