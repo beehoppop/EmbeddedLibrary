@@ -202,7 +202,7 @@ private:
 
 	struct SPendingCommand
 	{
-		char		command[eMaxCommandLenth];
+		TString<64>	command;
 		uint32_t	commandStartMS;
 		uint32_t	timeoutMS;
 		SChannel*	targetChannel;
@@ -276,8 +276,7 @@ private:
 	uint32_t		commandTail;
 	SPendingCommand	commandQueue[eMaxPendingCommands];
 
-	size_t		serialInputBufferLength;
-	char		serialInputBuffer[256];
+	TString<128>	serialInputBuffer;
 
 	uint16_t	serverPort;
 

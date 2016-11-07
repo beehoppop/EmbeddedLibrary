@@ -97,6 +97,11 @@ public:
 	GetSpeed(
 		void) = 0;
 
+	// Return the current load
+	virtual float
+	GetLoad(
+		void) = 0;
+
 	// Return the servo's max counterclockwise and clockwise position from 0 (hand pointing straight up at 12 o'clock)
 	virtual void
 	GetPositionLimits(

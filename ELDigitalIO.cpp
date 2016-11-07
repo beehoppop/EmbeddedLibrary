@@ -176,6 +176,7 @@ CModule_DigitalIO::SetPinMode(
 
 	SPinState*	targetState = pinState + inPin;
 
+	targetState->mode = inMode;
 	targetState->activeHigh = inActiveHigh;
 	targetState->object = NULL;
 	targetState->method = NULL;
@@ -236,5 +237,18 @@ CModule_DigitalIO::SetOutputInactive(
 	SPinState*	targetState = pinState + inPin;
 
 	digitalWriteFast(inPin, !targetState->activeHigh);
+	targetState->time = 0;
+}
+
+void
+CModule_DigitalIO::SetOutputState(
+	uint8_t		inPin,
+	bool		inState)
+{
+	MReturnOnError(inPin >= eDigitalIO_PinCount);
+
+	SPinState*	targetState = pinState + inPin;
+
+	digitalWriteFast(inPin, inState ? targetState->activeHigh : !targetState->activeHigh);
 	targetState->time = 0;
 }

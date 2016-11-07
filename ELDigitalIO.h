@@ -106,6 +106,11 @@ public:
 	SetOutputInactive(
 		uint8_t	inPin);
 
+	void
+	SetOutputState(
+		uint8_t		inPin,
+		bool		inState);
+
 private:
 	
 	CModule_DigitalIO(

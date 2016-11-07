@@ -54,14 +54,12 @@ CHTTPConnection::CHTTPConnection(
 {
 	internetHandler = inInternetHandler;
 	responseMethod = inResponseMethod;
-	strncpy(serverAddress, inServer, sizeof(serverAddress) - 1);
-	serverAddress[sizeof(serverAddress) - 1] = 0;
+	serverAddress = inServer;
 	serverPort = inPort;
 	localPort = 0xFF;
 	openInProgress = false;
 	waitingOnResponse = false;
 	flushPending = false;
-	requestIndex = 0;
 }
 
 void
@@ -69,12 +67,9 @@ CHTTPConnection::StartRequest(
 	char const*	inVerb,
 	char const*	inURL)
 {
-	char buffer[128];
+	TString<256> buffer("%s %s HTTP/1.1\r\n", inVerb, inURL);
 
 	MReturnOnError(waitingOnResponse);
-
-	snprintf(buffer, sizeof(buffer), "%s %s HTTP/1.1\r\n", inVerb, inURL);
-	buffer[sizeof(buffer) - 1] = 0;
 
 	SendData(buffer, false);
 }
@@ -84,9 +79,7 @@ CHTTPConnection::SendHeaders(
 	int	inHeaderCount,
 	...)
 {
-	char buffer[256];
-	char*	cp = buffer;
-	char*	ep = cp + sizeof(buffer);
+	TString<256> buffer;
 
 	MReturnOnError(waitingOnResponse);
 
@@ -94,27 +87,13 @@ CHTTPConnection::SendHeaders(
 
 	va_start(valist, inHeaderCount);
 	
-	for(int i = 0; i < inHeaderCount && cp < ep; ++i)
+	for(int i = 0; i < inHeaderCount; ++i)
 	{
 		char const*	key = va_arg(valist, char const*);
 		char const* value = va_arg(valist, char const*);
 
-		strncpy(cp, key, ep - cp);
-		cp += strlen(key);
-		if(ep - cp > 2)
-		{
-			*cp++ = ':';
-			*cp++ = ' ';
-		}
-		strncpy(cp, value, ep - cp);
-		cp += strlen(value);
-		if(ep - cp > 3)
-		{
-			*cp++ = '\r';
-			*cp++ = '\n';
-		}
+		buffer.Append("%s: %s\r\n", key, value);
 	}
-	*cp++ = 0;
 
 	va_end(valist);
 
@@ -126,9 +105,7 @@ CHTTPConnection::SendParameters(
 	int	inParameterCount,
 	...)
 {
-	char buffer[256];
-	char*	cp = buffer;
-	char*	ep = cp + sizeof(buffer);
+	TString<256> buffer;
 
 	MReturnOnError(waitingOnResponse);
 
@@ -136,27 +113,13 @@ CHTTPConnection::SendParameters(
 
 	va_start(valist, inParameterCount);
 	
-	for(int i = 0; i < inParameterCount && cp < ep; ++i)
+	for(int i = 0; i < inParameterCount; ++i)
 	{
 		char const*	key = va_arg(valist, char const*);
 		char const* value = va_arg(valist, char const*);
 
-		strncpy(cp, key, ep - cp);
-		cp += strlen(key);
-		if(ep - cp > 2)
-		{
-			*cp++ = ':';
-			*cp++ = ' ';
-		}
-		strncpy(cp, value, ep - cp);
-		cp += strlen(value);
-		if(ep - cp > 2)
-		{
-			*cp++ = '\r';
-			*cp++ = '\n';
-		}
+		buffer.Append("%s: %s\r\n", key, value);
 	}
-	buffer[sizeof(buffer) - 1] = 0;
 
 	va_end(valist);
 
@@ -173,7 +136,7 @@ CHTTPConnection::SendBody(
 	char blBuffer[32];
 
 	// Add the Content-Length header
-	SendHeaders(4, "Content-Length", itoa(bodyLen, blBuffer, 10), "User-Agent", "EmbeddedLibrary", "Host", serverAddress, "Accept", "*/*"); 
+	SendHeaders(4, "Content-Length", itoa(bodyLen, blBuffer, 10), "User-Agent", "EmbeddedLibrary", "Host", (char*)serverAddress, "Accept", "*/*"); 
 
 	// Add a blank line
 	SendData("\r\n", false);
@@ -183,7 +146,6 @@ CHTTPConnection::SendBody(
 	responseContentSize = 0;
 	responseState = eResponseState_HTTP;
 	responseHTTPCode = 0;
-	responseContentIndex = 0;
 }
 
 void
@@ -210,10 +172,10 @@ CHTTPConnection::ResponseHandlerMethod(
 		case eConnectionResponse_Opened:
 			openInProgress = false;
 			localPort = inLocalPort;
-			if(requestIndex > 0)
+			if(tempBuffer.GetLength() > 0)
 			{
-				gInternetModule->SendData(localPort, requestIndex, buffer, flushPending);
-				requestIndex = 0;
+				gInternetModule->SendData(localPort, tempBuffer.GetLength(), tempBuffer, flushPending);
+				tempBuffer.Clear();
 				flushPending = false;
 			}
 			break;
@@ -267,14 +229,7 @@ CHTTPConnection::SendData(
 			openInProgress = true;
 		}
 
-		int	dataLen = strlen(inData);
-		if(requestIndex + dataLen > (int)sizeof(buffer))
-		{
-			dataLen = sizeof(buffer) - requestIndex;
-		}
-
-		memcpy(buffer + requestIndex, inData, dataLen);
-		requestIndex += dataLen;
+		tempBuffer.Append(inData);
 		flushPending |= inFlush;
 	}
 }
@@ -292,8 +247,8 @@ CHTTPConnection::ProcessResponseData(
 		char c = *cp++;
 		if(responseState == eResponseState_Body)
 		{
-			buffer[responseContentIndex++] = c;
-			if(responseContentIndex >= responseContentSize)
+			tempBuffer.Append(c);
+			if(tempBuffer.GetLength() >= responseContentSize)
 			{
 				FinishResponse();
 				return;
@@ -301,11 +256,10 @@ CHTTPConnection::ProcessResponseData(
 		}
 		else
 		{
-			if(c == '\r' || responseContentIndex >= sizeof(buffer) - 1)
+			if(c == '\r')
 			{
-				buffer[responseContentIndex++] = 0;
 				ProcessResponseLine();
-				responseContentIndex = 0;
+				tempBuffer.Clear();
 				if(*cp == '\n')
 				{
 					++cp;
@@ -313,7 +267,7 @@ CHTTPConnection::ProcessResponseData(
 				continue;
 			}
 
-			buffer[responseContentIndex++] = c;
+			tempBuffer.Append(c);
 		}
 	}
 }
@@ -322,8 +276,9 @@ void
 CHTTPConnection::ProcessResponseLine(
 	void)
 {
-	if(buffer[0] == 0)
+	if(tempBuffer.GetLength() == 0)
 	{
+		// If the response line is empty that means that response body is starting
 		if(responseContentSize > 0)
 		{
 			responseState = eResponseState_Body;
@@ -337,51 +292,23 @@ CHTTPConnection::ProcessResponseLine(
 
 	if(responseState == eResponseState_HTTP)
 	{
-		if(strncmp(buffer, "HTTP", 4) == 0)
+		if(tempBuffer.StartsWith("HTTP"))
 		{
-			char*	codeStr = buffer;
-			while(!isspace(*codeStr))
-			{
-				++codeStr;
-			}
+			tempBuffer.TrimUntilNextWord();
 
-			while(!isdigit(*codeStr))
-			{
-				++codeStr;
-			}
-			char* endCodeStr = codeStr;
-			while(isdigit(*endCodeStr))
-			{
-				++endCodeStr;
-			}
-			*endCodeStr = 0;
-
-			responseHTTPCode = atoi(codeStr);
+			responseHTTPCode = atoi(tempBuffer);
 
 			responseState = eResponseState_Headers;
 		}
 	}
 	else
 	{
-		char*	valuePtr = strchr(buffer, ':');
-		if(valuePtr == NULL)
+		tempBuffer.TrimStartingSpace();
+		if(tempBuffer.StartsWith("Content-Length"))
 		{
-			return;
-		}
-		*valuePtr = 0;
-		++valuePtr;
-		while(isspace(*valuePtr))
-		{
-			++valuePtr;
-		} 
-
-		if(strcmp(buffer, "Content-Length") == 0)
-		{
-			responseContentSize = atoi(valuePtr);
-		}
-		else
-		{
-			// Don't parse any other headers for now
+			tempBuffer.TrimBeforeChr(':');
+			tempBuffer.TrimStartingSpace();
+			responseContentSize = atoi(tempBuffer);
 		}
 	}
 }
@@ -392,7 +319,8 @@ CHTTPConnection::FinishResponse(
 {
 	responseState = eResponseState_Done;
 	waitingOnResponse = false;
-	(internetHandler->*responseMethod)(responseHTTPCode, responseContentSize, buffer);
+	(internetHandler->*responseMethod)(responseHTTPCode, responseContentSize, tempBuffer);
+	tempBuffer.Clear();
 }
 
 MModuleImplementation_Start(CModule_Internet)
@@ -406,7 +334,6 @@ CModule_Internet::CModule_Internet(
 	internetDevice = NULL;
 	memset(serverList, 0, sizeof(serverList));
 	memset(connectionList, 0, sizeof(connectionList));
-	memset(&settings, 0, sizeof(settings));
 	memset(webServerPageHandlerList, 0, sizeof(webServerPageHandlerList));
 	webServerPort = 0;
 	respondingServer = false;
@@ -488,18 +415,18 @@ CModule_Internet::OpenConnection(
 	TInternetResponseHandlerMethod			inResponseMethod)
 {
 	MReturnOnError(internetDevice == NULL);
-	MReturnOnError(strlen(inServerAddress) > eServerMaxAddressLength);
+	MReturnOnError(strlen(inServerAddress) > eServerMaxAddressLength - 1);
 
 	SConnection*	target = NULL;
 	SConnection*	cur = connectionList;
 	for(int i = 0; i < eMaxConnectionsCount; ++i, ++cur)
 	{
-		if(cur->serverPort == inServerPort && strcmp(cur->serverAddress, inServerAddress) == 0)
+		if(cur->serverPort == inServerPort && cur->serverAddress == inServerAddress)
 		{
 			target = cur;
 			break;
 		}
-		else if(target == NULL && cur->serverAddress[0] == 0)
+		else if(target == NULL && cur->serverAddress.GetLength() == 0)
 		{
 			target = cur;
 		}
@@ -517,7 +444,7 @@ CModule_Internet::OpenConnection(
 	target->handlerObject = inInternetHandler;
 	target->handlerResponseMethod = inResponseMethod;
 	target->serverPort = inServerPort;
-	strcpy(target->serverAddress, inServerAddress);
+	target->serverAddress = inServerAddress;
 }
 
 void
@@ -531,7 +458,7 @@ CModule_Internet::CloseConnection(
 		{
 			cur->localPort = 0xFF;
 			cur->serverPort = 0;
-			cur->serverAddress[0] = 0;
+			cur->serverAddress.Clear();
 			cur->handlerResponseMethod = NULL;
 			cur->handlerObject = NULL;
 			cur->openRef = -1;
@@ -627,7 +554,7 @@ CModule_Internet::Setup(
 {
 	MReturnOnError(internetDevice == NULL);	// Internet device needs to be setup before the general internet module
 
-	if(settings.ssid[0] != 0)
+	if(settings.ssid.GetLength() != 0)
 	{
 		internetDevice->ConnectToAP(settings.ssid, settings.pw, EWirelessPWEnc(settings.securityType));
 	}
@@ -681,11 +608,10 @@ CModule_Internet::Update(
 	{
 		if(webServerPort > 0 && localPort == webServerPort)
 		{
-			//DebugMsgLocal("Got cmd server data chn=%d", replyPort);
+			//Serial.printf("Got cmd server data chn=%d\n", replyPort);
 
 			char*	verb = NULL;
 			char*	url = NULL;
-			//char*	httpStr = NULL;
 			char*	nextSpace;
 
 			verb = buffer;
@@ -699,7 +625,6 @@ CModule_Internet::Update(
 				if(nextSpace != NULL)
 				{
 					*nextSpace = 0;
-					//httpStr = nextSpace + 1;
 				}
 			}
 
@@ -709,7 +634,7 @@ CModule_Internet::Update(
 				int		paramCount = 32;
 				char*	pageName;
 
-				ProcessURLParameters(paramCount, paramList, pageName, sizeof(buffer) - 16, buffer, url);
+				TransformURLIntoParameters(paramCount, paramList, pageName, url);
 
 				internetDevice->SendData(replyPort, strlen(gReplyStringPreOutput), gReplyStringPreOutput);
 
@@ -729,7 +654,7 @@ CModule_Internet::Update(
 			}
 			else
 			{
-				//DebugMsgLocal("  unknown cmd request");
+				Serial.printf("  unknown cmd request");
 				internetDevice->CloseConnection(replyPort);
 			}
 		}
@@ -811,7 +736,7 @@ CModule_Internet::write(
 
 		if(c == '\n' || c == '\r')
 		{
-			char const*	lineEnd = csp;
+			char const*	lineEnd = csp - 1;
 			char c2 = *csp;
 
 			if((c == '\n' && c2 == '\r') || (c == '\r' && c2 == '\n'))
@@ -844,7 +769,6 @@ CModule_Internet::write(
 			{
 				return;
 			}
-			//internetDevice->Server_SendData(respondingServerPort, respondingTransactionPort, 5, "</br>");
 		}
 	}
 }
@@ -877,8 +801,8 @@ CModule_Internet::SerialCmd_WirelessSet(
 		return eCmd_Failed;
 	}
 
-	strcpy(settings.ssid, inArgV[1]);
-	strcpy(settings.pw, inArgV[2]);
+	settings.ssid = inArgV[1];
+	settings.pw = inArgV[2];
 
 	EEPROMSave();
 
@@ -1009,42 +933,30 @@ CModule_Internet::CommandProcessPageHandler(
 }
 
 void
-CModule_Internet::ProcessURLParameters(
+CModule_Internet::TransformURLIntoParameters(
 	int&			ioParameterCount,
 	char const**	outParameterList,
 	char*&			outPageName,
-	int				inParameterBufferSize,
-	char*			inParameterBuffer,
-	char const*		inURL)
+	char*			inURL)
 {
 	int		maxCount = ioParameterCount;
-	int		curParameterIndex = 0;
-	char*	dp = inParameterBuffer;
-	char*	edp = inParameterBuffer + inParameterBufferSize - 1;
 
-	char const*	cp = strchr(inURL, '?');
+	char*	dp = strchr(inURL, '?');
 
-	outPageName = dp;
-	if(cp == NULL)
+	outPageName = inURL;
+	ioParameterCount = 0;
+	if(dp == NULL)
 	{
-		strcpy(dp, inURL);
-		ioParameterCount = 0;
 		return;
 	}
-	else
+
+	*dp++ = 0;
+	inURL = dp;
+	outParameterList[ioParameterCount++] = dp;
+
+	for(;;)
 	{
-		strncpy(dp, inURL, cp - inURL);
-		dp +=  cp - inURL;
-		*dp++ = 0;
-		++cp;
-	}
-
-	outParameterList[0] = dp;
-
-	while(dp < edp)
-	{
-		char c = *cp++;
-
+		char c = *inURL++;
 		if(c == 0)
 		{
 			break;
@@ -1053,12 +965,11 @@ CModule_Internet::ProcessURLParameters(
 		if(c == '=' || c == '&')
 		{
 			*dp++ = 0;
-			++curParameterIndex;
-			if(curParameterIndex >= maxCount)
+			if(ioParameterCount >= maxCount)
 			{
 				break;
 			}
-			outParameterList[curParameterIndex] = dp;
+			outParameterList[ioParameterCount++] = dp;
 		}
 		else if(c == '+')
 		{
@@ -1067,12 +978,12 @@ CModule_Internet::ProcessURLParameters(
 		else if(c == '%')
 		{
 			char hexData[3];
-			hexData[0] = *cp++;
+			hexData[0] = *inURL++;
 			if(hexData[0] == 0)
 			{
 				break;
 			}
-			hexData[1] = *cp++;
+			hexData[1] = *inURL++;
 			if(hexData[2] == 0)
 			{
 				break;
@@ -1086,6 +997,8 @@ CModule_Internet::ProcessURLParameters(
 		}
 	}
 
-	*dp++ = 0;
-	ioParameterCount = curParameterIndex + 1;
+	if(ioParameterCount < maxCount)
+	{
+		*dp++ = 0;
+	}
 }

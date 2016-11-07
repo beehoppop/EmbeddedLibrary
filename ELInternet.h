@@ -35,12 +35,13 @@
 #include <ELModule.h>
 #include <ELOutput.h>
 #include <ELCommand.h>
+#include <ELString.h>
 
 enum
 {
 	eMaxServersCount = 4,
 	eMaxConnectionsCount = 4,
-	eServerMaxAddressLength = 63,
+	eServerMaxAddressLength = 64,
 
 	eWebServerPageHandlerMax = 16,
 
@@ -180,15 +181,13 @@ private:
 	IInternetHandler*					internetHandler;
 	THTTPResponseHandlerMethod			responseMethod;
 
-	char		serverAddress[64];
+	TString<64>	serverAddress;
 	uint16_t	serverPort;
 	uint16_t	localPort;
 
-	uint16_t	requestIndex;
-	char		buffer[512];
+	TString<512>	tempBuffer;
 
 	uint16_t	responseContentSize;
-	uint16_t	responseContentIndex;
 	uint16_t	responseHTTPCode;
 	uint8_t		responseState;
 	bool		waitingOnResponse;
@@ -336,13 +335,11 @@ public:
 
 	// Utility functions
 	static void
-	ProcessURLParameters(
+	TransformURLIntoParameters(
 		int&			ioParameterCount,	// in -> max parameters, out -> actual parameter count
-		char const**	outParameterList,	// An array of char* to parameter data each string must be at least eMaxURLParamSize bytes
+		char const**	outParameterList,	// An array of char* to parameter pairs, key then value
 		char*&			outPageName,
-		int				inParameterBufferSize,
-		char*			inParameterBuffer,
-		char const*		inURL);
+		char*			inURL);
 
 private:
 	
@@ -398,6 +395,13 @@ private:
 		int					inParamCount,
 		char const**		inParamList);
 
+	virtual void
+	EEPROMInitialize(
+		void)
+	{
+		memset(&settings, 0, sizeof(settings));
+	}
+
 	struct SServer
 	{
 		uint16_t						port;
@@ -411,7 +415,7 @@ private:
 		int			openRef;
 		uint16_t	localPort;
 		uint16_t	serverPort;
-		char		serverAddress[eServerMaxAddressLength + 1];
+		TString<eServerMaxAddressLength>	serverAddress;
 
 		IInternetHandler*						handlerObject;
 		TInternetResponseHandlerMethod			handlerResponseMethod;
@@ -426,8 +430,8 @@ private:
 
 	struct SSettings
 	{
-		char		ssid[64];
-		char		pw[64];
+		TString<64>	ssid;
+		TString<64>	pw;
 		uint32_t	ipAddr;
 		uint32_t	subnetAddr;
 		uint32_t	gatewayAddr;

@@ -373,6 +373,10 @@ CModule::SetupAll(
 
 	gConfigModule->SetupFinished();
 
+	int32_t	freeMemory = GetFreeMemory();
+	SystemMsg("Free memory after setup = %d\n", freeMemory);
+	MAssert(freeMemory >= 2 * 1024);
+
 	#if MDebugModules
 		SystemMsg("Module: Setup Complete\n"); delay(100);
 	#endif
@@ -497,7 +501,7 @@ StartingModuleConstruction(
 	#if MDebugModules
 	SystemMsg("%s StartConstruction: class size = %ld, free mem = %ld", inClassName, inClassSize, GetFreeMemory());
 	#endif
-	MAssert(sizeof(inClassName) <= GetFreeMemory());
+	MAssert((int32_t)inClassSize <= GetFreeMemory());
 	gCurrentModuleConstructingName = inClassName;
 	gCurrentModuleClassSize = inClassSize;
 }

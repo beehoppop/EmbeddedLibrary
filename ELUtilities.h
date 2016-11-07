@@ -93,7 +93,7 @@ GetRandomFloatGuassian(
 	float	inMean,
 	float	inStandardDeviation);
 
-uint32_t
+int32_t
 GetFreeMemory(
 	void);
 

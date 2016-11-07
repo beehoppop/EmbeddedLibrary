@@ -284,7 +284,7 @@ GetRandomFloatGuassian(
 	return inMean + y1 * inStandardDeviation;
 }
 
-uint32_t
+int32_t
 GetFreeMemory(
 	void)
 {

@@ -186,6 +186,7 @@ inClassName::Include(									\
 	StartingModuleConstruction(#inClassName, sizeof(inClassName));					\
 	currentConstruction = (inClassName*)malloc(sizeof(inClassName));				\
 	inClassName*	result = new(currentConstruction) inClassName(__VA_ARGS__);		\
+	MAssert(result != NULL);														\
 	result->DoneConstructing();														\
 	inGlobalVariable = result;														\
 	return result;																	\
@@ -200,6 +201,7 @@ inClassName::Include(									\
 	StartingModuleConstruction(#inClassName, sizeof(inClassName));					\
 	currentConstruction = (inClassName*)malloc(sizeof(inClassName));				\
 	inClassName*	result = new(currentConstruction) inClassName(__VA_ARGS__);		\
+	MAssert(result != NULL);														\
 	result->DoneConstructing();														\
 	currentConstruction = NULL;														\
 	return result;																	\

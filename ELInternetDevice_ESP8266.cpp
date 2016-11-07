@@ -71,7 +71,6 @@ CModule_ESP8266::CModule_ESP8266(
 	ipdParsing(false),
 	commandHead(0),
 	commandTail(0),
-	serialInputBufferLength(0),
 	serverPort(0),
 	channelCount(inChannelCount),
 	ipdCurLinkIndex(-1),
@@ -147,9 +146,9 @@ CModule_ESP8266::ProcessPendingCommand(
 		// We have a pending command ready to go
 		curCommand->commandStartMS = millis();
 
-		MESPDebugMsg("Processing cmd: %s\n", curCommand->command);
+		MESPDebugMsg("Processing cmd: %s\n", (char*)curCommand->command);
 
-		if(strcmp(curCommand->command, "ready") == 0)
+		if(curCommand->command == "ready")
 		{
 			// Don't issue the ready command - its special for startup
 		}
@@ -160,15 +159,15 @@ CModule_ESP8266::ProcessPendingCommand(
 			serialPort->write(curCommand->command);
 			serialPort->write("\r\n");
 		}
-		else if(strstr(curCommand->command, "AT+CIPSTART") != NULL)
+		else if(curCommand->command.Contains("AT+CIPSTART"))
 		{
 			// Pick an available link
 			int	linkIndex = FindHighestAvailableLink();
 			if(linkIndex >= 0)
 			{
 				targetChannel->linkIndex = linkIndex;
-				curCommand->command[12] = '0' + linkIndex;
-				MESPDebugMsg("  Sending Start %s\n", curCommand->command);
+				curCommand->command.SetChar(12, '0' + linkIndex);
+				MESPDebugMsg("  Sending Start %s\n", (char*)curCommand->command);
 				serialPort->write(curCommand->command);
 				serialPort->write("\r\n");
 			}
@@ -180,7 +179,7 @@ CModule_ESP8266::ProcessPendingCommand(
 				++commandTail;
 			}
 		}
-		else if(strstr(curCommand->command, "AT+CIPSENDEX") != NULL)
+		else if(curCommand->command.Contains("AT+CIPSENDEX"))
 		{
 			// only send data if the link is in use and has a valid connection
 			// When this command is acknowledged and the '>' is received the actual data is sent
@@ -197,7 +196,7 @@ CModule_ESP8266::ProcessPendingCommand(
 				++commandTail;
 			}
 		}
-		else if(strstr(curCommand->command, "AT+CIPCLOSE") != NULL)
+		else if(curCommand->command.Contains("AT+CIPCLOSE"))
 		{
 			// Only close if we have a valid connection
 			if(targetChannel->linkIndex >= 0)
@@ -222,8 +221,8 @@ CModule_ESP8266::ProcessPendingCommand(
 	else if(millis() - curCommand->commandStartMS >= curCommand->timeoutMS)
 	{
 		// command has timed out
-		MESPDebugMsg("Command TIMEOUT \"%s\"\n", curCommand->command);
-		if(strstr(curCommand->command, "AT+CIPCLOSE") != NULL)
+		MESPDebugMsg("Command TIMEOUT \"%s\"\n", (char*)curCommand->command);
+		if(curCommand->command.Contains("AT+CIPCLOSE"))
 		{
 			if(targetChannel != NULL)
 			{
@@ -266,7 +265,7 @@ CModule_ESP8266::ProcessSerialInput(
 		if(ipdTotalBytes > 0)
 		{
 			// We are collecting incoming data from the IPD command
-			if(curIPDChannel != NULL)
+			if(curIPDChannel != NULL && ipdCurByte < (int)sizeof(curIPDChannel->incomingBuffer))
 			{
 				curIPDChannel->incomingBuffer[ipdCurByte++] = c;
 			}
@@ -295,9 +294,8 @@ CModule_ESP8266::ProcessSerialInput(
 			if(c == ':')
 			{
 				// we are done processing the IPD command
-				serialInputBuffer[serialInputBufferLength++] = 0;
 				ipdCurByte = 0;
-				sscanf(serialInputBuffer, "%d,%d", &ipdCurLinkIndex, &ipdTotalBytes);
+				sscanf((char*)serialInputBuffer, "%d,%d", &ipdCurLinkIndex, &ipdTotalBytes);
 				MESPDebugMsg("Collecting ipd lnk=%d bytes=%d\n", ipdCurLinkIndex, ipdTotalBytes);
 				curIPDChannel = FindChannel(ipdCurLinkIndex);
 				if(curIPDChannel != NULL)
@@ -311,11 +309,11 @@ CModule_ESP8266::ProcessSerialInput(
 				}
 
 				ipdParsing = false;
-				serialInputBufferLength = 0;
+				serialInputBuffer.Clear();
 			}
 			else
 			{
-				serialInputBuffer[serialInputBufferLength++] = c;
+				serialInputBuffer.Append(c);
 			}
 
 			continue;
@@ -324,49 +322,45 @@ CModule_ESP8266::ProcessSerialInput(
 		if(c == '\n' || c == '\r')
 		{
 			// Line end, check for a command from the chip
-			if(serialInputBufferLength > 0)
+			if(serialInputBuffer.GetLength() > 0)
 			{
 				// got a command, process it
-				serialInputBuffer[serialInputBufferLength] = 0;
-				serialInputBufferLength = 0;
-
 				ProcessInputResponse(serialInputBuffer);
+				serialInputBuffer.Clear();
 			}
 
 			continue;
 		}
 
-		// keep collecting input
-		if(serialInputBufferLength < sizeof(serialInputBuffer) - 1)
+		if(serialInputBuffer.GetLength() == 0 && c == '>' && IsCommandPending())
 		{
-			serialInputBuffer[serialInputBufferLength++] = c;
+			// We are ready to send the outgoing buffer
+			SPendingCommand*	curCommand = GetCurrentCommand();
+			SChannel*			targetChannel = curCommand->targetChannel;
+			MAssert(targetChannel != NULL);
+			MESPDebugMsg("Sending data lnk=%d bytes=%d\n", targetChannel->linkIndex, targetChannel->outgoingTotalBytes);
+			if(targetChannel->linkIndex >= 0)
+			{
+				serialPort->write((uint8_t*)targetChannel->outgoingBuffer, targetChannel->outgoingTotalBytes);
+			}
+			else
+			{
+				// the connection was closed so just send a 0 to terminate the send
+				serialPort->write((uint8_t)0);
+			}
+			// Tail is advanced after SEND OK has been received
+			targetChannel->lastUseTimeMS = millis();
 
-			if(serialInputBufferLength == 1 && c == '>' && IsCommandPending())
-			{
-				// We are ready to send the outgoing buffer
-				SPendingCommand*	curCommand = GetCurrentCommand();
-				SChannel*			targetChannel = curCommand->targetChannel;
-				MAssert(targetChannel != NULL);
-				MESPDebugMsg("Sending data lnk=%d bytes=%d\n", targetChannel->linkIndex, targetChannel->outgoingTotalBytes);
-				if(targetChannel->linkIndex >= 0)
-				{
-					serialPort->write((uint8_t*)targetChannel->outgoingBuffer, targetChannel->outgoingTotalBytes);
-				}
-				else
-				{
-					// the connection was closed so just send a 0 to terminate the send
-					serialPort->write((uint8_t)0);
-				}
-				// Tail is advanced after SEND OK has been received
-				serialInputBufferLength = 0;
-				targetChannel->lastUseTimeMS = millis();
-			}
-			else if(serialInputBufferLength == 5 && strncmp(serialInputBuffer, "+IPD,", 5) == 0)
-			{
-				// We are receiving an IPD command so start special parsing
-				ipdParsing = true;
-				serialInputBufferLength = 0;
-			}
+			break;	// Don't process any more input after this
+		}
+
+		// keep collecting input
+		serialInputBuffer.Append(c);
+		if(serialInputBuffer == "+IPD,")
+		{
+			// We are receiving an IPD command so start special parsing
+			ipdParsing = true;
+			serialInputBuffer.Clear();
 		}
 	}
 }
@@ -414,7 +408,7 @@ CModule_ESP8266::ProcessInputResponse(
 		{
 			// Only advance the command if we are not sending data - otherwise we need to wait for the '>' - the tail will be advanced after the SEND OK has been received
 			SPendingCommand*	curCommand = GetCurrentCommand();
-			if(strncmp(curCommand->command, "AT+CIPSENDEX", 12) != 0)
+			if(!curCommand->command.StartsWith("AT+CIPSENDEX"))
 			{
 				++commandTail;
 			}
@@ -475,7 +469,7 @@ CModule_ESP8266::ProcessInputResponse(
 	{
 		wifiConnected = true;
 	}
-	else if(strcmp(inCmd, "WIFI DISCONNECTED") == 0)
+	else if(strcmp(inCmd, "WIFI DISCONNECT") == 0)
 	{
 		wifiConnected = false;
 	}
@@ -806,7 +800,6 @@ CModule_ESP8266::WaitPendingTransmitComplete(
 
 	while(inChannel->sendPending)
 	{
-
 		MReturnOnError(inChannel->connectionFailed || inChannel->linkIndex < 0, false);
 
 		if(!waitingOn)
@@ -848,7 +841,7 @@ CModule_ESP8266::IssueCommand(
 {
 	MESPDebugMsg("IssueCommand: %s\n", inCommand);
 
-	bool		waitingOn = false;
+	bool	waitingOn = false;
 	while((commandHead - commandTail) >= eMaxPendingCommands)
 	{
 		if(!waitingOn)
@@ -868,11 +861,10 @@ CModule_ESP8266::IssueCommand(
 
 	va_list	varArgs;
 	va_start(varArgs, inTimeoutSeconds);
-	vsnprintf(targetCommand->command, sizeof(targetCommand->command) - 1, inCommand, varArgs);
-	targetCommand->command[sizeof(targetCommand->command) - 1] = 0;	// Ensure a valid string
+	targetCommand->command.SetVar(inCommand, varArgs);
 	va_end(varArgs);
 
-	MESPDebugMsg("Queuing: %s\n", targetCommand->command);
+	MESPDebugMsg("Queuing: %s\n", (char*)targetCommand->command);
 	targetCommand->timeoutMS = inTimeoutSeconds * 1000;
 	targetCommand->commandStartMS = 0;
 	targetCommand->targetChannel = inChannel;

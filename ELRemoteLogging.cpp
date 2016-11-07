@@ -68,23 +68,27 @@ CModule_Loggly::SendLog(
 	char const*	inFormat,
 	...)
 {
-	char	tmpBuffer[256];
+	TString<256>	tmpBuffer;
 
 	va_list	varArgs;
 	va_start(varArgs, inFormat);
-	vsnprintf(tmpBuffer, sizeof(tmpBuffer), inFormat, varArgs);
-	tmpBuffer[sizeof(tmpBuffer) - 1] = 0;
+	tmpBuffer.Append(inFormat, varArgs);
 	va_end(varArgs);
 
-	int tagsLen = strlen(inTags);
-	while(tagsLen-- > 0)
+	for(;;)
 	{
-		buffer[head++ % sizeof(buffer)] = *inTags++;
+		char c = *inTags++;
+		if(c == 0)
+		{
+			break;
+		}
+
+		buffer[head++ % sizeof(buffer)] = c;
 	}
 	buffer[head++ % sizeof(buffer)] = ':';
 
-	int bufLen = strlen(tmpBuffer);
-	char*	cp = buffer;
+	int bufLen = tmpBuffer.GetLength();
+	char*	cp = tmpBuffer;
 	while(bufLen-- > 0)
 	{
 		buffer[head++ % sizeof(buffer)] = *cp++;
@@ -121,29 +125,25 @@ CModule_Loggly::Update(
 {
 	if(gInternetModule->ConnectedToInternet() && connection != NULL && requestInProgress == false && GetQueueLength() > 0)
 	{
-		char	tagsBuffer[128];
-		char	msgBuffer[512];
+		TString<128>	tagsBuffer;
+		TString<512>	msgBuffer;
 
 		connection->StartRequest("POST", url);
 		connection->SendHeaders(1, "content-type", "text/plain");
 
-		char*	cmp = msgBuffer;
-		char*	emp = cmp + sizeof(msgBuffer) - 1;
-		
 		if(buffer[tail % sizeof(buffer)] == '[')
 		{
+			// This means there is a timestamp so add the timestamp characters up until the next space directly to the message buffer
 			while(GetQueueLength() > 0)
 			{
 				char c = buffer[tail++ % sizeof(buffer)];
 				if(c == 0)
 				{
+					--tail;	// Ensure that 0 gets written out when we copy the rest of the message buffer
 					break;
 				}
 
-				if(cmp < emp)
-				{
-					*cmp++ = c;
-				}
+				msgBuffer.Append(c);
 			
 				if(c == ' ')
 				{
@@ -152,7 +152,7 @@ CModule_Loggly::Update(
 			}
 		}
 
-		// Check to see if there are tags
+		// Look ahead to see if there are tags
 		bool		hasTags = false;
 		uint16_t	tmpTail = tail;
 		while(GetQueueLengthFromGivenTail(tmpTail) > 0)
@@ -170,30 +170,34 @@ CModule_Loggly::Update(
 			}
 		}
 
-		tagsBuffer[0] = 0;
-
 		#if WIN32
-			strcat(tagsBuffer, "WIN32,");
+			tagsBuffer.Append("WIN32");
 		#endif
 
 		if(gVersionStr[0] != 0)
 		{
-			strcat(tagsBuffer, gVersionStr);
-			strcat(tagsBuffer, ",");
+			if(tagsBuffer.GetLength() > 0)
+			{
+				tagsBuffer.Append(',');
+			}
+			tagsBuffer.Append(gVersionStr);
 		}
 
 		if(globalTags[0] != 0)
 		{
-			strcat(tagsBuffer, globalTags);
+			if(tagsBuffer.GetLength() > 0)
+			{
+				tagsBuffer.Append(',');
+			}
+			tagsBuffer.Append(globalTags);
 		}
 
-		char*	ctp = tagsBuffer;
-		char*	etp = ctp + sizeof(tagsBuffer) - 1;
-		ctp += strlen(tagsBuffer);
-
-		if(hasTags && ctp < etp)
+		if(hasTags)
 		{
-			*ctp++ = ',';
+			if(tagsBuffer.GetLength() > 0)
+			{
+				tagsBuffer.Append(',');
+			}
 			for(;;)
 			{
 				char c = buffer[tail++ % sizeof(buffer)];
@@ -203,17 +207,14 @@ CModule_Loggly::Update(
 					break;
 				}
 
-				if(ctp < etp)
-				{
-					*ctp++ = c;
-				}
+				tagsBuffer.Append(c);
 			}
 		}
-		*ctp++ = 0;
 
-		connection->SendHeaders(1, "X-LOGGLY-TAG", tagsBuffer);
+		connection->SendHeaders(1, "X-LOGGLY-TAG", (char*)tagsBuffer);
 
-		for(;;)
+		// Copy the rest of the message over
+		while(GetQueueLength() > 0)
 		{
 			char c = buffer[tail++ % sizeof(buffer)];
 			if(c == 0)
@@ -221,12 +222,8 @@ CModule_Loggly::Update(
 				break;
 			}
 
-			if(cmp < emp)
-			{
-				*cmp++ = c;
-			}
+			msgBuffer.Append(c);
 		}
-		*cmp++ = 0;
 
 		connection->SendBody(msgBuffer);
 
@@ -281,13 +278,12 @@ void
 CModule_Loggly::UpdateServerData(
 	void)
 {
-	memset(url, 0, sizeof(url));
 	connection = 0;
 
 	if(settings.serverAddress[0] != 0 && settings.uuid[0] != 0)
 	{
 		connection = MInternetCreateHTTPConnection(settings.serverAddress, 80, CModule_Loggly::HTTPResponseHandlerMethod);
-		snprintf(url, sizeof(url) - 1, "/inputs/%s", settings.uuid);
+		url.Set("/inputs/%s", settings.uuid);
 	}
 }
 

@@ -105,7 +105,7 @@ private:
 	};
 
 	SSettings			settings;
-	char				url[64];
+	TString<64>			url;
 	uint16_t			head;
 	uint16_t			tail;
 	char				buffer[2048];

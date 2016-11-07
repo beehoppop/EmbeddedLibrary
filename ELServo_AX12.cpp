@@ -153,8 +153,17 @@ public:
 
 		//SetGoalPosition(1.0f, 1.0f);
 		SetContinuousRotation(true);
-		//SetTorque(0.1f);
-		SetContinuousSpeed(-0.1f);
+		//SetContinuousSpeed(0.5f);
+		SetTorque(0.0f);
+
+		for(;;)
+		{
+			//GetSpeed();
+			//Serial.printf("speed = %f\n", GetSpeed());
+			Serial.printf("pos = %f\n", GetPosition());
+			delay(250);
+		}
+
 	}
 
 	virtual bool
@@ -194,6 +203,8 @@ public:
 	{
 		int	value = ReadRegisterWord(eAXPresentPosition);
 
+		Serial.printf("pos val = %x\n", value);
+
 		return ConvertAXValueToPosition(value);
 	}
 
@@ -201,9 +212,36 @@ public:
 	GetSpeed(
 		void)
 	{
-		int	value = ReadRegisterWord(eAXPresentPosition);
+		int	value = ReadRegisterWord(eAXPresentSpeed);
 
-		return (float)value / -511.5f + 1.0f + (1 / 1023.0f);
+		Serial.printf("speed val = %x\n", value);
+
+		float	result = (value & 0x3FF) / 1024.0f;
+
+		if(value & (1 << 10))
+		{
+			result = -result;
+		}
+
+		return result;
+	}
+
+	virtual float
+	GetLoad(
+		void)
+	{
+		int	value = ReadRegisterWord(eAXPresentLoad);
+
+		Serial.printf("load val = %x\n", value);
+
+		float	result = (value & 0x3FF) / 1024.0f;
+
+		if(value & (1 << 10))
+		{
+			result = -result;
+		}
+
+		return result;
 	}
 
 	virtual void
@@ -394,7 +432,7 @@ public:
 				continue;
 			}
 
-			Serial.printf("got %02x\n", recvByte);
+			//Serial.printf("got %02x\n", recvByte);
 
 			if(inFirstByte)
 			{
@@ -546,7 +584,7 @@ public:
 		uint8_t	bytes[2];
 
 		bytes[0] = (uint8_t)inAddr;
-		bytes[1] = 1;
+		bytes[1] = 2;
 
 		TransmitPacket(eAXInstr_ReadData, 2, bytes);
 
@@ -555,7 +593,7 @@ public:
 		uint8_t	returnBytes[4];
 
 		ReadPacket(error, length, returnBytes);
-		MReturnOnError(error != 0 || length != 1, -1);
+		MReturnOnError(error != 0 || length != 2, -1);
 
 		return (int)returnBytes[0] | ((int)returnBytes[1] << 8);
 	}
