@@ -63,6 +63,10 @@ public:
 	DoneConstructing(
 		void);
 
+	bool
+	HasBeenSetup(
+		void);
+
 	char const*		uid;	// The unique ID for the module
 
 protected:

@@ -76,6 +76,11 @@ CModule_ESP8266::CModule_ESP8266(
 	ipdCurLinkIndex(-1),
 	ipdTotalBytes(0),
 	ipdCurByte(0),
+	ssid(NULL),
+	pw(NULL),
+	ipAddr(0),
+	subnetAddr(0),
+	gatewayAddr(0),
 	wifiConnected(false),
 	gotIP(false)
 {
@@ -100,8 +105,10 @@ CModule_ESP8266::Setup(
 	if(rstPin != 0xFF)
 	{
 		pinMode(rstPin, OUTPUT);
-		delay(10);	// Allow time for reset to settle
+		digitalWriteFast(rstPin, 0);
+		delay(100);	// Allow time for reset to settle
 		digitalWriteFast(rstPin, 1);
+		delay(100);	// Allow time for reset to settle
 	}
 
 	if(chPDPin != 0xFF)
@@ -115,6 +122,7 @@ CModule_ESP8266::Setup(
 		pinMode(gpio0Pin, OUTPUT);
 		digitalWriteFast(gpio0Pin, 1);
 	}
+
 	if(gpio2Pin != 0xFF)
 	{
 		pinMode(gpio2Pin, OUTPUT);
@@ -125,6 +133,30 @@ CModule_ESP8266::Setup(
 	IssueCommand("ATE0", NULL, 5);
 	IssueCommand("AT+CWMODE=3", NULL, 5);
 	IssueCommand("AT+CIPMUX=1", NULL, 5);
+
+	if(ssid != NULL)
+	{
+		IssueCommand("AT+CWJAP=\"%s\",\"%s\"", NULL, 15, ssid, pw);
+	}
+
+	if(ipAddr != 0)
+	{
+		IssueCommand("AT+CIPSTA_CUR=\"%d.%d.%d.%d\",\"%d.%d.%d.%d\",\"%d.%d.%d.%d\"", 
+			NULL, 15, 
+			(ipAddr >> 24) & 0xFF,
+			(ipAddr >> 16) & 0xFF,
+			(ipAddr >> 8) & 0xFF,
+			(ipAddr >> 0) & 0xFF,
+			(gatewayAddr >> 24) & 0xFF,
+			(gatewayAddr >> 16) & 0xFF,
+			(gatewayAddr >> 8) & 0xFF,
+			(gatewayAddr >> 0) & 0xFF,
+			(subnetAddr >> 24) & 0xFF,
+			(subnetAddr >> 16) & 0xFF,
+			(subnetAddr >> 8) & 0xFF,
+			(subnetAddr >> 0) & 0xFF
+			);
+	}
 }
 
 void
@@ -524,30 +556,43 @@ CModule_ESP8266::ConnectToAP(
 	char const*		inPassword,
 	EWirelessPWEnc	inPasswordEncryption)
 {
-	IssueCommand("AT+CWJAP=\"%s\",\"%s\"", NULL, 15, inSSID, inPassword);
+	ssid = inSSID;
+	pw = inPassword;
+
+	if(HasBeenSetup())
+	{
+		IssueCommand("AT+CWJAP=\"%s\",\"%s\"", NULL, 15, (char*)ssid,  (char*)pw);
+	}
 }
 
 void
 CModule_ESP8266::SetIPAddr(
 	uint32_t	inIPAddr,
-	uint32_t	inSubnetAddr,
-	uint32_t	inGatewayAddr)
+	uint32_t	inGatewayAddr,
+	uint32_t	inSubnetAddr)
 {
-	IssueCommand("AT+CIPSTA_CUR=\"%d.%d.%d.%d\",\"%d.%d.%d.%d\",\"%d.%d.%d.%d\"", 
-		NULL, 15, 
-		(inIPAddr >> 24) & 0xFF,
-		(inIPAddr >> 16) & 0xFF,
-		(inIPAddr >> 8) & 0xFF,
-		(inIPAddr >> 0) & 0xFF,
-		(inGatewayAddr >> 24) & 0xFF,
-		(inGatewayAddr >> 16) & 0xFF,
-		(inGatewayAddr >> 8) & 0xFF,
-		(inGatewayAddr >> 0) & 0xFF,
-		(inSubnetAddr >> 24) & 0xFF,
-		(inSubnetAddr >> 16) & 0xFF,
-		(inSubnetAddr >> 8) & 0xFF,
-		(inSubnetAddr >> 0) & 0xFF
-		);
+	ipAddr = inIPAddr;
+	gatewayAddr = inGatewayAddr;
+	subnetAddr = inSubnetAddr;
+
+	if(HasBeenSetup())
+	{
+		IssueCommand("AT+CIPSTA_CUR=\"%d.%d.%d.%d\",\"%d.%d.%d.%d\",\"%d.%d.%d.%d\"", 
+			NULL, 15, 
+			(ipAddr >> 24) & 0xFF,
+			(ipAddr >> 16) & 0xFF,
+			(ipAddr >> 8) & 0xFF,
+			(ipAddr >> 0) & 0xFF,
+			(gatewayAddr >> 24) & 0xFF,
+			(gatewayAddr >> 16) & 0xFF,
+			(gatewayAddr >> 8) & 0xFF,
+			(gatewayAddr >> 0) & 0xFF,
+			(subnetAddr >> 24) & 0xFF,
+			(subnetAddr >> 16) & 0xFF,
+			(subnetAddr >> 8) & 0xFF,
+			(subnetAddr >> 0) & 0xFF
+			);
+	}
 }
 
 bool

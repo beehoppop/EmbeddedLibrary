@@ -28,6 +28,7 @@
 */
 
 #include <EL.h>
+#include <ELString.h>
 
 class IOutputDirector
 {
@@ -40,9 +41,8 @@ public:
 	{
 		va_list	varArgs;
 		va_start(varArgs, inMsg);
-		char	vabuffer[256];
-		vsnprintf(vabuffer, sizeof(vabuffer) - 1, inMsg, varArgs);
-		vabuffer[sizeof(vabuffer) - 1] = 0;	// Ensure a valid string
+		TString<512>	vabuffer;
+		vabuffer.SetVar(inMsg, varArgs);
 		va_end(varArgs);
 		
 		write(vabuffer);

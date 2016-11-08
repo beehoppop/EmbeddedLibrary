@@ -211,8 +211,8 @@ public:
 	virtual void
 	SetIPAddr(
 		uint32_t	inIPAddr,
-		uint32_t	inSubnetAddr,
-		uint32_t	inGatewayAddr) = 0;
+		uint32_t	inGatewayAddr,
+		uint32_t	inSubnetAddr) = 0;
 
 	// Start a server on the given port
 	virtual bool

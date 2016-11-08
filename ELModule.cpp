@@ -197,6 +197,13 @@ CModule::GetEnabledState(
 	return enabled;
 }
 
+bool
+CModule::HasBeenSetup(
+	void)
+{
+	return hasBeenSetup;
+}
+
 void
 CModule::SetEnabledState(
 	bool	inEnabled)

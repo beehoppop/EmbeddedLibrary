@@ -72,7 +72,7 @@ CModule_Loggly::SendLog(
 
 	va_list	varArgs;
 	va_start(varArgs, inFormat);
-	tmpBuffer.Append(inFormat, varArgs);
+	tmpBuffer.AppendVar(inFormat, varArgs);
 	va_end(varArgs);
 
 	for(;;)

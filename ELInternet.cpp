@@ -561,7 +561,7 @@ CModule_Internet::Setup(
 
 	if(settings.ipAddr != 0)
 	{
-		internetDevice->SetIPAddr(settings.ipAddr, settings.subnetAddr, settings.gatewayAddr);
+		internetDevice->SetIPAddr(settings.ipAddr, settings.gatewayAddr, settings.subnetAddr);
 	}
 
 	MCommandRegister("wireless_set", CModule_Internet::SerialCmd_WirelessSet, "[ssid] [pw] [wpa2|wep|open] : Set the wireless configuration");
@@ -822,8 +822,8 @@ CModule_Internet::SerialCmd_WirelessGet(
 {
 	static char const*	gEncList[] = {"open", "wep", "wpa2personal"};
 
-	inOutput->printf("ssid: %s\n", settings.ssid);
-	inOutput->printf("pw: %s\n", settings.pw);
+	inOutput->printf("ssid: %s\n", (char*)settings.ssid);
+	inOutput->printf("pw: %s\n", (char*)settings.pw);
 	if(settings.securityType <= eWirelessPWEnc_WPA2Personal)
 	{
 		inOutput->printf("enc: %s\n", gEncList[settings.securityType]);
@@ -865,7 +865,7 @@ CModule_Internet::SerialCmd_IPAddrSet(
 
 	if(internetDevice != NULL)
 	{
-		internetDevice->SetIPAddr(settings.ipAddr, settings.subnetAddr, settings.gatewayAddr);
+		internetDevice->SetIPAddr(settings.ipAddr, settings.gatewayAddr, settings.subnetAddr);
 	}
 
 	return eCmd_Succeeded;

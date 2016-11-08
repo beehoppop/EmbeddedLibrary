@@ -72,8 +72,8 @@ private:
 	virtual void
 	SetIPAddr(
 		uint32_t	inIPAddr,
-		uint32_t	inSubnetAddr,
-		uint32_t	inGatewayAddr);
+		uint32_t	inGatewayAddr,
+		uint32_t	inSubnetAddr);
 
 	virtual bool
 	Server_Open(
@@ -120,7 +120,6 @@ private:
 	ConnectedToInternet(
 		void);
 
-		
 	enum
 	{
 		eMaxCommandLenth = 96,
@@ -286,6 +285,12 @@ private:
 	int	ipdCurLinkIndex;
 	int	ipdTotalBytes;
 	int	ipdCurByte;
+
+	char const*	ssid;
+	char const*	pw;
+	uint32_t	ipAddr;
+	uint32_t	subnetAddr;
+	uint32_t	gatewayAddr;
 
 	bool	wifiConnected;
 	bool	gotIP;
