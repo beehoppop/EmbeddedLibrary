@@ -131,7 +131,7 @@ CModule_ESP8266::Setup(
 
 	IssueCommand("ready", NULL, 5);
 	IssueCommand("ATE0", NULL, 5);
-	IssueCommand("AT+CWMODE=3", NULL, 5);
+	IssueCommand("AT+CWMODE=1", NULL, 5);
 	IssueCommand("AT+CIPMUX=1", NULL, 5);
 
 	if(ssid != NULL)
@@ -440,6 +440,16 @@ CModule_ESP8266::ProcessInputResponse(
 		{
 			// Only advance the command if we are not sending data - otherwise we need to wait for the '>' - the tail will be advanced after the SEND OK has been received
 			SPendingCommand*	curCommand = GetCurrentCommand();
+
+			if(curCommand->command.StartsWith("AT+CWJAP"))
+			{
+				wifiConnected = true;
+			}
+			else if(curCommand->command.StartsWith("AT+CIPSTA_CUR"))
+			{
+				gotIP = true;
+			}
+
 			if(!curCommand->command.StartsWith("AT+CIPSENDEX"))
 			{
 				++commandTail;

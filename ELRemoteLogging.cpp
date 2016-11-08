@@ -278,7 +278,7 @@ void
 CModule_Loggly::UpdateServerData(
 	void)
 {
-	connection = 0;
+	connection = NULL;
 
 	if(settings.serverAddress[0] != 0 && settings.uuid[0] != 0)
 	{
