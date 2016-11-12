@@ -36,6 +36,7 @@
 #include <ELOutput.h>
 #include <ELCommand.h>
 #include <ELString.h>
+#include <ELRealTime.h>
 
 enum
 {
@@ -44,6 +45,8 @@ enum
 	eServerMaxAddressLength = 64,
 
 	eWebServerPageHandlerMax = 16,
+
+	eHTTPTimeoutMS = 10000,
 
 	eMaxIncomingPacketSize = 1500,
 	eMaxOutgoingPacketSize = 1400,
@@ -110,7 +113,7 @@ typedef void
 	int					inDataSize,
 	char const*			inData);
 
-class CHTTPConnection : public IInternetHandler
+class CHTTPConnection : public IInternetHandler, public IRealTimeHandler
 {
 public:
 	
@@ -147,6 +150,9 @@ private:
 		eResponseState_Done,
 	};
 
+	~CHTTPConnection(
+		);
+
 	CHTTPConnection(
 		char const*							inServer,
 		uint16_t							inPort,
@@ -178,6 +184,11 @@ private:
 	FinishResponse(
 		void);
 
+	void
+	CheckForTimeoutEvent(
+		TRealTimeEventRef	inRef,
+		void*				inRefCon);
+
 	IInternetHandler*					internetHandler;
 	THTTPResponseHandlerMethod			responseMethod;
 
@@ -187,6 +198,9 @@ private:
 
 	TString<512>	tempBuffer;
 
+	TRealTimeEventRef	eventRef;
+
+	uint32_t	dataSentTimeMS;
 	uint16_t	responseContentSize;
 	uint16_t	responseHTTPCode;
 	uint8_t		responseState;
@@ -411,14 +425,12 @@ private:
 
 	struct SConnection
 	{
-		bool		waitingOnOpen;
 		int			openRef;
 		uint16_t	localPort;
 		uint16_t	serverPort;
 		TString<eServerMaxAddressLength>	serverAddress;
-
-		IInternetHandler*						handlerObject;
-		TInternetResponseHandlerMethod			handlerResponseMethod;
+		IInternetHandler*					handlerObject;
+		TInternetResponseHandlerMethod		handlerResponseMethod;
 	};
 
 	struct SWebServerPageHandler

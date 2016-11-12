@@ -41,9 +41,10 @@
 
 	#define MUNUSED __attribute__((unused))
 
-	#define MAXUINT8    255
-	#define MAXINT8     127
-	#define MININT8     -128
+	#define MAXUINT32	0xFFFFFFFF
+	#define MAXUINT8	255
+	#define MAXINT8		127
+	#define MININT8		-128
 
 #elif defined(WIN32)
 	#include "ArduinoSimulator.h"

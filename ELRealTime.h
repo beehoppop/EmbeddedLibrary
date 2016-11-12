@@ -69,9 +69,8 @@ enum
 };
 
 #define MIsLeapYear(inYear) (((inYear) & 3) == 0 && (((inYear) % 25) != 0 || ((inYear) & 15) == 0))
-#define MRealTimeRegisterAlarm(inAlarmName, inYear, inMonth, inDayOfMonth, inDayOfWeek, inHour, inMinute, inSecond, inMethod, inReference, ...) \
-	gRealTime->RegisterAlarm(inAlarmName, inYear, inMonth, inDayOfMonth, inDayOfWeek, inHour, inMinute, inSecond, this, static_cast<TRealTimeAlarmMethod>(&inMethod), inReference, ## __VA_ARGS__)
-#define MRealTimeRegisterEvent(inEventName, inPeriodUS, inOnlyOnce, inMethod, inReference) gRealTime->RegisterEvent(inEventName, inPeriodUS, inOnlyOnce, this, static_cast<TRealTimeEventMethod>(&inMethod), inReference)
+#define MRealTimeCreateAlarm(inAlarmName, inMethod, inRefCon) gRealTime->CreateAlarm(inAlarmName, this, static_cast<TRealTimeAlarmMethod>(&inMethod), inRefCon)
+#define MRealTimeCreateEvent(inEventName, inMethod, inRefCon) gRealTime->CreateEvent(inEventName, this, static_cast<TRealTimeEventMethod>(&inMethod), inRefCon)
 #define MRealTimeRegisterTimeChange(inEventName, inMethod) gRealTime->RegisterTimeChangeHandler(inEventName, this, static_cast<TRealTimeChangeMethod>(&inMethod))
 
 // This specifies a timezone change
@@ -93,6 +92,8 @@ struct STimeZoneRule
 };
 
 typedef uint32_t	TEpochTime;	// Secs since Jan 1 00:00 1970 - compatible with standard time definitions but redefined here to eliminate dependencies and conflicts
+typedef void*	TRealTimeEventRef;
+typedef void*	TRealTimeAlarmRef;
 
 // A provider of a time source implements this interface
 class IRealTimeDataProvider
@@ -124,14 +125,14 @@ public:
 // A typedef for a alarm handler method, alarm methods should return true if it wants to be rescheduled
 typedef bool
 (IRealTimeHandler::*TRealTimeAlarmMethod)(
-	char const*	inName,
-	void*		inReference);
+	TRealTimeAlarmRef	inAlarmRef,
+	void*				inRefCon);
 
 // A typedef for a event handler method
 typedef void
 (IRealTimeHandler::*TRealTimeEventMethod)(
-	char const*	inName,
-	void*		inReference);
+	TRealTimeEventRef	inEventRef,
+	void*				inRefCon);
 
 // A typedef for a time change handler
 typedef void
@@ -320,10 +321,23 @@ public:
 		TEpochTime	inEpochTime,
 		bool		inUTC = false);
 
+	// Create a new alarm object
+	TRealTimeAlarmRef
+	CreateAlarm(
+		char const*				inAlarmName,	// The name of this alarm, must be a static string
+		IRealTimeHandler*		inObject,		// The object on which the method below lives
+		TRealTimeAlarmMethod	inMethod,		// The method on the above object
+		void*					inReference);	// The reference value passed into the above method
+	
+	// destroy the given alarm object
+	void
+	DestroyAlarm(
+		TRealTimeAlarmRef	inAlarmRef);
+
 	// Register a alarm handler to be called at the specified time or interval
 	void
-	RegisterAlarm(
-		char const*			inAlarmName,	// All alarms are referred to by a unique name, this must be a static string
+	ScheduleAlarm(
+		TRealTimeAlarmRef	inAlarmRef,
 		int					inYear,			// xxxx 4 digit year or eAlarm_Any
 		int					inMonth,		// 1 to 12 or eAlarm_Any
 		int					inDayOfMonth,	// 1 to 31 or eAlarm_Any
@@ -331,30 +345,37 @@ public:
 		int					inHour,			// 00 to 23 or eAlarm_Any
 		int					inMinute,		// 00 to 59 or eAlarm_Any
 		int					inSecond,		// 00 to 59 or eAlarm_Any
-		IRealTimeHandler*	inObject,		// The object on which the method below lives
-		TRealTimeAlarmMethod	inMethod,	// The method on the above object
-		void*				inReference,	// The reference value passed into the above method
 		bool				inUTC = false);
-	
-	// Cancel the given alarm
+
+	// Ensure the alarm does not fire but don't destroy it
 	void
-	CancelAlarm(
-		char const*	inAlarmName);
+	UnscheduleAlarm(
+		TRealTimeAlarmRef	inAlarmRef);
+
+	// Create a new event object
+	TRealTimeEventRef
+	CreateEvent(
+		char const*				inEventName,	// The name of this event, must be a static string
+		IRealTimeHandler*		inObject,		// The object on which the method below lives
+		TRealTimeEventMethod	inMethod,		// The method on the above object
+		void*					inReference);	// The reference value passed into the above method
+	
+	// destroy the given alarm object
+	void
+	DestroyEvent(
+		TRealTimeEventRef	inEventRef);
+
+	// Ensure the event does not fire but don't destroy it
+	void
+	UnscheduleEvent(
+		TRealTimeEventRef	inEventRef);
 	
 	// Register an event to be called in the given time or for the given periodic interval
 	void
-	RegisterEvent(
-		char const*			inEventName,	// All events have a unique name, this must be a static string
+	ScheduleEvent(
+		TRealTimeEventRef	inEventRef,
 		uint64_t			inPeriodUS,		// The period for which to call
-		bool				inOnlyOnce,		// True if the event is only called once
-		IRealTimeHandler*	inObject,		// The object on which the method below lives
-		TRealTimeEventMethod	inMethod,	// The method on the above object
-		void*				inReference);	// The reference value passed into the above method
-
-	// Cancel the given event
-	void
-	CancelEvent(
-		char const*	inEventName);
+		bool				inOnlyOnce);	// True if the event is only called once
 	
 	// Register a handler for when time has changed
 	void
@@ -422,31 +443,30 @@ private:
 
 	struct SAlarm
 	{
-		char const*			name;
-		int					year;
-		int					month;
-		int					dayOfMonth;
-		int					dayOfWeek;
-		int					hour;
-		int					minute;
-		int					second;
-		IRealTimeHandler*	object;
+		char const*				name;
+		int						year;
+		int						month;
+		int						dayOfMonth;
+		int						dayOfWeek;
+		int						hour;
+		int						minute;
+		int						second;
+		IRealTimeHandler*		object;
 		TRealTimeAlarmMethod	method;
-		void*				reference;
-		bool				utc;
-
-		TEpochTime	nextTriggerTimeUTC;
+		void*					reference;
+		bool					utc;
+		TEpochTime				nextTriggerTimeUTC;
 	};
 	
 	struct SEvent
 	{
-		char const*			name;
-		uint64_t			periodUS;
-		bool				onceOnly;
-		uint64_t			lastFireTime;
-		IRealTimeHandler*	object;
+		char const*				name;
+		uint64_t				periodUS;
+		bool					onceOnly;
+		uint64_t				lastFireTime;
+		IRealTimeHandler*		object;
 		TRealTimeEventMethod	method;
-		void*				reference;
+		void*					reference;
 	};
 
 	struct STimeChangeHandler
@@ -476,22 +496,6 @@ private:
 	TEpochTime	stdStartLocal;
 
 	int	timeMultiplier;
-
-	SAlarm*
-	FindAlarmByName(
-		char const*	inName);
-
-	SAlarm*
-	FindAlarmFirstEmpty(
-		void);
-
-	SEvent*
-	FindEventByName(
-		char const*	inName);
-
-	SEvent*
-	FindEventFirstEmpty(
-		void);
 
 	STimeChangeHandler*
 	FindTimeChangeHandlerByName(

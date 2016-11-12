@@ -374,7 +374,7 @@ CModule_RealTime::Update(
 	SAlarm* curAlarm = alarmArray;
 	for(int alarmItr = 0; alarmItr < eAlarm_MaxActive; ++alarmItr, ++curAlarm)
 	{
-		if(curAlarm->name == NULL)
+		if(curAlarm->object == NULL)
 		{
 			continue;
 		}
@@ -383,16 +383,14 @@ CModule_RealTime::Update(
 		{
 			// this alarm is triggered
 			//SystemMsg("Triggering alarm %s\n", curAlarm->name);
-			curAlarm->nextTriggerTimeUTC = 0;
-			bool	reschedule = (curAlarm->object->*curAlarm->method)(curAlarm->name, curAlarm->reference);
-			if(reschedule)
+			
+			// Set to unscheduled first since it may get rescheduled in the method below
+			curAlarm->nextTriggerTimeUTC = MAXUINT32;
+
+			// Invoke method and reschedule if requested
+			if((curAlarm->object->*curAlarm->method)(curAlarm, curAlarm->reference))
 			{
 				ScheduleAlarm(curAlarm);
-			}
-			else if(curAlarm->nextTriggerTimeUTC == 0)
-			{
-				// if the alarm has not been rescheduled by the event handler method cancel it here so it does not fire repeatedly
-				curAlarm->name = NULL;
 			}
 		}
 	}
@@ -401,7 +399,7 @@ CModule_RealTime::Update(
 	SEvent*	curEvent = eventArray;
 	for(int itr = 0; itr < eEvent_MaxActive; ++itr, ++curEvent)
 	{
-		if(curEvent->name == NULL)
+		if(curEvent->object == NULL || curEvent->lastFireTime == 0)
 		{
 			continue;
 		}
@@ -410,11 +408,11 @@ CModule_RealTime::Update(
 		{
 			curEvent->lastFireTime = gCurLocalUS;
 			//SystemMsg("Triggering event %s\n", curEvent->name);
-			(curEvent->object->*curEvent->method)(curEvent->name, curEvent->reference);
+			(curEvent->object->*curEvent->method)(curEvent, curEvent->reference);
 			//SystemMsg("Done");
 			if(curEvent->onceOnly)
 			{
-				curEvent->name = NULL;
+				curEvent->lastFireTime = 0;
 			}
 		}
 	}
@@ -972,99 +970,144 @@ CModule_RealTime::InDST(
 	return false;
 }
 
-void
-CModule_RealTime::RegisterAlarm(
-	char const*	inAlarmName,
-	int			inYear,			// 20xx or eAlarm_Any
-	int			inMonth,		// 1 to 12 or eAlarm_Any
-	int			inDayOfMonth,	// 1 to 31 or eAlarm_Any
-	int			inDayOfWeek,	// 1 to 7 or eAlarm_Any
-	int			inHour,			// 00 to 23 or eAlarm_Any
-	int			inMin,			// 00 to 59 or eAlarm_Any
-	int			inSec,			// 00 to 59 or eAlarm_Any
-	IRealTimeHandler*	inObject,
-	TRealTimeAlarmMethod	inMethod,
-	void*				inReference,
-	bool				inUTC)
+// Create a new alarm object
+TRealTimeAlarmRef
+CModule_RealTime::CreateAlarm(
+	char const*				inAlarmName,	// The name of this alarm, must be a static string
+	IRealTimeHandler*		inObject,		// The object on which the method below lives
+	TRealTimeAlarmMethod	inMethod,		// The method on the above object
+	void*					inReference)	// The reference value passed into the above method
 {
-	MReturnOnError(inAlarmName == NULL || strlen(inAlarmName) == 0);
+	SAlarm*	targetAlarm = NULL;
 
-	SAlarm*	targetAlarm = FindAlarmByName(inAlarmName);
-
-	if(targetAlarm == NULL)
+	for(int i = 0; i < eAlarm_MaxActive; ++i)
 	{
-		targetAlarm = FindAlarmFirstEmpty();
-
-		MReturnOnError(targetAlarm == NULL);
+		if(alarmArray[i].object == NULL)
+		{
+			targetAlarm = alarmArray + i;
+			break;
+		}
 	}
 
 	targetAlarm->name = inAlarmName;
+	targetAlarm->object = inObject;
+	targetAlarm->method = inMethod;
+	targetAlarm->reference = inReference;
+	targetAlarm->nextTriggerTimeUTC = MAXUINT32;
+
+	return targetAlarm;
+}
+
+// destroy the given alarm object
+void
+CModule_RealTime::DestroyAlarm(
+	TRealTimeAlarmRef	inAlarmRef)
+{
+	MReturnOnError(inAlarmRef == NULL);
+
+	SAlarm*	targetAlarm = (SAlarm*)inAlarmRef;
+
+	targetAlarm->object = NULL;
+}
+
+// Register a alarm handler to be called at the specified time or interval
+void
+CModule_RealTime::ScheduleAlarm(
+	TRealTimeAlarmRef	inAlarmRef,
+	int					inYear,			// xxxx 4 digit year or eAlarm_Any
+	int					inMonth,		// 1 to 12 or eAlarm_Any
+	int					inDayOfMonth,	// 1 to 31 or eAlarm_Any
+	int					inDayOfWeek,	// 1 to 7 or eAlarm_Any
+	int					inHour,			// 00 to 23 or eAlarm_Any
+	int					inMinute,		// 00 to 59 or eAlarm_Any
+	int					inSecond,		// 00 to 59 or eAlarm_Any
+	bool				inUTC)
+{
+	SAlarm*	targetAlarm = (SAlarm*)inAlarmRef;
 
 	targetAlarm->year = inYear;
 	targetAlarm->month = inMonth;
 	targetAlarm->dayOfMonth = inDayOfMonth;
 	targetAlarm->dayOfWeek = inDayOfWeek;
 	targetAlarm->hour = inHour;
-	targetAlarm->minute = inMin;
-	targetAlarm->second = inSec;
-	targetAlarm->object = inObject;
-	targetAlarm->method = inMethod;
-	targetAlarm->reference = inReference;
-	targetAlarm->utc = inUTC;
+	targetAlarm->minute = inMinute;
+	targetAlarm->second = inSecond;
+	targetAlarm->utc = inUTC;      
 
 	ScheduleAlarm(targetAlarm);
 }
 
 void
-CModule_RealTime::CancelAlarm(
-	char const*	inAlarmName)
+CModule_RealTime::UnscheduleAlarm(
+	TRealTimeAlarmRef	inAlarmRef)
 {
-	SAlarm*	targetAlarm = FindAlarmByName(inAlarmName);
-	if(targetAlarm != NULL)
-	{
-		targetAlarm->name = NULL;
-	}
+	SAlarm*	targetAlarm = (SAlarm*)inAlarmRef;
+	targetAlarm->nextTriggerTimeUTC = MAXUINT32;
 }
 
-void
-CModule_RealTime::RegisterEvent(
-	char const*			inEventName,
-	uint64_t			inPeriodUS,
-	bool				inOnlyOnce,
-	IRealTimeHandler*	inObject,		// The object on which the method below lives
+// Create a new event object
+TRealTimeEventRef
+CModule_RealTime::CreateEvent(
+	char const*				inEventName,	// The name of this event, must be a static string
+	IRealTimeHandler*		inObject,		// The object on which the method below lives
 	TRealTimeEventMethod	inMethod,		// The method on the above object
-	void*				inReference)	// The reference value passed into the above method
+	void*					inReference)	// The reference value passed into the above method
 {
-	MReturnOnError(inEventName == NULL || strlen(inEventName) == 0);
+	SEvent*	targetEvent = NULL;
 
-	SEvent*	targetEvent = FindEventByName(inEventName);
-
-	if(targetEvent == NULL)
+	for(int i = 0; i < eEvent_MaxActive; ++i)
 	{
-		targetEvent = FindEventFirstEmpty();
-
-		MReturnOnError(targetEvent == NULL);
+		if(eventArray[i].object == NULL)
+		{
+			targetEvent = eventArray + i;
+			break;
+		}
 	}
 
 	targetEvent->name = inEventName;
-
-	targetEvent->periodUS = inPeriodUS;
-	targetEvent->onceOnly = inOnlyOnce;
 	targetEvent->object = inObject;
 	targetEvent->method = inMethod;
 	targetEvent->reference = inReference;
+	targetEvent->lastFireTime = 0;
+
+	return targetEvent;
+}
+
+// destroy the given alarm object
+void
+CModule_RealTime::DestroyEvent(
+	TRealTimeEventRef	inEventRef)
+{
+	MReturnOnError(inEventRef == NULL);
+
+	SEvent*	targetEvent = (SEvent*)inEventRef;
+
+	targetEvent->object = NULL;
+}
+
+// Register an event to be called in the given time or for the given periodic interval
+void
+CModule_RealTime::ScheduleEvent(
+	TRealTimeEventRef	inEventRef,
+	uint64_t			inPeriodUS,		// The period for which to call
+	bool				inOnlyOnce)	// True if the event is only called once
+{
+	SEvent*	targetEvent = (SEvent*)inEventRef;
+
+	targetEvent->periodUS = inPeriodUS;
+	targetEvent->onceOnly = inOnlyOnce;
 	targetEvent->lastFireTime = gCurLocalUS;
 }
 
 void
-CModule_RealTime::CancelEvent(
-	char const*	inEventName)
+CModule_RealTime::UnscheduleEvent(
+	TRealTimeEventRef	inEventRef)
 {
-	SEvent*	targetEvent = FindEventByName(inEventName);
-	if(targetEvent != NULL)
-	{
-		targetEvent->name = NULL;
-	}
+	MReturnOnError(inEventRef == NULL);
+
+	SEvent*	targetEvent = (SEvent*)inEventRef;
+
+	targetEvent->lastFireTime = 0;
 }
 
 void
@@ -1098,66 +1141,6 @@ CModule_RealTime::CancelTimeChangeHandler(
 	{
 		targetHandler->name = NULL;
 	}
-}
-
-CModule_RealTime::SAlarm*
-CModule_RealTime::FindAlarmByName(
-	char const*	inName)
-{
-	for(int i = 0; i < eAlarm_MaxActive; ++i)
-	{
-		if(alarmArray[i].name != NULL && strcmp(inName, alarmArray[i].name) == 0)
-		{
-			return alarmArray + i;
-		}
-	}
-
-	return NULL;
-}
-
-CModule_RealTime::SAlarm*
-CModule_RealTime::FindAlarmFirstEmpty(
-	void)
-{
-	for(int i = 0; i < eAlarm_MaxActive; ++i)
-	{
-		if(alarmArray[i].name == NULL)
-		{
-			return alarmArray + i;
-		}
-	}
-
-	return NULL;
-}
-
-CModule_RealTime::SEvent*
-CModule_RealTime::FindEventByName(
-	char const*	inName)
-{
-	for(int i = 0; i < eEvent_MaxActive; ++i)
-	{
-		if(eventArray[i].name != NULL && strcmp(inName, eventArray[i].name) == 0)
-		{
-			return eventArray + i;
-		}
-	}
-
-	return NULL;
-}
-
-CModule_RealTime::SEvent*
-CModule_RealTime::FindEventFirstEmpty(
-	void)
-{
-	for(int i = 0; i < eEvent_MaxActive; ++i)
-	{
-		if(eventArray[i].name == NULL)
-		{
-			return eventArray + i;
-		}
-	}
-
-	return NULL;
 }
 
 CModule_RealTime::STimeChangeHandler*

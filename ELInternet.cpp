@@ -60,6 +60,19 @@ CHTTPConnection::CHTTPConnection(
 	openInProgress = false;
 	waitingOnResponse = false;
 	flushPending = false;
+
+	eventRef = MRealTimeCreateEvent("HTTP", CHTTPConnection::CheckForTimeoutEvent, NULL);
+	gRealTime->ScheduleEvent(eventRef, 1000000, false);
+}
+
+CHTTPConnection::~CHTTPConnection(
+	)
+{
+	if(eventRef != NULL)
+	{
+		gRealTime->DestroyEvent(eventRef);
+		eventRef = NULL;
+	}
 }
 
 void
@@ -140,12 +153,15 @@ CHTTPConnection::SendBody(
 
 	// Add a blank line
 	SendData("\r\n", false);
+
+	// Send the body
 	SendData(inBody, true);
 
 	waitingOnResponse = true;
 	responseContentSize = 0;
 	responseState = eResponseState_HTTP;
 	responseHTTPCode = 0;
+	dataSentTimeMS = millis();
 }
 
 void
@@ -177,6 +193,7 @@ CHTTPConnection::ResponseHandlerMethod(
 				gInternetModule->SendData(localPort, tempBuffer.GetLength(), tempBuffer, flushPending);
 				tempBuffer.Clear();
 				flushPending = false;
+				dataSentTimeMS = millis();
 			}
 			break;
 
@@ -192,6 +209,7 @@ CHTTPConnection::ResponseHandlerMethod(
 				{
 					responseHTTPCode = 500;
 				}
+				responseContentSize = 0;
 				FinishResponse();
 			}
 
@@ -323,6 +341,20 @@ CHTTPConnection::FinishResponse(
 	tempBuffer.Clear();
 }
 
+void
+CHTTPConnection::CheckForTimeoutEvent(
+	TRealTimeEventRef	inRef,
+	void*				inRefCon)
+{
+	if(waitingOnResponse && (millis() - dataSentTimeMS >= eHTTPTimeoutMS))
+	{
+		// we have timed out waiting for a response
+		responseHTTPCode = 500;
+		FinishResponse();
+	}
+
+}
+
 MModuleImplementation_Start(CModule_Internet)
 MModuleImplementation_FinishGlobal(CModule_Internet, gInternetModule)
 
@@ -346,6 +378,8 @@ CModule_Internet::CModule_Internet(
 		cur->openRef = -1;
 		cur->localPort = 0xFF;
 	}
+
+	CModule_RealTime::Include();
 }
 
 void
@@ -445,6 +479,7 @@ CModule_Internet::OpenConnection(
 	target->handlerResponseMethod = inResponseMethod;
 	target->serverPort = inServerPort;
 	target->serverAddress = inServerAddress;
+	target->localPort = 0xFF;
 }
 
 void
@@ -582,10 +617,17 @@ CModule_Internet::Update(
 		return;
 	}
 
-	// Check for connections that are waiting for an open completion
-	SConnection*	curConnection = connectionList;
+	SConnection*	curConnection;
+
+	// Update the current connections
+	curConnection = connectionList;
 	for(int i = 0; i < eMaxConnectionsCount; ++i, ++curConnection)
 	{
+		if(curConnection->handlerObject == NULL)
+		{
+			continue;
+		}
+
 		if(curConnection->openRef >= 0)
 		{
 			bool	successfulyOpened;
@@ -593,11 +635,48 @@ CModule_Internet::Update(
 			{
 				// call completion
 				curConnection->openRef = -1;
-				(curConnection->handlerObject->*curConnection->handlerResponseMethod)(eConnectionResponse_Opened, curConnection->localPort, 0, NULL);
+				if(successfulyOpened)
+				{
+					(curConnection->handlerObject->*curConnection->handlerResponseMethod)(eConnectionResponse_Opened, curConnection->localPort, 0, NULL);
+				}
+				else
+				{
+					(curConnection->handlerObject->*curConnection->handlerResponseMethod)(eConnectionResponse_Error, 0, 0, NULL);
+
+					// Empty out the connection since another OpenConnection will be required to use this slot
+					curConnection->serverAddress.Clear();
+					curConnection->handlerObject = NULL;
+				}
+			}
+			continue;
+		}
+
+		MAssert(curConnection->localPort != 0xFF);
+
+		uint32_t	portState = internetDevice->GetPortState(curConnection->localPort);
+
+		// If the port has failed or closed report that
+		if(portState & ePortState_Failure)
+		{
+			(curConnection->handlerObject->*curConnection->handlerResponseMethod)(eConnectionResponse_Error, curConnection->localPort, 0, NULL);
+			// Since the method above may have already closed the port we need to check for that
+			if(curConnection->localPort != 0xFF)
+			{
+				CloseConnection(curConnection->localPort);
+			}
+		}
+		else if(!(portState & ePortState_IsOpen))
+		{
+			(curConnection->handlerObject->*curConnection->handlerResponseMethod)(eConnectionResponse_Closed, curConnection->localPort, 0, NULL);
+			// Since the method above may have already closed the port we need to check for that
+			if(curConnection->localPort != 0xFF)
+			{
+				CloseConnection(curConnection->localPort);
 			}
 		}
 	}
 
+	// Check for incoming data
 	bufferSize = sizeof(buffer) - 1;
 	uint16_t	localPort;
 	uint16_t	replyPort;
@@ -641,6 +720,7 @@ CModule_Internet::Update(
 				respondingServer = true;
 				respondingServerPort = webServerPort;
 				respondingReplyPort = replyPort;
+
 				for(int i = 0; i < eWebServerPageHandlerMax; ++i)
 				{
 					if(webServerPageHandlerList[i].object != NULL && strcmp(pageName, webServerPageHandlerList[i].pageName) == 0)
@@ -660,8 +740,9 @@ CModule_Internet::Update(
 		}
 		else
 		{
-			// look for the server or client connection the data came back on
+			// look for the server connection the data came back on
 			SServer*	curServer = serverList;
+			bool		dataProcessed = false;
 			for(int i = 0; i < eMaxServersCount; ++i, ++curServer)
 			{
 				if(curServer->handlerObject != NULL && curServer->port == localPort)
@@ -672,43 +753,23 @@ CModule_Internet::Update(
 					respondingReplyPort = replyPort;
 					(curServer->handlerObject->*curServer->handlerMethod)(this, bufferSize, buffer);
 					internetDevice->CloseConnection(replyPort);
+					dataProcessed = true;
 					break;
 				}
 			}
-		}
-	}
 
-	curConnection = connectionList;
-	for(int i = 0; i < eMaxConnectionsCount; ++i, ++curConnection)
-	{
-		if(curConnection->handlerObject != NULL)
-		{
-			uint32_t	portState = internetDevice->GetPortState(curConnection->localPort);
-
-			if(bufferSize > 0 && curConnection->localPort == localPort)
+			if(!dataProcessed)
 			{
-				(curConnection->handlerObject->*curConnection->handlerResponseMethod)(eConnectionResponse_Data, curConnection->localPort, bufferSize, buffer);
-			}
-			else if(curConnection->localPort != 0xFF)
-			{
-				if(portState & ePortState_Failure)
+				// Look for a client connection
+				curConnection = connectionList;
+				for(int i = 0; i < eMaxConnectionsCount; ++i, ++curConnection)
 				{
-					(curConnection->handlerObject->*curConnection->handlerResponseMethod)(eConnectionResponse_Error, curConnection->localPort, 0, NULL);
-					if(curConnection->localPort != 0xFF)
+					if(curConnection->handlerObject != NULL && curConnection->localPort == localPort)
 					{
-						internetDevice->CloseConnection(curConnection->localPort);
-						curConnection->handlerObject = NULL;
+						// Call the response handler with the data
+						(curConnection->handlerObject->*curConnection->handlerResponseMethod)(eConnectionResponse_Data, curConnection->localPort, bufferSize, buffer);
 					}
-				}
 
-				else if(curConnection->openRef < 0 && !(portState & ePortState_IsOpen))
-				{
-					(curConnection->handlerObject->*curConnection->handlerResponseMethod)(eConnectionResponse_Closed, curConnection->localPort, 0, NULL);
-					if(curConnection->localPort != 0xFF)
-					{
-						internetDevice->CloseConnection(curConnection->localPort);
-						curConnection->handlerObject = NULL;
-					}
 				}
 			}
 		}

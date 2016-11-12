@@ -70,8 +70,10 @@ enum
 	eMaxSunRiseSetEvents = 4,
 };
 
-#define MSunsetRegisterEvent(inEventName, inYear, inMonth, inDay, inDOW, inMethod, ...) gSunRiseAndSet->RegisterSunsetEvent(inEventName, inYear, inMonth, inDay, inDOW, this, static_cast<TSunRiseAndSetEventMethod>(&inMethod), ## __VA_ARGS__)
-#define MSunriseRegisterEvent(inEventName, inYear, inMonth, inDay, inDOW, inMethod, ...) gSunRiseAndSet->RegisterSunriseEvent(inEventName, inYear, inMonth, inDay, inDOW, this, static_cast<TSunRiseAndSetEventMethod>(&inMethod), ## __VA_ARGS__)
+#define MSunriseCreateEvent(inEventName, inMethod, ...) gSunRiseAndSet->CreateEvent(inEventName, this, static_cast<TSunRiseAndSetEventMethod>(&inMethod), true, ## __VA_ARGS__)
+#define MSunsetCreateEvent(inEventName, inMethod, ...) gSunRiseAndSet->CreateEvent(inEventName, this, static_cast<TSunRiseAndSetEventMethod>(&inMethod), false, ## __VA_ARGS__)
+
+typedef void*	TSunRiseAndSetEventRef;
 
 class ISunRiseAndSetEventHandler
 {
@@ -100,35 +102,31 @@ public:
 		double&	outLongitude,
 		double&	outLatitude);
 
-	void
-	RegisterSunriseEvent(
+	TSunRiseAndSetEventRef
+	CreateEvent(
 		char const*					inEventName,	// Must be a static string
-		int							inYear,			// The specific year for the event or eAlarm_Any
-		int							inMonth,		// The specific month for the event or eAlarm_Any
-		int							inDay,			// The specific day for the event or eAlarm_Any
-		int							inDOW,			// The specific day of week or eAlarm_Any
 		ISunRiseAndSetEventHandler*	inCmdHandler,
 		TSunRiseAndSetEventMethod	inMethod,
+		bool						inSunrise,
 		double						inSunOffset = cSunOffset_SunsetSunRise,
-		int							inSunRelativePosition = eSunRelativePosition_UpperLimb,
-		bool						inUTC = false);
+		int							inSunRelativePosition = eSunRelativePosition_UpperLimb);
 
 	void
-	RegisterSunsetEvent(
-		char const*					inEventName,	// Must be a static string
-		int							inYear,			// The specific year for the event or eAlarm_Any
-		int							inMonth,		// The specific month for the event or eAlarm_Any
-		int							inDay,			// The specific day for the event or eAlarm_Any
-		int							inDOW,			// The specific day of week or eAlarm_Any
-		ISunRiseAndSetEventHandler*	inCmdHandler,
-		TSunRiseAndSetEventMethod	inMethod,
-		double						inSunOffset = cSunOffset_SunsetSunRise,
-		int							inSunRelativePosition = eSunRelativePosition_UpperLimb,
-		bool						inUTC = false);
+	DestroyEvent(
+		TSunRiseAndSetEventRef	inRef);
 
 	void
-	CancelEvent(
-		char const*	inEventName);
+	ScheduleEvent(
+		TSunRiseAndSetEventRef	inEventRef,
+		int						inYear,			// The specific year for the event or eAlarm_Any
+		int						inMonth,		// The specific month for the event or eAlarm_Any
+		int						inDay,			// The specific day for the event or eAlarm_Any
+		int						inDOW,			// The specific day of week or eAlarm_Any
+		bool					inUTC = false);
+
+	void
+	UnscheduleEvent(
+		TSunRiseAndSetEventRef	inRef);
 
 	/***************************************************************************/
 	/* Note: year,month,date = calendar date, 1801-2099 only.             */
@@ -232,6 +230,7 @@ private:
 		double		sunOffset;
 		int			sunRelativePosition;
 		bool		utc;
+		TRealTimeAlarmRef			alarmRef;
 		ISunRiseAndSetEventHandler*	cmdHandler;
 		TSunRiseAndSetEventMethod	method;
 	};
@@ -248,22 +247,14 @@ private:
 		int					inArgC,
 		char const*			inArgV[]);
 
-	SEvent*
-	FindEvent(
-		char const*	inName);
-
-	SEvent*
-	FindFirstFreeEvent(
-		void);
-
 	void
 	ScheduleNextEvent(
 		SEvent*	inEvent);
 
 	bool
 	RealTimeAlarmHandler(
-		char const*	inName,
-		void*		inReference);
+		TRealTimeAlarmRef	inRef,
+		void*				inRefCon);
 
 	void
 	RealTimeChangeHandler(

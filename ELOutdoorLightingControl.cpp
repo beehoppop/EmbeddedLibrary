@@ -128,6 +128,16 @@ CModule_OutdoorLightingControl::Setup(
 		MDigitalIORegisterEventHandler(motionSensorPin, false, CModule_OutdoorLightingControl::MotionSensorTrigger, NULL, 500);
 	}
 
+	SunriseEvent = MSunriseCreateEvent("OLCSunrise", CModule_OutdoorLightingControl::Sunrise);
+	SunsetEvent = MSunsetCreateEvent("OLCSunset", CModule_OutdoorLightingControl::Sunset);
+	lateNightAlarm = MRealTimeCreateAlarm("OCLLateNightAlarm", CModule_OutdoorLightingControl::LateNightAlarm, NULL);
+	lateNightTimerExpireEvent = MRealTimeCreateEvent("OCLLateNightTimerExpire", CModule_OutdoorLightingControl::LateNightTimerExpire, NULL);
+	XFrmToOnEvent = MRealTimeCreateEvent("OCLXfmrToOn", CModule_OutdoorLightingControl::TransformerTransitionOnCompleted, NULL);
+	XfrmToOffEvent = MRealTimeCreateEvent("OCLXfmrToOff", CModule_OutdoorLightingControl::TransformerTransitionOffCompleted, NULL);
+	MotionTripCooldownEvent = MRealTimeCreateEvent("MotionTripCD", CModule_OutdoorLightingControl::MotionTripCooldown, NULL);
+	luxPeriodicEvent = MRealTimeCreateEvent("LuxPeriodic",CModule_OutdoorLightingControl::LuxPeriodic, NULL);
+	gRealTime->ScheduleEvent(luxPeriodicEvent,  1 * 60 * 1000000, false);
+
 	MCommandRegister("ledstate_set", CModule_OutdoorLightingControl::SetLEDState, "[on | off] : Turn LEDs on or off until the next event");
 	MCommandRegister("latenight_set", CModule_OutdoorLightingControl::SetLateNightStartTime, "[hour] [min] : Set the hour and minute of late night");
 	MCommandRegister("latenight_get", CModule_OutdoorLightingControl::GetLateNightStartTime, "[hour] [min] : Get the hour and minute of late night");
@@ -142,7 +152,6 @@ CModule_OutdoorLightingControl::Setup(
 	MCommandRegister("override_set", CModule_OutdoorLightingControl::SetOverride, "[active 0|1] [state 0|1] : Set override and overrided state on or off");
 	MCommandRegister("override_get", CModule_OutdoorLightingControl::GetOverride, "");
 
-	MRealTimeRegisterEvent("LuxPeriodic", 1 * 60 * 1000000, false, CModule_OutdoorLightingControl::LuxPeriodic, NULL);
 
 	UpdateTimes();
 
@@ -153,9 +162,9 @@ void
 CModule_OutdoorLightingControl::UpdateTimes(
 	void)
 {
-	MSunsetRegisterEvent("Sunset1", eAlarm_Any, eAlarm_Any, eAlarm_Any, eAlarm_Any, CModule_OutdoorLightingControl::Sunset);
-	MSunriseRegisterEvent("Sunrise1", eAlarm_Any, eAlarm_Any, eAlarm_Any, eAlarm_Any, CModule_OutdoorLightingControl::Sunrise);
-	MRealTimeRegisterAlarm("LateNightAlarm", eAlarm_Any, eAlarm_Any, eAlarm_Any, eAlarm_Any, settings.lateNightStartHour, settings.lateNightStartMin, 0, CModule_OutdoorLightingControl::LateNightAlarm, NULL);
+	gSunRiseAndSet->ScheduleEvent(SunriseEvent, eAlarm_Any, eAlarm_Any, eAlarm_Any, eAlarm_Any);
+	gSunRiseAndSet->ScheduleEvent(SunsetEvent, eAlarm_Any, eAlarm_Any, eAlarm_Any, eAlarm_Any);
+	gRealTime->ScheduleAlarm(lateNightAlarm, eAlarm_Any, eAlarm_Any, eAlarm_Any, eAlarm_Any, settings.lateNightStartHour, settings.lateNightStartMin, 0);
 
 	// Setup the state given the current time of day and sunset/sunrise time
 	TEpochTime	curTime = gRealTime->GetEpochTime(false);
@@ -250,11 +259,11 @@ CModule_OutdoorLightingControl::Update(
 			{
 				if(ledsOn)
 				{
-					MRealTimeRegisterEvent("LateNightTimerExpire", settings.lateNightTimeoutMins * 60 * 1000000, true, CModule_OutdoorLightingControl::LateNightTimerExpire, NULL);
+					gRealTime->ScheduleEvent(lateNightTimerExpireEvent, settings.lateNightTimeoutMins * 60 * 1000000, true);
 				}
 				else
 				{
-					gRealTime->CancelEvent("LateNightTimerExpire");
+					gRealTime->UnscheduleEvent(lateNightTimerExpireEvent);
 				}
 			}
 		}
@@ -325,14 +334,16 @@ CModule_OutdoorLightingControl::Update(
 
 		if(curLEDOnState)
 		{
-			gRealTime->CancelEvent("XfmrToOff");
-			MRealTimeRegisterEvent("XfmrToOn", eTransformerWarmUpMicros, true, CModule_OutdoorLightingControl::TransformerTransitionOnCompleted, NULL);
+			gRealTime->UnscheduleEvent(XfrmToOffEvent);
+
+			gRealTime->ScheduleEvent(XFrmToOnEvent, eTransformerWarmUpMicros, true);
 			digitalWriteFast(transformerPin, true);
 		}
 		else
 		{
-			gRealTime->CancelEvent("XfmrToOn");
-			MRealTimeRegisterEvent("XfmrToOff", eLEDsCoolDownMicros, true, CModule_OutdoorLightingControl::TransformerTransitionOffCompleted, NULL);
+			gRealTime->UnscheduleEvent(XFrmToOnEvent);
+
+			gRealTime->ScheduleEvent(XfrmToOffEvent, eLEDsCoolDownMicros, true);
 			olInterface->LEDStateChange(false);
 		}		
 	}
@@ -442,8 +453,8 @@ CModule_OutdoorLightingControl::Sunrise(
 
 void
 CModule_OutdoorLightingControl::LuxPeriodic(
-	char const*	inName,
-	void*		inRef)
+	TRealTimeEventRef	inEventRef,
+	void*				inRefCon)
 {
 	if(luminosityInterface == NULL || !settings.monitorLux)
 	{
@@ -469,8 +480,8 @@ CModule_OutdoorLightingControl::ButtonPush(
 
 bool
 CModule_OutdoorLightingControl::LateNightAlarm(
-	char const*	inName,
-	void*		inRef)
+	TRealTimeAlarmRef	inAlarmRec,
+	void*				inRefCon)
 {
 	SystemMsg("Late Night Alarm\n");
 
@@ -510,7 +521,7 @@ CModule_OutdoorLightingControl::MotionSensorTrigger(
 			SystemMsg("Motion sensor off, setting cooldown timer\n");
 
 			// Set an event for settings.motionTripTimeoutMins mins from now, when it expires motionSensorTrip will be set to false
-			MRealTimeRegisterEvent("MotionTripCD", settings.motionTripTimeoutMins * 60 * 1000000, true, CModule_OutdoorLightingControl::MotionTripCooldown, NULL);
+			gRealTime->ScheduleEvent(MotionTripCooldownEvent, settings.motionTripTimeoutMins * 60 * 1000000, true);
 		}
 		else
 		{
@@ -522,8 +533,8 @@ CModule_OutdoorLightingControl::MotionSensorTrigger(
 
 void
 CModule_OutdoorLightingControl::MotionTripCooldown(
-	char const*	inName,
-	void*		inRef)
+	TRealTimeEventRef	inRef,
+	void*				inRefCon)
 {
 	SystemMsg("Motion trip cooled down\n");
 	motionSensorTrip = false;
@@ -536,8 +547,8 @@ CModule_OutdoorLightingControl::MotionTripCooldown(
 
 void
 CModule_OutdoorLightingControl::LateNightTimerExpire(
-	char const*	inName,
-	void*		inRef)
+	TRealTimeEventRef	inRef,
+	void*				inRefCon)
 {
 	SystemMsg("Late night timer expired\n");
 	ledsOn = false;
@@ -753,8 +764,8 @@ CModule_OutdoorLightingControl::GetOverride(
 
 void
 CModule_OutdoorLightingControl::TransformerTransitionOnCompleted(
-	char const*	inName,
-	void*		inRef)
+	TRealTimeEventRef	inRef,
+	void*				inRefCon)
 {
 	SystemMsg("Transformer transition on completed");
 	olInterface->LEDStateChange(true);
@@ -762,8 +773,8 @@ CModule_OutdoorLightingControl::TransformerTransitionOnCompleted(
 
 void
 CModule_OutdoorLightingControl::TransformerTransitionOffCompleted(
-	char const*	inName,
-	void*		inRef)
+	TRealTimeEventRef	inRef,
+	void*				inRefCon)
 {
 	SystemMsg("Transformer transition off completed");
 	digitalWriteFast(transformerPin, false);

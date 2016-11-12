@@ -126,92 +126,80 @@ CModule_SunRiseAndSet::GetLongitudeAndLatitude(
 	outLatitude = settings.lat;
 }
 
-void
-CModule_SunRiseAndSet::RegisterSunriseEvent(
+TSunRiseAndSetEventRef
+CModule_SunRiseAndSet::CreateEvent(
 	char const*					inEventName,
-	int							inYear,			// The specific year for the event or eAlarm_Any
-	int							inMonth,		// The specific month for the event or eAlarm_Any
-	int							inDay,			// The specific day for the event or eAlarm_Any
-	int							inDOW,			// The specific day of week or eAlarm_Any
 	ISunRiseAndSetEventHandler*	inCmdHandler,
 	TSunRiseAndSetEventMethod	inMethod,
+	bool						inSunrise,
 	double						inSunOffset,
-	int							inSunRelativePosition,
-	bool						inUTC)
+	int							inSunRelativePosition)
 {
-	MReturnOnError(inEventName == NULL || strlen(inEventName) == 0);
-
-	SEvent*	newEvent = FindEvent(inEventName);
-	if(newEvent == NULL)
+	SEvent*	newEvent = NULL;
+	for(int itr = 0; itr < eMaxSunRiseSetEvents; ++itr)
 	{
-		newEvent = FindFirstFreeEvent();
-		MReturnOnError(newEvent == NULL);
+		if(eventList[itr].cmdHandler == NULL)
+		{
+			newEvent = eventList + itr;
+			break;
+		}
 	}
 
+	MReturnOnError(newEvent == NULL, NULL);
+
 	newEvent->name = inEventName;
-	newEvent->year = inYear;
-	newEvent->month = inMonth;
-	newEvent->day = inDay;
-	newEvent->dow = inDOW;
 	newEvent->cmdHandler = inCmdHandler;
 	newEvent->method = inMethod;
 	newEvent->sunOffset = inSunOffset;
 	newEvent->sunRelativePosition = inSunRelativePosition;
-	newEvent->utc = inUTC;
-	newEvent->sunRise = true;
+	newEvent->sunRise = inSunrise;
 
-	ScheduleNextEvent(newEvent);
+	// Create the alarm
+	newEvent->alarmRef = MRealTimeCreateAlarm(inEventName, CModule_SunRiseAndSet::RealTimeAlarmHandler, newEvent);
+	MReturnOnError(newEvent->alarmRef == NULL, NULL);
+
+	return newEvent;
 }
 
 void
-CModule_SunRiseAndSet::RegisterSunsetEvent(
-	char const*					inEventName,
-	int							inYear,			// The specific year for the event or eAlarm_Any
-	int							inMonth,		// The specific month for the event or eAlarm_Any
-	int							inDay,			// The specific day for the event or eAlarm_Any
-	int							inDOW,			// The specific day of week or eAlarm_Any
-	ISunRiseAndSetEventHandler*	inCmdHandler,
-	TSunRiseAndSetEventMethod	inMethod,
-	double						inSunOffset,
-	int							inSunRelativePosition,
-	bool						inUTC)
+CModule_SunRiseAndSet::DestroyEvent(
+	TSunRiseAndSetEventRef	inRef)
 {
-	MReturnOnError(strlen(inEventName) == 0 || strlen(inEventName) > eRealTime_MaxNameLength);
-
-	SEvent*	newEvent = FindEvent(inEventName);
-	if(newEvent == NULL)
-	{
-		newEvent = FindFirstFreeEvent();
-		MReturnOnError(newEvent == NULL);
-	}
-
-	newEvent->name = inEventName;
-	newEvent->year = inYear;
-	newEvent->month = inMonth;
-	newEvent->day = inDay;
-	newEvent->dow = inDOW;
-	newEvent->cmdHandler = inCmdHandler;
-	newEvent->method = inMethod;
-	newEvent->sunOffset = inSunOffset;
-	newEvent->sunRelativePosition = inSunRelativePosition;
-	newEvent->utc = inUTC;
-	newEvent->sunRise = false;
-
-	ScheduleNextEvent(newEvent);
+	MReturnOnError(inRef);
+	SEvent*	targetEvent = (SEvent*)inRef;
+	gRealTime->DestroyAlarm(targetEvent->alarmRef);
+	targetEvent->cmdHandler = NULL;
 }
 
 void
-CModule_SunRiseAndSet::CancelEvent(
-	char const*	inEventName)
+CModule_SunRiseAndSet::ScheduleEvent(
+	TSunRiseAndSetEventRef	inEventRef,
+	int						inYear,			// The specific year for the event or eAlarm_Any
+	int						inMonth,		// The specific month for the event or eAlarm_Any
+	int						inDay,			// The specific day for the event or eAlarm_Any
+	int						inDOW,			// The specific day of week or eAlarm_Any
+	bool					inUTC)
 {
-	SEvent*	targetEvent = FindEvent(inEventName);
-	if(targetEvent == NULL)
-	{
-		return;
-	}
+	MReturnOnError(inEventRef);
+	SEvent*	targetEvent = (SEvent*)inEventRef;
 
-	gRealTime->CancelAlarm(inEventName);
-	targetEvent->name = NULL;
+	targetEvent->year = inYear;
+	targetEvent->month = inMonth;
+	targetEvent->day = inDay;
+	targetEvent->dow = inDOW;
+	targetEvent->utc = inUTC;
+
+	ScheduleNextEvent(targetEvent);
+}
+
+void
+CModule_SunRiseAndSet::UnscheduleEvent(
+	TSunRiseAndSetEventRef	inEventRef)
+{
+	MReturnOnError(inEventRef);
+	SEvent*	targetEvent = (SEvent*)inEventRef;
+
+	gRealTime->UnscheduleAlarm(targetEvent->alarmRef);
 }
 
 uint8_t
@@ -243,36 +231,6 @@ CModule_SunRiseAndSet::SerialGetLonLat(
 	return eCmd_Succeeded;
 }
 
-CModule_SunRiseAndSet::SEvent*
-CModule_SunRiseAndSet::FindEvent(
-	char const*	inName)
-{
-	for(int itr = 0; itr < eMaxSunRiseSetEvents; ++itr)
-	{
-		if(eventList[itr].name != NULL && strcmp(eventList[itr].name, inName) == 0)
-		{
-			return eventList + itr;
-		}
-	}
-
-	return NULL;
-}
-
-CModule_SunRiseAndSet::SEvent*
-CModule_SunRiseAndSet::FindFirstFreeEvent(
-	void)
-{
-	for(int itr = 0; itr < eMaxSunRiseSetEvents; ++itr)
-	{
-		if(eventList[itr].name == NULL)
-		{
-			return eventList + itr;
-		}
-	}
-
-	return NULL;
-}
-
 void
 CModule_SunRiseAndSet::ScheduleNextEvent(
 	SEvent*	inEvent)
@@ -290,7 +248,7 @@ CModule_SunRiseAndSet::ScheduleNextEvent(
 	{
 		// there is not a next time so just don't schedule
 		SystemMsg(eMsgLevel_Basic, "Could not schedule %s 1", inEvent->name);
-		gRealTime->CancelAlarm(inEvent->name);
+		gRealTime->UnscheduleAlarm(inEvent->alarmRef);
 		return;
 	}
 
@@ -325,7 +283,7 @@ CModule_SunRiseAndSet::ScheduleNextEvent(
 			{
 				// only in extreme corner cases should this fail...
 				SystemMsg(eMsgLevel_Basic, "Could not schedule %s 2", inEvent->name);
-				gRealTime->CancelAlarm(inEvent->name);
+				gRealTime->UnscheduleAlarm(inEvent->alarmRef);
 				return;
 			}
 
@@ -345,14 +303,14 @@ CModule_SunRiseAndSet::ScheduleNextEvent(
 		{
 			// don't try to schedule something in the past
 			SystemMsg(eMsgLevel_Basic, "Could not schedule %s 3", inEvent->name);
-			gRealTime->CancelAlarm(inEvent->name);
+			gRealTime->UnscheduleAlarm(inEvent->alarmRef);
 			return;
 		}
 	}
 
 	// Set the alarm to fire
-	MRealTimeRegisterAlarm(
-		inEvent->name,
+	gRealTime->ScheduleAlarm(
+		inEvent->alarmRef,
 		targetYear,
 		targetMonth,
 		targetDay,
@@ -360,17 +318,15 @@ CModule_SunRiseAndSet::ScheduleNextEvent(
 		targetHour,
 		targetMin,
 		targetSec,
-		CModule_SunRiseAndSet::RealTimeAlarmHandler,
-		inEvent,
 		inEvent->utc);
 }
 
 bool
 CModule_SunRiseAndSet::RealTimeAlarmHandler(
-	char const*	inName,
-	void*		inReference)
+	TRealTimeAlarmRef	inRef,
+	void*				inRefCon)
 {
-	SEvent*	targetEvent = (SEvent*)inReference;
+	SEvent*	targetEvent = (SEvent*)inRefCon;
 
 	((targetEvent->cmdHandler)->*(targetEvent->method))(targetEvent->name);
 

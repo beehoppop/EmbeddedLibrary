@@ -142,13 +142,13 @@ private:
 
 	void
 	LuxPeriodic(
-		char const*	inName,
-		void*		inRef);
+		TRealTimeEventRef	inRef,
+		void*				inRefCon);
 
 	bool
 	LateNightAlarm(
-		char const*	inName,
-		void*		inRef);
+		TRealTimeAlarmRef	inAlarmRef,
+		void*				inRefCon);
 
 	void
 	ButtonPush(
@@ -164,13 +164,13 @@ private:
 
 	void
 	MotionTripCooldown(
-		char const*	inName,
-		void*		inRef);
+		TRealTimeEventRef	inRef,
+		void*				inRefCon);
 
 	void
 	LateNightTimerExpire(
-		char const*	inName,
-		void*		inRef);
+		TRealTimeEventRef	inRef,
+		void*				inRefCon);
 
 	uint8_t
 	SetLEDState(
@@ -252,13 +252,13 @@ private:
 
 	void
 	TransformerTransitionOnCompleted(
-		char const*	inName,
-		void*		inRef);
+		TRealTimeEventRef	inRef,
+		void*				inRefCon);
 
 	void
 	TransformerTransitionOffCompleted(
-		char const*	inName,
-		void*		inRef);
+		TRealTimeEventRef	inRef,
+		void*				inRefCon);
 
 	struct SSettings
 	{
@@ -283,6 +283,16 @@ private:
 	uint8_t			togglePin;
 	ILuminosity*	luminosityInterface;
 	IOutdoorLightingInterface*		olInterface;
+
+	TRealTimeAlarmRef	lateNightAlarm;
+	TRealTimeAlarmRef	lateNightTimerExpireEvent;
+	TRealTimeEventRef	luxPeriodicEvent;
+	TRealTimeEventRef	XfrmToOffEvent;
+	TRealTimeEventRef	XFrmToOnEvent;
+	TRealTimeEventRef	MotionTripCooldownEvent;
+
+	TSunRiseAndSetEventRef	SunriseEvent;
+	TSunRiseAndSetEventRef	SunsetEvent;
 
 	int			toggleCount;
 	uint64_t	toggleLastTimeMS;

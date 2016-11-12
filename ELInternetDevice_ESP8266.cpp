@@ -93,6 +93,8 @@ CModule_ESP8266::CModule_ESP8266(
 	{
 		channelArray[i].linkIndex = -1;
 	}
+
+	MAssert(inSerialPort->availableForWrite() > 1000);	// Ensure that the serial port transmit and receive buffers are at least 1024 bytes each
 }
 
 void
@@ -131,7 +133,7 @@ CModule_ESP8266::Setup(
 
 	IssueCommand("ready", NULL, 5);
 	IssueCommand("ATE0", NULL, 5);
-	IssueCommand("AT+CWMODE=1", NULL, 5);
+	IssueCommand("AT+CWMODE_CUR=1", NULL, 5);
 	IssueCommand("AT+CIPMUX=1", NULL, 5);
 
 	if(ssid != NULL)
