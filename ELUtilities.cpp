@@ -27,12 +27,6 @@
 #include <ctype.h>
 #include <math.h>
 
-#if !defined(WIN32)
-// This uses RamMonitor which is included in EL and available here: https://sourceforge.net/projects/teensy-3-x-rammonitor/files/
-#include <RamMonitor.h>
-RamMonitor gRamMonitor;
-#endif
-
 #include "ELUtilities.h"
 
 bool
@@ -212,7 +206,7 @@ WaitForSerialPort(
 	for(;;)
 	{
 		Serial.printf("waiting for s\n");
-		int ab = Serial.available();
+		size_t ab = Serial.available();
 		if(ab > 0)
 		{
 			char r = Serial.read();
@@ -284,13 +278,18 @@ GetRandomFloatGuassian(
 	return inMean + y1 * inStandardDeviation;
 }
 
-int32_t
-GetFreeMemory(
-	void)
+bool
+BufferEndsWithStr(
+	char const*	inBuffer,
+	size_t		inBufferSize,
+	char const*	inStr)
 {
-#if !defined(WIN32)
-	return gRamMonitor.unallocated();
-#else
-	return 0x1000000;
-#endif
+	size_t	strLen = strlen(inStr);
+
+	if(strLen > inBufferSize)
+	{
+		return false;
+	}
+
+	return strcmp(inBuffer - strLen, inStr) == 0;
 }

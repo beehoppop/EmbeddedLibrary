@@ -92,24 +92,6 @@ private:
 	uint32_t	msgBufferIndex;
 };
 
-// This module is instantiated by the library so that system msgs go out to the serial port
-class CModule_SysMsgSerialHandler : public CModule, public IOutputDirector
-{
-public:
-
-	MModule_Declaration(CModule_SysMsgSerialHandler);
-
-private:
-	
-	CModule_SysMsgSerialHandler(
-		);
-
-	virtual void
-	write(
-		char const*	inMsg,
-		size_t		inBytes);
-};
-
 // Output a debug msg when inLevel <= the current debug level
 void
 SystemMsg(

@@ -30,6 +30,8 @@
 #include <EL.h>
 #include <ELString.h>
 
+#define MOutputDirectorOrSerial(inOutput, ...) if(inOutput != NULL) { inOutput->printf(__VA_ARGS__); } else { Serial.printf(__VA_ARGS__); }
+
 class IOutputDirector
 {
 public:
@@ -42,7 +44,7 @@ public:
 		va_list	varArgs;
 		va_start(varArgs, inMsg);
 		TString<512>	vabuffer;
-		vabuffer.SetVar(inMsg, varArgs);
+		vabuffer.SetVA(inMsg, varArgs);
 		va_end(varArgs);
 		
 		write(vabuffer);
@@ -61,7 +63,5 @@ public:
 		size_t		inBytes) = 0;
 
 };
-
-extern IOutputDirector*	gSerialOut;	// This director will save recent data to an internal buffer in addition to sending to the primary serial port
 
 #endif /* _ELOUTPUT_H_ */

@@ -76,6 +76,7 @@ CTSL2561Sensor::CTSL2561Sensor(
 {
 	isPresent = false;
 	Wire.begin();
+	Wire.setDefaultTimeout(500000);
 		
 	uint8_t	sensorID;
 	bool	success;

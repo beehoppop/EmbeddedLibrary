@@ -67,7 +67,7 @@ GetHolidayForDate(
 		case 10:
 			switch(inDay)
 			{
-				case 31: return eHoliday_Holloween;
+				case 31: return eHoliday_Halloween;
 			}
 			break;
 
@@ -198,7 +198,7 @@ GetDateForHoliday(
 			outDay = 6;
 			break;
 
-		case eHoliday_Holloween:
+		case eHoliday_Halloween:
 			outMonth = 11;
 			outDay = 31;
 			break;

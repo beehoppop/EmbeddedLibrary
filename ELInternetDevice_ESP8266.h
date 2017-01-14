@@ -32,13 +32,12 @@
 */
 #include <ELInternet.h>
 
-class CModule_ESP8266 : public CModule, public IInternetDevice
+class CModule_ESP8266 : public CModule, public IInternetDevice, public IRealTimeHandler
 {
 public:
 	
 	MModule_Declaration(
 		CModule_ESP8266,
-		uint8_t			inChannelCount,
 		HardwareSerial*	inSerialPort,
 		uint8_t			inRstPin,
 		uint8_t			inChPDPin = 0xFF,
@@ -48,7 +47,6 @@ public:
 private:
 
 	CModule_ESP8266(
-		uint8_t			inChannelCount,
 		HardwareSerial*	inSerialPort,
 		uint8_t			inRstPin,
 		uint8_t			inChPDPin,
@@ -62,6 +60,10 @@ private:
 	virtual void
 	Update(
 		uint32_t	inDeltaTimeUS);
+
+	virtual void
+	DumpDebugInfo(
+		IOutputDirector*	inOutput);
 
 	virtual void
 	ConnectToAP(
@@ -84,50 +86,105 @@ private:
 		uint16_t	inServerPort);
 
 	virtual int
-	Client_RequestOpen(
+	TCPRequestOpen(
 		uint16_t	inRemoteServerPort,	
 		char const*	inRemoteServerAddress);
 
 	virtual bool
-	Client_OpenCompleted(
+	TCPCheckOpenCompleted(
 		int			inOpenRef,
 		bool&		outSuccess,
 		uint16_t&	outLocalPort);
 
 	virtual void
-	GetData(
+	TCPGetData(
 		uint16_t&	outPort,
 		uint16_t&	outReplyPort,	
 		size_t&		ioBufferSize,		
 		char*		outBuffer);
 
 	virtual bool
-	SendData(
+	TCPSendData(
 		uint16_t	inPort,	
 		size_t		inBufferSize,
 		char const*	inBuffer,
 		bool		inFlush);
 
 	virtual uint32_t
-	GetPortState(
+	TCPGetPortState(
 		uint16_t	inPort);
 
 	virtual void
-	CloseConnection(
+	TCPCloseConnection(
 		uint16_t	inPort);
+	
+	virtual bool
+	UDPGetData(
+		uint16_t&	outRemotePort,
+		uint16_t&	outLocalPort,
+		size_t&		ioBufferSize,		// The size of the provided buffer in bytes on input and the bytes received on output
+		uint8_t*	outBuffer);			// The buffer to store data
+
+	virtual bool
+	UDPSendData(
+		uint16_t&	outLocalPort,		// The local port used for this send
+		uint16_t	inRemotePort,
+		size_t		inBufferSize,
+		uint8_t*	inBuffer);
 
 	virtual bool
 	ConnectedToInternet(
 		void);
 
+	virtual bool
+	IsDeviceTotallyFd(
+		void);
+
+	virtual void
+	ResetDevice(
+		void);
+
 	enum
 	{
-		eMaxCommandLenth = 96,
+		eMaxCommandLength = 96,
 		eMaxPendingCommands = 8,
 
-		eConnectionTimeoutMS = 10000,
-		eTransmitTimeoutMS = 5000,
-		eIPDTimeout = 2000,
+		eServerConnectionTimeoutMS = 25000,
+		eClientOpenTimeoutMS = 20000,
+		eIPDTimeout = 5000,
+		eSendTimeout = 15000,
+		eCommandTimeoutMS = 15000,
+		eSimpleCommandTimeoutMS = 5000,
+		eCommandPauseTimeMS = 20,
+
+		eChannelCount = 5,
+
+		eChannelState_Unused = 0,			// The channel is not being used 
+		eChannelState_Server,				// The channel is a incoming server connection from a remote client
+		eChannelState_ClientStart,			// The channel has a start command pending
+		eChannelState_ClientConnected,		// The channel is connected to a remote server
+		eChannelState_ClosePending,			// A close command has been submitted
+		eChannelState_ClientStartFailed,	// The start command failed, this needs to be reported differently then a general channel failure
+		eChannelState_Failed,				// The esp8266 reported a connection failed or a timeout while trying to open a connection
+	
+		eIPDCheck_NotLooking = 0,
+		eIPDCheck_LookingRecvOrSendOK,
+		eIPDCheck_LookingNum,
+		eIPDCheck_LookingBytes,
+		eIPDCheck_LookingSendOK,
+
+		eSendState_None = 0,
+		eSendState_WaitingOnReady,
+		eSendState_WaitingOnRecv,
+		eSendState_WaitingOnSendOK,
+
+		eErrorType_None = 0,
+		eErrorType_ERROR,
+		eErrorType_IPDTimeout,
+		eErrorType_SendTimeout,
+		eErrorType_SendFail,
+		eErrorType_CommandTimeout,
+		eErrorType_ConnectFailed
 	};
 
 	struct SChannel
@@ -135,74 +192,61 @@ private:
 		SChannel(
 			)
 		{
-			linkIndex = -1;
+			Reset();
 		}
 
 		void
-		Initialize(
-			bool	inServer)
+		Reset(
+			void)
 		{
-			inUse = true;
-			connectionFailed = false;
-			serverPort = inServer;
-			sendPending = false;
-			isConnected = false;
-
-			linkIndex = -1;
 			incomingTotalBytes = 0;
 			outgoingTotalBytes = 0;
+			linkIndex = -1;
+			state = eChannelState_Unused;
+			sendPending = false;
 			lastUseTimeMS = millis();
 		}
 
 		void
-		ConnectionOpened(
-			int		inLinkIndex)
+		ServerConnection(
+			int	inLinkIndex)
 		{
+			Reset();
 			linkIndex = inLinkIndex;
-			isConnected = true;
-			lastUseTimeMS = millis();
+			state = eChannelState_Server;
 		}
 
 		void
-		ConnectionClosed(
+		ClientStart(
 			void)
 		{
-			if(serverPort)
-			{
-				inUse = false;
-			}
-			linkIndex = -1;
-			sendPending = false;
-			isConnected = false;
-			incomingTotalBytes = 0;
-			outgoingTotalBytes = 0;
+			Reset();
+			state = eChannelState_ClientStart;
 		}
 
 		void
-		ConnectionFailed(
-			void)
+		ClientConnected(
+			int	inLinkIndex)
 		{
-			connectionFailed = true;
-			ConnectionClosed();
+			Reset();
+			linkIndex = inLinkIndex;
+			state = eChannelState_ClientConnected;
 		}
 
-		uint32_t	lastUseTimeMS;
 		char		incomingBuffer[eMaxIncomingPacketSize];
 		char		outgoingBuffer[eMaxOutgoingPacketSize];
 		uint16_t	outgoingTotalBytes;
 		uint16_t	incomingTotalBytes;
-		int			linkIndex;
-		bool		inUse;
-		bool		serverPort;
-		bool		connectionFailed;
-		bool		sendPending;
-		bool		isConnected;
+		uint32_t	lastUseTimeMS;			// For server connections, the last time this channel was used, for client the time the start command was issued
+		int			linkIndex;				// The esp8266 link number for this channel
+		uint8_t		channelIndex;			// Our index in the the channelArray list
+		uint8_t		state;					// The state of the channel
+		bool		sendPending;			// True if a send is pending
 	};
 
 	struct SPendingCommand
 	{
 		TString<64>	command;
-		uint32_t	commandStartMS;
 		uint32_t	timeoutMS;
 		SChannel*	targetChannel;
 	};
@@ -212,15 +256,19 @@ private:
 		void);
 
 	void
+	ProcessSerialChar(
+		char	inChar);
+
+	void
 	ProcessSerialInput(
 		void);
 
 	void
 	ProcessInputResponse(
-		char*	inCmd);
+		void);
 	
 	void
-	ProcessChannelTimeouts(
+	ProcessTimeouts(
 		void);
 
 	void
@@ -235,19 +283,33 @@ private:
 	IssueCommand(
 		char const*	inCommand,
 		SChannel*	inChannel,
-		uint32_t	inTimeoutSeconds,
+		uint32_t	inTimeoutMS,
 		...);
+
+	void
+	ClearOutPendingCommandsForChannel(
+		SChannel*	inChannel);
+
+	void
+	ProcessSendOkAck(
+		void);
+	
+	void
+	CheckIPDBufferForCommands(
+		void);
+
+	void
+	ProcessError(
+		uint8_t	inError,
+		int		inLinkIndex = -1);
 
 	int
 	FindHighestAvailableLink(
 		void);
 
+	// Returns NULL if no command is pending
 	SPendingCommand*
 	GetCurrentCommand(
-		void);
-
-	bool
-	IsCommandPending(
 		void);
 
 	SChannel*
@@ -259,8 +321,26 @@ private:
 		int	inLinkIndex);
 
 	void
+	DumpChannelState(
+		SChannel*	inChannel,
+		char const*	inMsg,
+		bool		inError);
+
+	void
 	DumpState(
+		char const*			inMsg,
+		IOutputDirector*	inOutput = NULL);
+
+	void
+	CheckConnectionStatus(
+		TRealTimeEventRef	inEventRef,
+		void*				inRefCon);
+	
+	void
+	InitiateConnectionAttempt(
 		void);
+
+	TRealTimeEventRef	connectionStatusEvent;
 
 	HardwareSerial*	serialPort;
 	uint8_t	rstPin;
@@ -268,23 +348,27 @@ private:
 	uint8_t	gpio0Pin;
 	uint8_t	gpio2Pin;
 
-	SChannel*	curIPDChannel;
-	bool		ipdParsing;
-
-	uint32_t		commandHead;
-	uint32_t		commandTail;
+	uint16_t		commandHead;
+	uint16_t		commandTail;
 	SPendingCommand	commandQueue[eMaxPendingCommands];
 
 	TString<128>	serialInputBuffer;
 
 	uint16_t	serverPort;
 
-	uint8_t		channelCount;
-	SChannel*	channelArray;
+	SChannel	channelArray[eChannelCount];
 
-	int	ipdCurLinkIndex;
-	int	ipdTotalBytes;
-	int	ipdCurByte;
+	bool		simpleCommandInProcess;
+
+	bool		ipdInProcess;
+	int			ipdTotalBytes;
+	int			ipdCurByte;
+	SChannel*	ipdCurChannel;
+	char		ipdBuffer[eMaxIncomingPacketSize + 1];	// This needs to be null terminated for string processing
+
+	uint8_t		sendState;
+
+	uint32_t	lastSerialInputTimeMS;
 
 	char const*	ssid;
 	char const*	pw;
@@ -294,6 +378,10 @@ private:
 
 	bool	wifiConnected;
 	bool	gotIP;
+	bool	gotReady;
+	bool	gotCR;
+	bool	deviceIsHorked;
+	bool	attemptingConnection;
 };
 
 #endif /* _ELINTERNETDEVICE_ESP8266_H_ */

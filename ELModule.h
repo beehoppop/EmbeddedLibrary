@@ -39,6 +39,7 @@
 
 #include <EL.h>
 #include <ELUtilities.h>
+#include <ELOutput.h>
 
 enum
 {
@@ -104,12 +105,17 @@ protected:
 	EEPROMInitialize(
 		void);
 
+	virtual void
+	DumpDebugInfo(
+		IOutputDirector*	inOutput);
+
 	// This saves the eeprom data into the eeprom
 	void
 	EEPROMSave(
 		void);
 
 	uint16_t		eepromOffset;
+	bool			logDebugData;
 
 private:
 
@@ -159,6 +165,8 @@ private:
 	friend void
 	loop(
 		void);
+
+	friend class CModuleManager;
 };
 
 extern uint64_t		gCurLocalMS;	// The accumulated ms since boot, its 64-bit so it will never overflow

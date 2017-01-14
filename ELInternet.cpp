@@ -30,6 +30,7 @@
 */
 
 #include <ELInternet.h>
+#include <ELInternetHTTP.h>
 #include <ELAssert.h>
 #include <ELUtilities.h>
 #include <ELCommand.h>
@@ -56,9 +57,9 @@ CHTTPConnection::CHTTPConnection(
 	responseMethod = inResponseMethod;
 	serverAddress = inServer;
 	serverPort = inPort;
-	localPort = 0xFF;
+	localPort = eInvalidPort;
 	openInProgress = false;
-	waitingOnResponse = false;
+	responseState = eResponseState_None;
 	flushPending = false;
 
 	eventRef = MRealTimeCreateEvent("HTTP", CHTTPConnection::CheckForTimeoutEvent, NULL);
@@ -78,23 +79,63 @@ CHTTPConnection::~CHTTPConnection(
 void
 CHTTPConnection::StartRequest(
 	char const*	inVerb,
-	char const*	inURL)
+	char const*	inURL,
+	int			inParameterCount,
+	...)
 {
-	TString<256> buffer("%s %s HTTP/1.1\r\n", inVerb, inURL);
+	MReturnOnError(responseState != eResponseState_None);
 
-	MReturnOnError(waitingOnResponse);
+	TString<256> buffer;
+
+	isPost = strcmp(inVerb, "POST") == 0;
+
+	if(inParameterCount > 0)
+	{
+		parameterBuffer.Clear();
+
+		va_list	valist;
+
+		va_start(valist, inParameterCount);
+	
+		for(int i = 0; i < inParameterCount; ++i)
+		{
+			char const*	key = va_arg(valist, char const*);
+			char const* value = va_arg(valist, char const*);
+
+			parameterBuffer.AppendF("%s=%s", key, value);
+			if(i < inParameterCount - 1)
+			{
+				parameterBuffer.Append('&');
+			}
+		}
+
+		va_end(valist);
+
+		if(strcmp(inVerb, "GET") == 0)
+		{
+			buffer.SetF("%s %s?%s HTTP/1.1\r\n", inVerb, inURL, (char*)parameterBuffer);
+		}
+		else
+		{
+			buffer.SetF("%s %s HTTP/1.1\r\n", inVerb, inURL);
+		}
+	}
+	else
+	{
+		buffer.SetF("%s %s HTTP/1.1\r\n", inVerb, inURL);
+	}
 
 	SendData(buffer, false);
 }
 
 void
-CHTTPConnection::SendHeaders(
+CHTTPConnection::SetHeaders(
 	int	inHeaderCount,
 	...)
 {
 	TString<256> buffer;
 
-	MReturnOnError(waitingOnResponse);
+	MReturnOnError(responseState != eResponseState_None);
 
 	va_list	valist;
 
@@ -105,7 +146,7 @@ CHTTPConnection::SendHeaders(
 		char const*	key = va_arg(valist, char const*);
 		char const* value = va_arg(valist, char const*);
 
-		buffer.Append("%s: %s\r\n", key, value);
+		buffer.AppendF("%s: %s\r\n", key, value);
 	}
 
 	va_end(valist);
@@ -114,66 +155,73 @@ CHTTPConnection::SendHeaders(
 }
 
 void
-CHTTPConnection::SendParameters(
-	int	inParameterCount,
-	...)
-{
-	TString<256> buffer;
-
-	MReturnOnError(waitingOnResponse);
-
-	va_list	valist;
-
-	va_start(valist, inParameterCount);
-	
-	for(int i = 0; i < inParameterCount; ++i)
-	{
-		char const*	key = va_arg(valist, char const*);
-		char const* value = va_arg(valist, char const*);
-
-		buffer.Append("%s: %s\r\n", key, value);
-	}
-
-	va_end(valist);
-
-	SendBody(buffer);
-}
-
-void
-CHTTPConnection::SendBody(
+CHTTPConnection::CompleteRequest(
 	char const*	inBody)
 {
-	MReturnOnError(waitingOnResponse);
+	MReturnOnError(responseState != eResponseState_None);
 
-	int	bodyLen = strlen(inBody);
+	size_t	bodyLen = strlen(inBody);
 	char blBuffer[32];
 
 	// Add the Content-Length header
-	SendHeaders(4, "Content-Length", itoa(bodyLen, blBuffer, 10), "User-Agent", "EmbeddedLibrary", "Host", (char*)serverAddress, "Accept", "*/*"); 
-
+	if(bodyLen > 0)
+	{
+		SetHeaders(4, "Content-Length", _itoa((int)bodyLen, blBuffer, 10), "User-Agent", "EmbeddedLibrary", "Host", (char*)serverAddress, "Accept", "*/*"); 
+	}
+	else if(isPost)
+	{
+		SetHeaders(4, "Content-Length", _itoa((int)parameterBuffer.GetLength(), blBuffer, 10), "User-Agent", "EmbeddedLibrary", "Host", (char*)serverAddress, "Accept", "*/*"); 
+	}
+	else
+	{
+		SetHeaders(3, "User-Agent", "EmbeddedLibrary", "Host", (char*)serverAddress, "Accept", "*/*"); 
+	}
+		
 	// Add a blank line
 	SendData("\r\n", false);
 
-	// Send the body
-	SendData(inBody, true);
+	if(bodyLen > 0)
+	{
+		// Send the body
+		SendData(inBody, true);
+	}
+	else if(isPost)
+	{
+		SendData(parameterBuffer, true);
+	}
+	else
+	{
+		SendData("", true);
+	}
 
-	waitingOnResponse = true;
 	responseContentSize = 0;
 	responseState = eResponseState_HTTP;
 	responseHTTPCode = 0;
-	dataSentTimeMS = millis();
 }
 
 void
-CHTTPConnection::Close(
+CHTTPConnection::CloseConnection(
 	void)
 {
-	if(localPort != 0)
+	if(localPort != eInvalidPort)
 	{
-		gInternetModule->CloseConnection(localPort);
+		gInternetModule->TCPCloseConnection(localPort);
 	}
 
 	delete this;
+}
+
+void
+CHTTPConnection::DumpDebugInfo(
+	IOutputDirector*	inOutput)
+{
+	inOutput->printf("millis() = %lu\n", millis());
+	inOutput->printf("dataSentTimeMS = %lu\n", dataSentTimeMS);
+	inOutput->printf("responseContentSize = %d\n", responseContentSize);
+	inOutput->printf("responseHTTPCode = %d\n", responseHTTPCode);
+	inOutput->printf("responseState = %d\n", responseState);
+	inOutput->printf("openInProgress = %d\n", openInProgress);
+	inOutput->printf("flushPending = %d\n", flushPending);
 }
 
 void
@@ -190,16 +238,22 @@ CHTTPConnection::ResponseHandlerMethod(
 			localPort = inLocalPort;
 			if(tempBuffer.GetLength() > 0)
 			{
-				gInternetModule->SendData(localPort, tempBuffer.GetLength(), tempBuffer, flushPending);
-				tempBuffer.Clear();
-				flushPending = false;
-				dataSentTimeMS = millis();
+				if(gInternetModule->TCPSendData(localPort, tempBuffer.GetLength(), tempBuffer, flushPending))
+				{
+					tempBuffer.Clear();
+					flushPending = false;
+					dataSentTimeMS = millis();
+				}
+				else
+				{
+					ReopenConnection();
+				}
 			}
 			break;
 
 		case eConnectionResponse_Closed:
 		case eConnectionResponse_Error:
-			if(waitingOnResponse)
+			if(responseState != eResponseState_None)
 			{
 				if(inResponse == eConnectionResponse_Error)
 				{
@@ -213,14 +267,17 @@ CHTTPConnection::ResponseHandlerMethod(
 				FinishResponse();
 			}
 
-			gInternetModule->CloseConnection(localPort);
+			if(localPort != eInvalidPort)
+			{
+				gInternetModule->TCPCloseConnection(localPort);
+				localPort = eInvalidPort;
+			}
+
 			openInProgress = false;
-			waitingOnResponse = false;
-			localPort = 0xFF;
 			break;
 
 		case eConnectionResponse_Data:
-			if(waitingOnResponse)
+			if(responseState != eResponseState_None)
 			{
 				ProcessResponseData(inDataSize, inData);
 			}
@@ -234,9 +291,15 @@ CHTTPConnection::SendData(
 	char const*	inData,
 	bool		inFlush)
 {
-	if(localPort != 0xFF)
+	dataSentTimeMS = millis();
+	if(localPort != eInvalidPort)
 	{
-		gInternetModule->SendData(localPort, strlen(inData), inData, inFlush);
+		if(gInternetModule->TCPSendData(localPort, strlen(inData), inData, inFlush) == false)
+		{
+			ReopenConnection();
+			tempBuffer = inData;
+			flushPending |= inFlush;
+		}
 	}
 	else
 	{
@@ -289,20 +352,22 @@ CHTTPConnection::ProcessResponseData(
 		}
 	}
 }
-	
+
 void
 CHTTPConnection::ProcessResponseLine(
 	void)
 {
 	if(tempBuffer.GetLength() == 0)
 	{
-		// If the response line is empty that means that response body is starting
+		// If the response line is empty that means the response body is starting
 		if(responseContentSize > 0)
 		{
+			// We are expecting a body so start saving that data
 			responseState = eResponseState_Body;
 		}
 		else
 		{
+			// If there is no content size then there is no body data to get so just finish now
 			FinishResponse();
 		}
 		return;
@@ -335,8 +400,7 @@ void
 CHTTPConnection::FinishResponse(
 	void)
 {
-	responseState = eResponseState_Done;
-	waitingOnResponse = false;
+	responseState = eResponseState_None;
 	(internetHandler->*responseMethod)(responseHTTPCode, responseContentSize, tempBuffer);
 	tempBuffer.Clear();
 }
@@ -346,13 +410,33 @@ CHTTPConnection::CheckForTimeoutEvent(
 	TRealTimeEventRef	inRef,
 	void*				inRefCon)
 {
-	if(waitingOnResponse && (millis() - dataSentTimeMS >= eHTTPTimeoutMS))
+	if(responseState != eResponseState_None && (millis() - dataSentTimeMS >= eHTTPTimeoutMS))
 	{
 		// we have timed out waiting for a response
 		responseHTTPCode = 500;
 		FinishResponse();
+		openInProgress = false;
+		if(localPort != eInvalidPort)
+		{
+			gInternetModule->TCPCloseConnection(localPort);
+			localPort = eInvalidPort;
+		}
+	}
+}
+
+void
+CHTTPConnection::ReopenConnection(
+	void)
+{
+	if(localPort != eInvalidPort)
+	{
+		gInternetModule->TCPCloseConnection(localPort);
+		localPort = eInvalidPort;
 	}
 
+	// Re-open a connection
+	MInternetOpenConnection(serverPort, serverAddress, CHTTPConnection::ResponseHandlerMethod);
+	openInProgress = true;
 }
 
 MModuleImplementation_Start(CModule_Internet)
@@ -376,7 +460,7 @@ CModule_Internet::CModule_Internet(
 	for(int i = 0; i < eMaxConnectionsCount; ++i, ++cur)
 	{
 		cur->openRef = -1;
-		cur->localPort = 0xFF;
+		cur->localPort = eInvalidPort;
 	}
 
 	CModule_RealTime::Include();
@@ -442,11 +526,11 @@ CModule_Internet::RemoveServer(
 }
 
 void
-CModule_Internet::OpenConnection(
+CModule_Internet::TCPOpenConnection(
 	uint16_t								inServerPort,
 	char const*								inServerAddress,
 	IInternetHandler*						inInternetHandler,
-	TInternetResponseHandlerMethod			inResponseMethod)
+	TTCPResponseHandlerMethod			inResponseMethod)
 {
 	MReturnOnError(internetDevice == NULL);
 	MReturnOnError(strlen(inServerAddress) > eServerMaxAddressLength - 1);
@@ -468,7 +552,7 @@ CModule_Internet::OpenConnection(
 
 	MReturnOnError(target == NULL);
 
-	target->openRef = internetDevice->Client_RequestOpen(inServerPort, inServerAddress);
+	target->openRef = internetDevice->TCPRequestOpen(inServerPort, inServerAddress);
 	if(target->openRef < 0)
 	{
 		(inInternetHandler->*inResponseMethod)(eConnectionResponse_Error, 0, 0, NULL);
@@ -479,32 +563,34 @@ CModule_Internet::OpenConnection(
 	target->handlerResponseMethod = inResponseMethod;
 	target->serverPort = inServerPort;
 	target->serverAddress = inServerAddress;
-	target->localPort = 0xFF;
+	target->localPort = eInvalidPort;
 }
 
 void
-CModule_Internet::CloseConnection(
+CModule_Internet::TCPCloseConnection(
 	uint16_t	inLocalPort)
 {
+	MReturnOnError(inLocalPort == eInvalidPort);
+
 	SConnection*	cur = connectionList;
 	for(int i = 0; i < eMaxConnectionsCount; ++i, ++cur)
 	{
 		if(cur->localPort == inLocalPort)
 		{
-			cur->localPort = 0xFF;
+			cur->localPort = eInvalidPort;
 			cur->serverPort = 0;
 			cur->serverAddress.Clear();
 			cur->handlerResponseMethod = NULL;
 			cur->handlerObject = NULL;
 			cur->openRef = -1;
-			internetDevice->CloseConnection(inLocalPort);
+			internetDevice->TCPCloseConnection(inLocalPort);
 			return;
 		}
 	}
 }
 
 bool
-CModule_Internet::SendData(
+CModule_Internet::TCPSendData(
 	uint16_t						inLocalPort,
 	size_t							inDataSize,
 	char const*						inData,
@@ -523,9 +609,9 @@ CModule_Internet::SendData(
 
 	MReturnOnError(target == NULL || target->openRef > 0, false);
 
-	if(internetDevice->SendData(inLocalPort, inDataSize, inData, inFlush) == false)
+	if(internetDevice->TCPSendData(inLocalPort, inDataSize, inData, inFlush) == false)
 	{
-		CloseConnection(inLocalPort);
+		TCPCloseConnection(inLocalPort);
 		return false;
 	}
 
@@ -610,7 +696,7 @@ CModule_Internet::Update(
 	uint32_t	inDeltaTimeUS)
 {
 	size_t	bufferSize;
-	char	buffer[eMaxIncomingPacketSize];
+	char	buffer[eMaxIncomingPacketSize + 1];
 
 	if(internetDevice == NULL)
 	{
@@ -618,6 +704,43 @@ CModule_Internet::Update(
 	}
 
 	SConnection*	curConnection;
+
+	if(internetDevice->IsDeviceTotallyFd())
+	{
+		// Close all connections
+		curConnection = connectionList;
+		for(int i = 0; i < eMaxConnectionsCount; ++i, ++curConnection)
+		{
+			if(curConnection->handlerObject != NULL)
+			{
+				(curConnection->handlerObject->*curConnection->handlerResponseMethod)(eConnectionResponse_Error, 0, 0, NULL);
+			}
+			curConnection->localPort = eInvalidPort;
+			curConnection->serverPort = 0;
+			curConnection->serverAddress.Clear();
+			curConnection->handlerResponseMethod = NULL;
+			curConnection->handlerObject = NULL;
+			curConnection->openRef = -1;
+		}
+
+		internetDevice->ResetDevice();
+
+		// Setup all the servers
+		SServer*	curServer = serverList;
+		for(int i = 0; i < eMaxServersCount; ++i, ++curServer)
+		{
+			if(curServer->handlerObject != NULL)
+			{
+				internetDevice->Server_Open(curServer->port);
+			}
+		}
+
+		// Setup the webserver
+		if(webServerPort != 0)
+		{
+			internetDevice->Server_Open(webServerPort);
+		}
+	}
 
 	// Update the current connections
 	curConnection = connectionList;
@@ -628,10 +751,11 @@ CModule_Internet::Update(
 			continue;
 		}
 
+		// If we have a open in process check it's status
 		if(curConnection->openRef >= 0)
 		{
 			bool	successfulyOpened;
-			if(internetDevice->Client_OpenCompleted(curConnection->openRef, successfulyOpened, curConnection->localPort))
+			if(internetDevice->TCPCheckOpenCompleted(curConnection->openRef, successfulyOpened, curConnection->localPort))
 			{
 				// call completion
 				curConnection->openRef = -1;
@@ -651,27 +775,27 @@ CModule_Internet::Update(
 			continue;
 		}
 
-		MAssert(curConnection->localPort != 0xFF);
+		MAssert(curConnection->localPort != eInvalidPort);
 
-		uint32_t	portState = internetDevice->GetPortState(curConnection->localPort);
+		uint32_t	portState = internetDevice->TCPGetPortState(curConnection->localPort);
 
 		// If the port has failed or closed report that
 		if(portState & ePortState_Failure)
 		{
 			(curConnection->handlerObject->*curConnection->handlerResponseMethod)(eConnectionResponse_Error, curConnection->localPort, 0, NULL);
 			// Since the method above may have already closed the port we need to check for that
-			if(curConnection->localPort != 0xFF)
+			if(curConnection->localPort != eInvalidPort)
 			{
-				CloseConnection(curConnection->localPort);
+				TCPCloseConnection(curConnection->localPort);
 			}
 		}
 		else if(!(portState & ePortState_IsOpen))
 		{
 			(curConnection->handlerObject->*curConnection->handlerResponseMethod)(eConnectionResponse_Closed, curConnection->localPort, 0, NULL);
 			// Since the method above may have already closed the port we need to check for that
-			if(curConnection->localPort != 0xFF)
+			if(curConnection->localPort != eInvalidPort)
 			{
-				CloseConnection(curConnection->localPort);
+				TCPCloseConnection(curConnection->localPort);
 			}
 		}
 	}
@@ -680,96 +804,98 @@ CModule_Internet::Update(
 	bufferSize = sizeof(buffer) - 1;
 	uint16_t	localPort;
 	uint16_t	replyPort;
-	internetDevice->GetData(localPort, replyPort, bufferSize, buffer);
+	internetDevice->TCPGetData(localPort, replyPort, bufferSize, buffer);
+
+	if(bufferSize == 0)
+	{
+		return;
+	}
+
 	buffer[bufferSize] = 0;
 	
-	if(bufferSize > 0)
+	if(webServerPort > 0 && localPort == webServerPort)
 	{
-		if(webServerPort > 0 && localPort == webServerPort)
+		//Serial.printf("Got cmd server data chn=%d\n", replyPort);
+
+		char*	verb = NULL;
+		char*	url = NULL;
+		char*	nextSpace;
+
+		verb = buffer;
+		nextSpace = strchr(verb, ' ');
+		if(nextSpace != NULL)
 		{
-			//Serial.printf("Got cmd server data chn=%d\n", replyPort);
+			*nextSpace = 0;
+			url = nextSpace + 1;
 
-			char*	verb = NULL;
-			char*	url = NULL;
-			char*	nextSpace;
-
-			verb = buffer;
-			nextSpace = strchr(verb, ' ');
+			nextSpace = strchr(url, ' ');
 			if(nextSpace != NULL)
 			{
 				*nextSpace = 0;
-				url = nextSpace + 1;
+			}
+		}
 
-				nextSpace = strchr(url, ' ');
-				if(nextSpace != NULL)
+		if(verb != NULL && strcmp(verb, "GET") == 0 && url != NULL)
+		{
+			char const*	paramList[32];	
+			int		paramCount = 32;
+			char*	pageName;
+
+			TransformURLIntoParameters(paramCount, paramList, pageName, url);
+
+			internetDevice->TCPSendData(replyPort, strlen(gReplyStringPreOutput), gReplyStringPreOutput);
+
+			respondingServer = true;
+			respondingServerPort = webServerPort;
+			respondingReplyPort = replyPort;
+
+			for(int i = 0; i < eWebServerPageHandlerMax; ++i)
+			{
+				if(webServerPageHandlerList[i].object != NULL && strcmp(pageName, webServerPageHandlerList[i].pageName) == 0)
 				{
-					*nextSpace = 0;
+					(webServerPageHandlerList[i].object->*(webServerPageHandlerList[i].method))(this, paramCount, paramList);
 				}
 			}
 
-			if(verb != NULL && strcmp(verb, "GET") == 0 && url != NULL)
-			{
-				char const*	paramList[32];	
-				int		paramCount = 32;
-				char*	pageName;
-
-				TransformURLIntoParameters(paramCount, paramList, pageName, url);
-
-				internetDevice->SendData(replyPort, strlen(gReplyStringPreOutput), gReplyStringPreOutput);
-
-				respondingServer = true;
-				respondingServerPort = webServerPort;
-				respondingReplyPort = replyPort;
-
-				for(int i = 0; i < eWebServerPageHandlerMax; ++i)
-				{
-					if(webServerPageHandlerList[i].object != NULL && strcmp(pageName, webServerPageHandlerList[i].pageName) == 0)
-					{
-						(webServerPageHandlerList[i].object->*(webServerPageHandlerList[i].method))(this, paramCount, paramList);
-					}
-				}
-
-				internetDevice->SendData(replyPort, strlen(gReplyStringPostOutput), gReplyStringPostOutput);
-				internetDevice->CloseConnection(replyPort);
-			}
-			else
-			{
-				Serial.printf("  unknown cmd request");
-				internetDevice->CloseConnection(replyPort);
-			}
+			internetDevice->TCPSendData(replyPort, strlen(gReplyStringPostOutput), gReplyStringPostOutput);
+			internetDevice->TCPCloseConnection(replyPort);
 		}
 		else
 		{
-			// look for the server connection the data came back on
-			SServer*	curServer = serverList;
-			bool		dataProcessed = false;
-			for(int i = 0; i < eMaxServersCount; ++i, ++curServer)
+			Serial.printf("  unknown cmd request");
+			internetDevice->TCPCloseConnection(replyPort);
+		}
+	}
+	else
+	{
+		// look for the server connection the data came back on
+		SServer*	curServer = serverList;
+		bool		dataProcessed = false;
+		for(int i = 0; i < eMaxServersCount; ++i, ++curServer)
+		{
+			if(curServer->handlerObject != NULL && curServer->port == localPort)
 			{
-				if(curServer->handlerObject != NULL && curServer->port == localPort)
-				{
-					// we got data, now call the handler
-					respondingServer = true;
-					respondingServerPort = curServer->port;
-					respondingReplyPort = replyPort;
-					(curServer->handlerObject->*curServer->handlerMethod)(this, bufferSize, buffer);
-					internetDevice->CloseConnection(replyPort);
-					dataProcessed = true;
-					break;
-				}
+				// we got data, now call the handler
+				respondingServer = true;
+				respondingServerPort = curServer->port;
+				respondingReplyPort = replyPort;
+				(curServer->handlerObject->*curServer->handlerMethod)(this, (int)bufferSize, buffer);
+				internetDevice->TCPCloseConnection(replyPort);
+				dataProcessed = true;
+				break;
 			}
+		}
 
-			if(!dataProcessed)
+		if(!dataProcessed)
+		{
+			// Look for a client connection
+			curConnection = connectionList;
+			for(int i = 0; i < eMaxConnectionsCount; ++i, ++curConnection)
 			{
-				// Look for a client connection
-				curConnection = connectionList;
-				for(int i = 0; i < eMaxConnectionsCount; ++i, ++curConnection)
+				if(curConnection->handlerObject != NULL && curConnection->localPort == localPort)
 				{
-					if(curConnection->handlerObject != NULL && curConnection->localPort == localPort)
-					{
-						// Call the response handler with the data
-						(curConnection->handlerObject->*curConnection->handlerResponseMethod)(eConnectionResponse_Data, curConnection->localPort, bufferSize, buffer);
-					}
-
+					// Call the response handler with the data
+					(curConnection->handlerObject->*curConnection->handlerResponseMethod)(eConnectionResponse_Data, curConnection->localPort, (int)bufferSize, buffer);
 				}
 			}
 		}
@@ -785,7 +911,7 @@ CModule_Internet::write(
 	char const*	cep = inMsg + inBytes;
 	char const*	lineStart = csp;
 
-	uint32_t	portState = internetDevice->GetPortState(respondingReplyPort);
+	uint32_t	portState = internetDevice->TCPGetPortState(respondingReplyPort);
 	if(!(portState & ePortState_IsOpen) || (portState & ePortState_Failure))
 	{
 		return;
@@ -807,12 +933,12 @@ CModule_Internet::write(
 
 			if(respondingServer)
 			{
-				if(internetDevice->SendData(respondingReplyPort, lineEnd - lineStart, lineStart) == false)
+				if(internetDevice->TCPSendData(respondingReplyPort, lineEnd - lineStart, lineStart) == false)
 				{
 					return;
 				}
 
-				if(internetDevice->SendData(respondingReplyPort, 5, "</br>") == false)
+				if(internetDevice->TCPSendData(respondingReplyPort, 5, "</br>") == false)
 				{
 					return;
 				}
@@ -826,7 +952,7 @@ CModule_Internet::write(
 	{
 		if(respondingServer)
 		{
-			if(internetDevice->SendData(respondingReplyPort, cep - lineStart, lineStart) == false)
+			if(internetDevice->TCPSendData(respondingReplyPort, cep - lineStart, lineStart) == false)
 			{
 				return;
 			}
@@ -841,8 +967,8 @@ CModule_Internet::SerialCmd_WirelessSet(
 	char const*			inArgV[])
 {
 	MReturnOnError(inArgC != 4, eCmd_Failed);
-	MReturnOnError(strlen(inArgV[1]) > sizeof(settings.ssid) - 1, eCmd_Failed);
-	MReturnOnError(strlen(inArgV[2]) > sizeof(settings.pw) - 1, eCmd_Failed);
+	MReturnOnError(strlen(inArgV[1]) > settings.ssid.GetSize(), eCmd_Failed);
+	MReturnOnError(strlen(inArgV[2]) > settings.pw.GetSize(), eCmd_Failed);
 
 	if(strcmp(inArgV[3], "wpa2") == 0)
 	{

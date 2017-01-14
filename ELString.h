@@ -45,11 +45,9 @@ public:
 		char const*	inString,
 		...)
 	{
-		Clear();
-
 		va_list	vaList;
 		va_start(vaList, inString);
-		AppendVar(inString, vaList);
+		SetVA(inString, vaList);
 		va_end(vaList);
 	}
 
@@ -76,16 +74,7 @@ public:
 	operator =(
 		char const*	inString)
 	{
-		size_t	strLen = strlen(inString);
-
-		if(strLen > inBufferSize - 1)
-		{
-			strLen = inBufferSize - 1;
-		}
-
-		memcpy(buffer, inString, strLen);
-		buffer[strLen] = 0;
-		length = strLen;
+		Set(inString);
 
 		return *this;
 	}
@@ -99,15 +88,53 @@ public:
 	}
 
 	bool
-	Append(
+	operator +=(
+		char inC)
+	{
+		return Append(inC);
+	}
+
+	// Since overloading [] produces abmiguous overload warnings use () instead
+	char
+	operator()(
+		size_t	inIndex)
+	{
+		if(inIndex >= length)
+		{
+			return -1;
+		}
+		return buffer[inIndex];
+	}
+
+	bool
+	AppendF(
 		char const*	inString,
 		...)
 	{
 		va_list	vaList;
 		va_start(vaList, inString);
-		bool result = AppendVar(inString, vaList);
+		bool result = AppendVA(inString, vaList);
 		va_end(vaList);
 		return result;
+	}
+
+	bool
+	Append(
+		char const*	inString)
+	{
+		size_t	strLen = strlen(inString);
+
+		if(length + strLen + 1 <= inBufferSize)
+		{
+			memcpy(buffer + length, inString, strLen + 1);
+			length += strLen;
+			return true;
+		}
+
+		memcpy(buffer + length, inString, inBufferSize - length - 1);
+		length = inBufferSize - 1;
+		buffer[inBufferSize - 1] = 0;	// Ensure we have a valid cstring
+		return false;
 	}
 
 	bool
@@ -126,7 +153,7 @@ public:
 	}
 
 	bool
-	AppendVar(
+	AppendVA(
 		char const*	inString,
 		va_list		inVAList)
 	{
@@ -136,7 +163,7 @@ public:
 		if(result < 0 || (size_t)result >= inBufferSize - length)
 		{
 			// we have overflowed
-			length = inBufferSize;
+			length = inBufferSize - 1;
 			buffer[inBufferSize - 1] = 0;	// Ensure we have a valid cstring
 			return false;
 		}
@@ -147,29 +174,87 @@ public:
 	}
 
 	bool
-	Set(
+	Insert(
+		size_t		inPos,
+		char const*	inString)
+	{
+		size_t	strLen = strlen(inString);
+
+		if(inPos >= inBufferSize)
+		{
+			return false;
+		}
+
+		if(inPos + strLen >= inBufferSize)
+		{
+			length = inBufferSize - 1;
+			strLen = length - inPos;
+			memcpy(buffer + inPos, inString, strLen);
+			buffer[inBufferSize - 1] = 0;	// Ensure we have a valid cstring
+			return false;
+		}
+		
+		if(strLen + length >= inBufferSize)
+		{
+			length = inBufferSize - 1;
+			memmove(buffer + inPos + strLen, buffer + inPos, length - strLen - inPos);
+			memcpy(buffer + inPos, inString, strLen);
+			buffer[inBufferSize - 1] = 0;	// Ensure we have a valid cstring
+			return false;
+		}
+
+		memmove(buffer + inPos + strLen, buffer + inPos, length - inPos);
+		memcpy(buffer + inPos, inString, strLen);
+
+		length += strLen;
+		buffer[length] = 0;
+
+		return true;
+	}
+
+	bool
+	SetF(
 		char const*	inString,
 		...)
 	{
 		va_list	vaList;
 		va_start(vaList, inString);
-		bool result = SetVar(inString, vaList);
+		bool result = SetVA(inString, vaList);
 		va_end(vaList);
 		return result;
 	}
 
 	bool
-	SetVar(
+	Set(
+		char const*	inString)
+	{
+		size_t	strLen = strlen(inString);
+		bool	overflow = strLen > inBufferSize - 1;
+
+		if(overflow)
+		{
+			strLen = inBufferSize - 1;
+		}
+
+		memcpy(buffer, inString, strLen);
+		buffer[strLen] = 0;
+		length = strLen;
+
+		return overflow;
+	}
+
+	bool
+	SetVA(
 		char const*	inString,
 		va_list		inVAList)
 	{
 		int	result;
 
 		result = vsnprintf(buffer, inBufferSize, inString, inVAList);
-		if(result < 0 || (size_t)result >= inBufferSize - length)
+		if(result < 0 || (size_t)result >= inBufferSize)
 		{
 			// we have overflowed
-			length = inBufferSize;
+			length = inBufferSize - 1;
 			buffer[inBufferSize - 1] = 0;	// Ensure we have a valid cstring
 			return false;
 		}
@@ -194,6 +279,13 @@ public:
 		return length;
 	}
 
+	size_t
+	GetSize(
+		void)
+	{
+		return inBufferSize - 1;
+	}
+
 	bool
 	StartsWith(
 		char const*	inString)
@@ -201,6 +293,13 @@ public:
 		size_t	strLen = strlen(inString);
 
 		return strncmp(buffer, inString, strLen) == 0;
+	}
+
+	bool
+	EndsWith(
+		char	inChar)
+	{
+		return buffer[length - 1] == inChar;
 	}
 
 	bool
@@ -280,6 +379,51 @@ public:
 		char const*	inString)
 	{
 		return strstr(buffer, inString) != NULL;
+	}
+
+	bool
+	IsSpace(
+		void)
+	{
+		for(size_t i = 0; i < length; ++i)
+		{
+			if(!isspace(buffer[i]))
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	bool
+	IsDigit(
+		void)
+	{
+		for(size_t i = 0; i < length; ++i)
+		{
+			if(!isdigit(buffer[i]))
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	bool
+	IsNumber(
+		void)
+	{
+		for(size_t i = 0; i < length; ++i)
+		{
+			if(!(isdigit(buffer[i]) || buffer[i] == '-' || buffer[i] == '+'))
+			{
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 private:

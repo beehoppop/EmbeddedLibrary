@@ -814,7 +814,7 @@ private:
 	char*
 	ReallocString(
 		char*	inStr,
-		int		inNewSize);
+		size_t	inNewSize);
 
 	void
 	FreeString(

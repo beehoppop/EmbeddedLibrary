@@ -36,7 +36,6 @@
 #include <ELOutput.h>
 #include <ELCommand.h>
 #include <ELString.h>
-#include <ELRealTime.h>
 
 enum
 {
@@ -46,7 +45,7 @@ enum
 
 	eWebServerPageHandlerMax = 16,
 
-	eHTTPTimeoutMS = 10000,
+	eInvalidPort = 0xFFFF,
 
 	eMaxIncomingPacketSize = 1500,
 	eMaxOutgoingPacketSize = 1400,
@@ -57,6 +56,13 @@ enum
 	ePortState_Failure			= 1 << 3,
 };
 
+enum EWirelessPWEnc
+{
+	eWirelessPWEnc_Open,
+	eWirelessPWEnc_WEP,
+	eWirelessPWEnc_WPA2Personal,
+};
+
 enum EConnectionResponse
 {
 	eConnectionResponse_Opened,
@@ -65,19 +71,12 @@ enum EConnectionResponse
 	eConnectionResponse_Error,
 };
 
-enum EWirelessPWEnc
-{
-	eWirelessPWEnc_Open,
-	eWirelessPWEnc_WEP,
-	eWirelessPWEnc_WPA2Personal,
-};
-
 // Utility macro for registering a response handler when opening a connection to a server
-#define MInternetOpenConnection(inServerPort, inServerAddress, inMethod) gInternetModule->OpenConnection(inServerPort, inServerAddress, this, static_cast<TInternetResponseHandlerMethod>(&inMethod))
+#define MInternetOpenConnection(inServerPort, inServerAddress, inMethod) gInternetModule->TCPOpenConnection(inServerPort, inServerAddress, this, static_cast<TTCPResponseHandlerMethod>(&inMethod))
 #define MInternetRegisterPage(inPage, inMethod) gInternetModule->WebServer_RegisterPageHandler(inPage, this, static_cast<TInternetServerPageMethod>(&inMethod))
-#define MInternetCreateHTTPConnection(inServerPort, inServerAddress, inMethod) gInternetModule->CreateHTTPConnection(inServerPort, inServerAddress, this, static_cast<THTTPResponseHandlerMethod>(&inMethod))
 
 class CModule_Internet;
+class CHTTPConnection;
 
 class IInternetHandler
 {
@@ -98,11 +97,19 @@ typedef void
 	int					inDataSize,
 	char const*			inData);
 
-// This will be called when a client connection receives response data from a server, if this is called with inDataSize of 0 and inDat is NULL that means an error occurred
+// This will be called when a client tcp connection receives response data from a server, if this is called with inDataSize of 0 and inDat is NULL that means an error occurred
 typedef void
-(IInternetHandler::*TInternetResponseHandlerMethod)(
+(IInternetHandler::*TTCPResponseHandlerMethod)(
 	EConnectionResponse	inResponse,
 	uint16_t			inLocalPort,
+	int					inDataSize,
+	char const*			inData);
+
+// This will be called when a udp packet is received, if this is called with inDataSize of 0 and inDat is NULL that means an error occurred
+typedef void
+(IInternetHandler::*TUDPPacketHandlerMethod)(
+	uint16_t			inLocalPort,
+	uint16_t			inRemotePort,
 	int					inDataSize,
 	char const*			inData);
 
@@ -113,103 +120,6 @@ typedef void
 	int					inDataSize,
 	char const*			inData);
 
-class CHTTPConnection : public IInternetHandler, public IRealTimeHandler
-{
-public:
-	
-	void
-	StartRequest(
-		char const*	inVerb,
-		char const*	inURL);
-
-	void
-	SendHeaders(
-		int	inHeaderCount,
-		...);					// Variable length string headers header name and header value times inHeaderCount
-
-	void
-	SendParameters(
-		int	inParameterCount,
-		...);					// Variable length string parameters param name and param value times inParameterCount
-
-	void
-	SendBody(
-		char const*	inBody);
-
-	void
-	Close(
-		void);
-
-private:
-	
-	enum
-	{
-		eResponseState_HTTP,
-		eResponseState_Headers,
-		eResponseState_Body,
-		eResponseState_Done,
-	};
-
-	~CHTTPConnection(
-		);
-
-	CHTTPConnection(
-		char const*							inServer,
-		uint16_t							inPort,
-		IInternetHandler*					inInternetHandler,
-		THTTPResponseHandlerMethod			inResponseMethod);
-
-	void
-	ResponseHandlerMethod(
-		EConnectionResponse	inResponse,
-		uint16_t			inLocalPort,
-		int					inDataSize,
-		char const*			inData);
-
-	void
-	SendData(
-		char const*	inData,
-		bool		inFlush);
-	
-	void
-	ProcessResponseData(
-		int			inDataSize,
-		char const*	inData);
-	
-	void
-	ProcessResponseLine(
-		void);
-	
-	void
-	FinishResponse(
-		void);
-
-	void
-	CheckForTimeoutEvent(
-		TRealTimeEventRef	inRef,
-		void*				inRefCon);
-
-	IInternetHandler*					internetHandler;
-	THTTPResponseHandlerMethod			responseMethod;
-
-	TString<64>	serverAddress;
-	uint16_t	serverPort;
-	uint16_t	localPort;
-
-	TString<512>	tempBuffer;
-
-	TRealTimeEventRef	eventRef;
-
-	uint32_t	dataSentTimeMS;
-	uint16_t	responseContentSize;
-	uint16_t	responseHTTPCode;
-	uint8_t		responseState;
-	bool		waitingOnResponse;
-	bool		openInProgress;
-	bool		flushPending;
-
-	friend class CModule_Internet;
-};
 
 class IInternetDevice
 {
@@ -240,28 +150,28 @@ public:
 
 	// Open a connection to a remote server, the return value can be passed into Connection_OpenCompleted to check if the open request has completed, return -1 on error
 	virtual int
-	Client_RequestOpen(
+	TCPRequestOpen(
 		uint16_t	inRemoteServerPort,			// The port on the remote server expecting a connection attempt
 		char const*	inRemoteServerAddress) = 0;	// The remote server address
 
-	// Check if a open connection request has completed
+	// Check if a open connection request has completed, returns true process has completed or false if it is still ongoing
 	virtual bool
-	Client_OpenCompleted(
+	TCPCheckOpenCompleted(
 		int			inOpenRef,
 		bool&		outSuccess,
 		uint16_t&	outPort) = 0;
 
 	// Do a non blocking check for data arriving on a previously opened port
 	virtual void
-	GetData(
+	TCPGetData(
 		uint16_t&	outPort,			// The previously open port that data was found on
 		uint16_t&	outReplyPort,		// The port to send response data with
-		size_t&		ioBufferSize,		// The size of the provided buffer in bytes
+		size_t&		ioBufferSize,		// The size of the provided buffer in bytes on input and the bytes received on output
 		char*		outBuffer) = 0;		// The buffer to store data
 
 	// Send data on the previously opened port
 	virtual bool
-	SendData(
+	TCPSendData(
 		uint16_t	inPort,				// The open port
 		size_t		inBufferSize,		// The number of bytes on the buffer
 		char const*	inBuffer,			// The data to send
@@ -269,17 +179,42 @@ public:
 	
 	// Check if the given port is ready to send data
 	virtual uint32_t
-	GetPortState(
+	TCPGetPortState(
 		uint16_t	inPort) = 0;		// The open port
 
 	// End the transaction
 	virtual void
-	CloseConnection(
+	TCPCloseConnection(
 		uint16_t	inPort) = 0;	// The open port
+	
+	// Check for a udp packet
+	virtual bool
+	UDPGetData(
+		uint16_t&	outRemotePort,
+		uint16_t&	outLocalPort,
+		size_t&		ioBufferSize,		// The size of the provided buffer in bytes on input and the bytes received on output
+		uint8_t*	outBuffer) = 0;		// The buffer to store data
+
+	virtual bool
+	UDPSendData(
+		uint16_t&	outLocalPort,		// The local port used for this send
+		uint16_t	inRemotePort,
+		size_t		inBufferSize,
+		uint8_t*	inBuffer) = 0;
 
 	// Return true if a valid connection exists
 	virtual bool
 	ConnectedToInternet(
+		void) = 0;
+
+	// Returns true if the device is so f'd up it needs to be reset - if this does return true the device will stay in this state until ResetDevice is called
+	virtual bool
+	IsDeviceTotallyFd(
+		void) = 0;
+
+	// Reset the device - normally this only needs to be called if IsDeviceTotallyFd has returned true
+	virtual void
+	ResetDevice(
 		void) = 0;
 };
 
@@ -306,22 +241,22 @@ public:
 		uint16_t	inPort);
 
 	void
-	OpenConnection(
+	TCPOpenConnection(
 		uint16_t						inServerPort,
 		char const*						inServerAddress,
 		IInternetHandler*				inHandlerObject,			// The object of the handlers
-		TInternetResponseHandlerMethod	inHandlerMethod);			// The response handler
+		TTCPResponseHandlerMethod	inHandlerMethod);			// The response handler
 	
 	// The OpenConnection completion method must have been called before calling SendData
 	bool
-	SendData(
+	TCPSendData(
 		uint16_t	inLocalPort,
 		size_t		inDataSize,
 		char const*	inData,
 		bool		inFlush);
 
 	void
-	CloseConnection(
+	TCPCloseConnection(
 		uint16_t	inLocalPort);
 
 	// Configure the internet connection to serve web pages on the given port
@@ -430,7 +365,7 @@ private:
 		uint16_t	serverPort;
 		TString<eServerMaxAddressLength>	serverAddress;
 		IInternetHandler*					handlerObject;
-		TInternetResponseHandlerMethod		handlerResponseMethod;
+		TTCPResponseHandlerMethod		handlerResponseMethod;
 	};
 
 	struct SWebServerPageHandler

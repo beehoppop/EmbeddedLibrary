@@ -29,6 +29,7 @@
 #include "ELConfig.h"
 #include "ELOutput.h"
 #include "ELRealtime.h"
+#include "ELString.h"
 
 struct SOutputEntry
 {
@@ -37,8 +38,6 @@ struct SOutputEntry
 };
 
 static SOutputEntry	gEntries[eMaxMsgHandlers];
-
-IOutputDirector*	gSerialOut;
 
 MModuleImplementation_Start(CModule_SysMsgCmdHandler)
 MModuleImplementation_Finish(CModule_SysMsgCmdHandler)
@@ -97,25 +96,6 @@ CModule_SysMsgCmdHandler::write(
 	}
 }
 
-MModuleImplementation_Start(CModule_SysMsgSerialHandler)
-MModuleImplementation_FinishGlobal(CModule_SysMsgSerialHandler, gSerialOut)
-
-CModule_SysMsgSerialHandler::CModule_SysMsgSerialHandler(
-	)
-	:
-	CModule()
-{
-	AddSysMsgHandler(this);
-}
-
-void
-CModule_SysMsgSerialHandler::write(
-	char const*	inMsg,
-	size_t		inBytes)
-{
-	Serial.write(inMsg, inBytes);
-}
-
 void
 AssertFailed(
 	char const*	inMsg,
@@ -138,11 +118,9 @@ DebugMsgVA(
 	if(gConfigModule != NULL && gConfigModule->debugLevelIndex < eConfigVar_Max && inLevel > gConfigModule->GetVal(gConfigModule->debugLevelIndex))
 		return;
 
-	char	vabuffer[256];
-	vsnprintf(vabuffer, sizeof(vabuffer), inMsg, inVAList);
-	vabuffer[sizeof(vabuffer) - 1] = 0;
-
-	char	timestamp[32];
+	TString<512>	vabuffer;
+	vabuffer.SetVA(inMsg, inVAList);
+	TString<32>		timestamp;
 
 	int	year = 0;
 	int	month = 0;
@@ -161,25 +139,15 @@ DebugMsgVA(
 		ms = millis();
 	}
 
-	snprintf(timestamp, sizeof(timestamp), "%02d:%02d:%02d:%02d:%03d", day, hour, minute, sec, ms);
-	timestamp[sizeof(timestamp) - 1] = 0;
+	timestamp.SetF("%02d:%02d:%02d:%02d:%03d", day, hour, minute, sec, ms);
 
-	char finalBuffer[256];
-	snprintf(finalBuffer, sizeof(finalBuffer) - 1, "[%s] %s", timestamp, vabuffer);
-	finalBuffer[sizeof(finalBuffer) - 1] = 0;	// Ensure valid string
-	size_t	strLen = strlen(finalBuffer);
-
-	// Ensure enough room for both a newline and a zero byte
-	if(strLen > sizeof(finalBuffer) - 2)
-	{
-		strLen = sizeof(finalBuffer) - 2;
-	}
+	TString<512>	finalBuffer;
+	finalBuffer.SetF("[%s] %s", (char*)timestamp, (char*)vabuffer);
 
 	// If the message does not end with a newline add one
-	if(finalBuffer[strLen - 1] != '\n')
+	if(!finalBuffer.EndsWith('\n'))
 	{
-		finalBuffer[strLen] = '\n';
-		finalBuffer[strLen + 1] = 0;
+		finalBuffer.Append('\n');
 	}
 
 	// Share it with the world

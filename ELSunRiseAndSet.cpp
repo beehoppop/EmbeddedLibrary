@@ -165,7 +165,7 @@ void
 CModule_SunRiseAndSet::DestroyEvent(
 	TSunRiseAndSetEventRef	inRef)
 {
-	MReturnOnError(inRef);
+	MReturnOnError(inRef == NULL);
 	SEvent*	targetEvent = (SEvent*)inRef;
 	gRealTime->DestroyAlarm(targetEvent->alarmRef);
 	targetEvent->cmdHandler = NULL;
@@ -180,7 +180,7 @@ CModule_SunRiseAndSet::ScheduleEvent(
 	int						inDOW,			// The specific day of week or eAlarm_Any
 	bool					inUTC)
 {
-	MReturnOnError(inEventRef);
+	MReturnOnError(inEventRef == NULL);
 	SEvent*	targetEvent = (SEvent*)inEventRef;
 
 	targetEvent->year = inYear;
@@ -196,7 +196,7 @@ void
 CModule_SunRiseAndSet::UnscheduleEvent(
 	TSunRiseAndSetEventRef	inEventRef)
 {
-	MReturnOnError(inEventRef);
+	MReturnOnError(inEventRef == NULL);
 	SEvent*	targetEvent = (SEvent*)inEventRef;
 
 	gRealTime->UnscheduleAlarm(targetEvent->alarmRef);

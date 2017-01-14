@@ -157,11 +157,11 @@ CModule_CANBus::SendFormatMsg(
 {
 	va_list	varArgs;
 	va_start(varArgs, inMsg);
-	char	vabuffer[256];
-	vsnprintf(vabuffer, sizeof(vabuffer), inMsg, varArgs);
+	TString<256>	vabuffer;
+	vabuffer.SetVA(inMsg, varArgs);
 	va_end(varArgs);
 
-	SendString(inDstNode, inMsgType, vabuffer, strlen(vabuffer));
+	SendString(inDstNode, inMsgType, vabuffer, vabuffer.GetLength());
 }
 
 void
@@ -266,9 +266,13 @@ CModule_CANBus::ProcessCANMsg(
 				gCommandModule->ProcessCommand(this, targetState->serialCmdBuffer);
 				targetNodeID = 0xFF;
 			}
+			else if(msgType == eSysMsg_SerialOutput)
+			{
+				Serial.write(targetState->serialCmdBuffer);
+			}
 			else
 			{
-				gSerialOut->write(targetState->serialCmdBuffer);
+				SystemMsg("ERROR: Unknown msgType");
 			}
 
 			targetState->srcNodeID = 0xFF;

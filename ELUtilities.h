@@ -31,7 +31,10 @@
 #define MMax(x, y) (((x) > (y)) ? (x) : (y))
 #define MMin(x, y) (((x) < (y)) ? (x) : (y))
 #define MPin(inMin, inValue, inMax) ((inValue) < (inMin) ? (inMin) : (inValue) > (inMax) ? (inMax) : (inValue))
-#define MStaticArrayLength(x) (sizeof(x) / sizeof(x[0]))
+#define MStaticArrayLength(a) (sizeof(a) / sizeof(a[0]))
+#define MStaticArrayDelete(a, i) memmove(a + (i), a + (i) + 1, (MStaticArrayLength(a) - (i) - 1) * sizeof(a[0]))
+
+
 
 bool
 IsStrDigit(
@@ -93,10 +96,6 @@ GetRandomFloatGuassian(
 	float	inMean,
 	float	inStandardDeviation);
 
-int32_t
-GetFreeMemory(
-	void);
-
 inline float
 ReMapValue(
 	float	inValue,
@@ -107,5 +106,19 @@ ReMapValue(
 {
 	return inNewRangeMin + (inValue - inValueMin) / (inValueMax - inValueMin) * (inNewRangeMax - inNewRangeMin);
 }
+
+bool
+BufferEndsWithStr(
+	char const*	inBuffer,
+	size_t		inBufferSize,
+	char const*	inStr);
+
+/*
+float
+InterpolateValues(
+	float	inStart,
+	float	inEnd,
+	float	inProgression,
+*/
 
 #endif /* _ELUTILITIES_H_ */

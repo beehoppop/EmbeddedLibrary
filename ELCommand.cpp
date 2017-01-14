@@ -34,6 +34,7 @@
 #include <ELUtilities.h>
 
 CModule_Command*	gCommandModule;
+extern IOutputDirector*	gSerialOut;
 
 MModuleImplementation_Start(CModule_SerialCmdHandler)
 MModuleImplementation_Finish(CModule_SerialCmdHandler)
@@ -182,7 +183,7 @@ CModule_Command::ProcessCommand(
 	IOutputDirector*	inOutput,
 	char*				inStr)
 {
-	int strLen = strlen(inStr);
+	size_t strLen = strlen(inStr);
 	char*	components[eCmd_MaxCommandArgs];
 	char*	cp = inStr;
 	char*	ep = inStr + strLen;

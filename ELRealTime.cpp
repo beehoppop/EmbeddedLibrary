@@ -28,8 +28,9 @@
 #include <ELUtilities.h>
 #include <ELCommand.h>
 #include <ELAssert.h>
-
-#include "ELRealTime.h"
+#include <ELInternet.h>
+#include <ELInternetHTTP.h>
+#include <ELRealTime.h>
 
 int			gDaysInMonth[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
 CModule_RealTime*	gRealTime;
@@ -70,7 +71,7 @@ public:
 		void)
 	{
 		time_t	localTime = time(NULL) /*- 33 * 60*/;
-		gRealTime->SetEpochTime((TEpochTime)localTime);
+		gRealTime->SetEpochTime((TEpochTime)localTime, true, this);
 		return true;
 	}
 };
@@ -128,6 +129,7 @@ public:
 		int			inSec)
 	{
 		int	centuryBit;
+		bool	result = true;
 
 		if(inYear >= 1970 && inYear <= 1999)
 		{
@@ -161,7 +163,7 @@ public:
 		}
 
 		int TimeDate [7] = {inSec, inMin, inHour, 0, inDayOfMonth, inMonth, inYear};
-		SystemMsg("set %d %d %d %d %d %d\n", TimeDate[6], TimeDate[5], TimeDate[4], TimeDate[2], TimeDate[1], TimeDate[0]);
+		//SystemMsg("set %d %d %d %d %d %d\n", TimeDate[6], TimeDate[5], TimeDate[4], TimeDate[2], TimeDate[1], TimeDate[0]);
 
 		if(useAltSPI)
 		{
@@ -204,7 +206,8 @@ public:
 			if(TimeDate[i] != n)
 			{
 				SystemMsg("Date written incorrectly, i=%d wr=%x rd=%x", i, TimeDate[i], n);
-				return false;
+				result = false;
+				break;
 			}
 
 		}
@@ -216,7 +219,7 @@ public:
 			SPI.setSCK(13);
 		}
 
-		return true;
+		return result;
 	}
 
 	virtual bool
@@ -273,11 +276,11 @@ public:
 
 		if (TimeDate[5] < 1 || TimeDate[5] > 12 || TimeDate[4] < 1 || TimeDate[4] > 31 || TimeDate[2] < 0 || TimeDate[2] > 23 || TimeDate[1] < 0 || TimeDate[1] > 59 || TimeDate[0] < 0 || TimeDate[0] > 59)
 		{
-			SystemMsg("RequestSync: Invalid date from hardware");
+			SystemMsg("RequestSync: Invalid date from hardware %d %d %d %d %d %d\n", TimeDate[6], TimeDate[5], TimeDate[4], TimeDate[2], TimeDate[1], TimeDate[0]);
 			return false;
 		}
 
-		gRealTime->SetDateAndTime(TimeDate[6], TimeDate[5], TimeDate[4], TimeDate[2], TimeDate[1], TimeDate[0], true);
+		gRealTime->SetDateAndTime(TimeDate[6], TimeDate[5], TimeDate[4], TimeDate[2], TimeDate[1], TimeDate[0], true, this);
 
 		return true;
 	}
@@ -287,6 +290,80 @@ public:
 	bool		useAltSPI;
 };
 #endif
+
+class CRealTimeDataProvider_TimeAPIDotOrg : public IRealTimeDataProvider, public IInternetHandler
+{
+public:
+
+	CRealTimeDataProvider_TimeAPIDotOrg(
+		void)
+	{
+		requestInProgress = false;
+		internetTimeHTTP = NULL;
+	}
+
+	virtual bool
+	SetUTCDateAndTime(
+		int			inYear,			// 20xx
+		int			inMonth,		// 1 to 12
+		int			inDayOfMonth,	// 1 to 31
+		int			inHour,			// 00 to 23
+		int			inMinute,		// 00 to 59
+		int			inSecond)		// 00 to 59
+	{
+		// Can't set the time for the network provider
+		return true;
+	}
+
+	// This requests a syncronization from the provider which must call gRealTime->SetDateAndTime() to set the time, this allows the fetching of the date and time to be asyncronous
+	virtual bool
+	RequestSync(
+		void)
+	{
+		if(internetTimeHTTP == NULL && gInternetModule != NULL && gInternetModule->ConnectedToInternet())
+		{
+			internetTimeHTTP = MInternetCreateHTTPConnection("www.timeapi.org", 80, CRealTimeDataProvider_TimeAPIDotOrg::InternetTimeHTTPHandler);
+		}
+
+		if(internetTimeHTTP != NULL && requestInProgress == false && gInternetModule->ConnectedToInternet())
+		{
+			internetTimeHTTP->StartRequest("GET", "/utc/now", 1, "format", "%25Y%20%25m%20%25d%20%25H%20%25M%20%25S");
+			internetTimeHTTP->CompleteRequest();
+			requestInProgress = true;
+			return true;
+		}
+
+		return false;
+	}
+
+	void
+	InternetTimeHTTPHandler(
+		uint16_t			inHTTPReturnCode,
+		int					inDataSize,
+		char const*			inData)
+	{
+		if(inHTTPReturnCode == 200 && inDataSize > 0 && inData != NULL)
+		{
+			int	year, month, day, hour, min, sec;
+
+			sscanf(inData, "%d %d %d %d %d %d", &year, &month, &day, &hour, &min, &sec);
+
+			if(year >= 2016 && year <= 2069 && month >= 1 && month <= 12 && day >= 1 && day <= 31 && hour >= 0 && hour < 24 && min >= 0 && min < 60 && sec >= 0 && sec < 60)
+			{
+				gRealTime->SetDateAndTime(year, month, day, hour, min, sec, true, this);
+			}
+			else
+			{
+				SystemMsg("ERROR: Invalid internet time received %s", inData);
+			}
+		}
+
+		requestInProgress = false;
+	}
+
+	CHTTPConnection*	internetTimeHTTP;
+	bool				requestInProgress;
+};
 
 MModuleImplementation_Start(CModule_RealTime)
 MModuleImplementation_FinishGlobal(CModule_RealTime, gRealTime)
@@ -304,7 +381,8 @@ CModule_RealTime::CModule_RealTime(
 	memset(eventArray, 0, sizeof(eventArray));
 	memset(timeChangeHandlerArray, 0, sizeof(timeChangeHandlerArray));
 
-	provider = NULL;
+	localProvider = NULL;
+	networkProvider = NULL;
 	providerSyncPeriod = 0;
 	epocUTCTimeAtLastSet = 0;
 	localMSAtLastSet = 0;
@@ -316,22 +394,20 @@ CModule_RealTime::CModule_RealTime(
 	dstStartLocal = 0;
 	stdStartLocal = 0;
 	timeMultiplier = 0;
+	gotNetworkSync = false;
 
 	CModule_Command::Include();
 }
 
 void
 CModule_RealTime::Configure(
-	IRealTimeDataProvider*	inProvider,				// If provider is NULL the user is responsible for calling SetDateAndTime and setting an alarm to periodically sync as needed
-	uint32_t				inProviderSyncPeriod)	// In seconds, the period between refreshing the time with the given provider
+	IRealTimeDataProvider*	inLocalProvider,
+	IRealTimeDataProvider*	inNetworkProvider,
+	uint32_t				inProviderSyncPeriod)
 {
-	provider = inProvider;
+	localProvider = inLocalProvider;
+	networkProvider = inNetworkProvider;
 	providerSyncPeriod = inProviderSyncPeriod;
-
-	if(provider != NULL)
-	{
-		provider->RequestSync();
-	}
 }
 
 void
@@ -351,22 +427,51 @@ CModule_RealTime::Setup(
 
 	MCommandRegister("time_set", CModule_RealTime::SerialSetTime, "[year] [month] [day] [hour] [min] [sec] [utc | local] : Set the current time");
 	MCommandRegister("time_get", CModule_RealTime::SerialGetTime, "[utc | local] : Get the current time");
+	MCommandRegister("time_sync", CModule_RealTime::SerialSyncTime, "Sync time with providers");
 	MCommandRegister("timezone_set", CModule_RealTime::SerialSetTimeZone, "[name] [dstStartWeek] [dstStartDayOfWeek] [dstStartMonth] [dstStartHour] [dstOffsetMin] [stdStartWeek] [stdStartDayOfWeek] [stdStartMonth] [stdStartHour] [stdOffsetMin] : Set time zone");
 	MCommandRegister("timezone_get", CModule_RealTime::SerialGetTimeZone, "Get the current time zone information");
 	MCommandRegister("rt_dump", CModule_RealTime::SerialDumpTable, ": Dump the alarm table");
 	MCommandRegister("rt_set_mult", CModule_RealTime::SerialSetMultiplier, "[integer] : multiply the passage of time by the given value");
 
 	timeMultiplier = 1;
+
+	if(localProvider != NULL)
+	{
+		localProvider->RequestSync();
+	}
+}
+	
+void
+CModule_RealTime::SyncTimeWithProviders(
+	void)
+{
+	// Prefer a network sync if available, otherwise use the local provider
+	if(networkProvider != NULL)
+	{
+		if(!networkProvider->RequestSync() && localProvider != NULL)
+		{
+			localProvider->RequestSync();
+		}
+	}
+	else if(localProvider != NULL)
+	{
+		localProvider->RequestSync();
+	}
 }
 
 void
 CModule_RealTime::Update(
 	uint32_t	inDeltaTimeUS)
 {
-	if(provider != NULL && timeMultiplier == 1 && (millis() - localMSAtLastSet) / 1000 >= providerSyncPeriod)
+	// Continue requesting a network sync if we have a network provider until we get one
+	if(!gotNetworkSync && networkProvider != NULL)
 	{
-		SystemMsg("Requesting periodic RTC sync");
-		provider->RequestSync();
+		networkProvider->RequestSync();
+	}
+
+	if(timeMultiplier == 1 && (millis() - localMSAtLastSet) / 1000 >= providerSyncPeriod)
+	{
+		SyncTimeWithProviders();
 	}
 
 	TEpochTime	curEpochTimeUTC = GetEpochTime(true);
@@ -464,17 +569,19 @@ CModule_RealTime::SetDateAndTime(
 	int		inHour,			// 00 to 23
 	int		inMin,			// 00 to 59
 	int		inSec,			// 00 to 59
-	bool	inUTC)
+	bool	inUTC,
+	IRealTimeDataProvider*	inSourceProvider)
 {
 	TEpochTime	epochTime = GetEpochTimeFromComponents(inYear, inMonth, inDayOfMonth, inHour, inMin, inSec);
 
-	SetEpochTime(epochTime, inUTC);
+	SetEpochTime(epochTime, inUTC, inSourceProvider);
 }
 
 void 
 CModule_RealTime::SetEpochTime(
 	TEpochTime	inEpochTime,
-	bool		inUTC)
+	bool		inUTC,
+	IRealTimeDataProvider*	inSourceProvider)
 {
 	TEpochTime	oldEpochTime = GetEpochTime(true);
 
@@ -486,6 +593,19 @@ CModule_RealTime::SetEpochTime(
 	// This must be set otherwise the periodic sync will always fire because localMSAtLastSet was not updated
 	localMSAtLastSet = millis();
 	epocUTCTimeAtLastSet = inEpochTime;
+
+	int	year, month, dayOfMonth, dayOfWeek, hour, min, sec;
+	GetComponentsFromEpochTime(inEpochTime, year, month, dayOfMonth, dayOfWeek, hour, min, sec);
+
+	if(inSourceProvider == networkProvider)
+	{
+		gotNetworkSync = true;
+
+		if(localProvider != NULL)
+		{
+			localProvider->SetUTCDateAndTime(year, month, dayOfMonth, hour, min, sec);
+		}
+	}
 
 	// Since precision of RTC is 1 sec only notify of time change if it's greater then 1 sec
 	if(oldEpochTime > 0 && abs((int32_t)(inEpochTime - oldEpochTime)) > 1)
@@ -501,6 +621,8 @@ CModule_RealTime::SetEpochTime(
 			}
 		}
 	}
+
+	SystemMsg("Setting time to %02d/%02d/%04d %02d:%02d:%02d", month, dayOfMonth, year, hour, min, sec);
 }
 
 void
@@ -989,6 +1111,8 @@ CModule_RealTime::CreateAlarm(
 		}
 	}
 
+	MReturnOnError(targetAlarm == NULL, NULL);
+
 	targetAlarm->name = inAlarmName;
 	targetAlarm->object = inObject;
 	targetAlarm->method = inMethod;
@@ -1064,6 +1188,8 @@ CModule_RealTime::CreateEvent(
 		}
 	}
 
+	MReturnOnError(targetEvent == NULL, NULL);
+
 	targetEvent->name = inEventName;
 	targetEvent->object = inObject;
 	targetEvent->method = inMethod;
@@ -1092,6 +1218,7 @@ CModule_RealTime::ScheduleEvent(
 	uint64_t			inPeriodUS,		// The period for which to call
 	bool				inOnlyOnce)	// True if the event is only called once
 {
+	MReturnOnError(inEventRef == NULL);
 	SEvent*	targetEvent = (SEvent*)inEventRef;
 
 	targetEvent->periodUS = inPeriodUS;
@@ -1312,9 +1439,9 @@ CModule_RealTime::SerialSetTime(
 		LocalToUTC(year, month, day, hour, min, sec);
 	}
 
-	if(provider != NULL)
+	if(localProvider != NULL)
 	{
-		if(provider->SetUTCDateAndTime(year, month, day, hour, min, sec) == false)
+		if(localProvider->SetUTCDateAndTime(year, month, day, hour, min, sec) == false)
 		{
 			return eCmd_Failed;
 		}
@@ -1341,9 +1468,9 @@ CModule_RealTime::SerialGetTime(
 
 	bool	utc = inArgC == 2 && strcmp(inArgV[1], "utc") == 0;
 
-	if(timeMultiplier == 1 && provider != NULL)
+	if(timeMultiplier == 1 && localProvider != NULL)
 	{
-		if(provider->RequestSync() == false)
+		if(localProvider->RequestSync() == false)
 		{
 			inOutput->printf("Time provider sync failed\n");
 
@@ -1355,6 +1482,16 @@ CModule_RealTime::SerialGetTime(
 
 	inOutput->printf("%02d/%02d/%04d %02d:%02d:%02d %s\n", month, day, year, hour, min, sec, utc ? "utc" : "local");
 
+	return eCmd_Succeeded;
+}
+
+uint8_t
+CModule_RealTime::SerialSyncTime(
+	IOutputDirector*	inOutput,
+	int					inArgC,
+	char const*			inArgV[])
+{
+	SyncTimeWithProviders();
 	return eCmd_Succeeded;
 }
 
@@ -1761,3 +1898,18 @@ CreateDS3234Provider(
 
 	return ds3234Provider;
 }
+
+IRealTimeDataProvider*
+CreateTimeAPIDotOrgProvider(
+	void)
+{
+	static CRealTimeDataProvider_TimeAPIDotOrg*	timeOrdProvider = NULL;
+
+	if(timeOrdProvider == NULL)
+	{
+		timeOrdProvider = new CRealTimeDataProvider_TimeAPIDotOrg();
+	}
+
+	return timeOrdProvider;
+}
+

@@ -29,9 +29,10 @@
 
 */
 
-#include "ELRemoteLogging.h"
-#include "ELAssert.h"
-#include "ELCommand.h"
+#include <ELRemoteLogging.h>
+#include <ELAssert.h>
+#include <ELCommand.h>
+#include <ELInternetHTTP.h>
 
 MModuleImplementation_Start(
 	CModule_Loggly,
@@ -72,7 +73,7 @@ CModule_Loggly::SendLog(
 
 	va_list	varArgs;
 	va_start(varArgs, inFormat);
-	tmpBuffer.SetVar(inFormat, varArgs);
+	tmpBuffer.SetVA(inFormat, varArgs);
 	va_end(varArgs);
 
 	for(;;)
@@ -87,7 +88,7 @@ CModule_Loggly::SendLog(
 	}
 	buffer[head++ % sizeof(buffer)] = ':';
 
-	int bufLen = tmpBuffer.GetLength();
+	size_t bufLen = tmpBuffer.GetLength();
 	char*	cp = tmpBuffer;
 	while(bufLen-- > 0)
 	{
@@ -129,7 +130,7 @@ CModule_Loggly::Update(
 		TString<512>	msgBuffer;
 
 		connection->StartRequest("POST", url);
-		connection->SendHeaders(1, "content-type", "text/plain");
+		connection->SetHeaders(1, "content-type", "text/plain");
 
 		if(buffer[tail % sizeof(buffer)] == '[')
 		{
@@ -211,7 +212,7 @@ CModule_Loggly::Update(
 			}
 		}
 
-		connection->SendHeaders(1, "X-LOGGLY-TAG", (char*)tagsBuffer);
+		connection->SetHeaders(1, "X-LOGGLY-TAG", (char*)tagsBuffer);
 
 		// Copy the rest of the message over
 		while(GetQueueLength() > 0)
@@ -225,10 +226,27 @@ CModule_Loggly::Update(
 			msgBuffer.Append(c);
 		}
 
-		connection->SendBody(msgBuffer);
+		connection->CompleteRequest(msgBuffer);
 
 		requestInProgress = true;
 	}
+}
+
+void
+CModule_Loggly::DumpDebugInfo(
+	IOutputDirector*	inOutput)
+{
+	if(connection != NULL)
+	{
+		connection->DumpDebugInfo(inOutput);
+	}
+	else
+	{
+		inOutput->printf("connection is NULL\n");
+	}
+	inOutput->printf("head = %d\n", head);
+	inOutput->printf("tail = %d\n", tail);
+	inOutput->printf("requestInProgress = %d\n", requestInProgress);
 }
 
 void
@@ -251,10 +269,8 @@ CModule_Loggly::Command_SetUUID(
 		return eCmd_Failed;
 	}
 
-	memset(settings.serverAddress, 0, sizeof(settings.serverAddress));
-	strncpy(settings.serverAddress, inArgV[1], sizeof(settings.serverAddress) - 1);
-	memset(settings.uuid, 0, sizeof(settings.uuid));
-	strncpy(settings.uuid, inArgV[2], sizeof(settings.uuid) - 1);
+	settings.serverAddress = inArgV[1];
+	settings.uuid = inArgV[2];
 
 	UpdateServerData();
 
@@ -269,7 +285,7 @@ CModule_Loggly::Command_GetUUID(
 	int					inArgC,
 	char const*			inArgV[])
 {
-	inOutput->printf("serverAddress=%s uuid=%s\n", settings.serverAddress, settings.uuid);
+	inOutput->printf("serverAddress=%s uuid=%s\n", (char*)settings.serverAddress, (char*)settings.uuid);
 
 	return eCmd_Succeeded;
 }
@@ -280,10 +296,9 @@ CModule_Loggly::UpdateServerData(
 {
 	connection = NULL;
 
-	if(settings.serverAddress[0] != 0 && settings.uuid[0] != 0)
+	if(settings.serverAddress.GetLength() > 0 && settings.uuid.GetLength() > 0)
 	{
 		connection = MInternetCreateHTTPConnection(settings.serverAddress, 80, CModule_Loggly::HTTPResponseHandlerMethod);
-		url.Set("/inputs/%s", settings.uuid);
+		url.SetF("/inputs/%s", (char*)settings.uuid);
 	}
 }
-

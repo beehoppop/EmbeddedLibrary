@@ -1,5 +1,5 @@
-#ifndef _EL_CALENDAREVENT_H_
-#define _EL_CALENDAREVENT_H_
+#ifndef _TEMPERATURESENSOR_H_
+#define _TEMPERATURESENSOR_H_
 /*
 	Author: Brent Pease (embeddedlibraryfeedback@gmail.com)
 
@@ -29,54 +29,43 @@
 /*
 	ABOUT
 
-	Get information about holidays from dates
+	
 */
 
 #include "EL.h"
 
-enum EHoliday
+class ITemperatureSensor
 {
-	eHoliday_None,
-	eHoliday_NewYearsEve,
-	eHoliday_NewYearsDay,
-	eHoliday_ValintinesDay,
-	eHoliday_SaintPatricksDay,
-	eHoliday_Easter,
-	eHoliday_IndependenceDay,
-	eHoliday_Halloween,
-	eHoliday_Thanksgiving,
-	eHoliday_ChristmasEve,
-	eHoliday_ChristmasDay,
+public:
+	
+	virtual void
+	Destroy(
+		void) = 0;
+
+	virtual bool
+	Initialize(
+		void) = 0;
+
+	virtual void
+	SetSensorState(
+		bool	inOn) = 0;
+
+	virtual float
+	ReadTempF(
+		void) = 0;
+
+	virtual float
+	ReadTempC(
+		void) = 0;
+
+	virtual int16_t
+	ReadTempC16ths(
+		void) = 0;
+
 };
 
-struct SCalendarEventTime
-{
-	int8_t	year;
-	int8_t	month;
-	int8_t	weekOfMonth;
-	int8_t	dayOfMonth;
-	int8_t	dayOfWeek;
-	int8_t	hourOfDay;
-	int8_t	minuteOfHour;
-};
+ITemperatureSensor*
+CreateMCP9808(
+	uint8_t	inI2CAddr = 0x18);
 
-struct SCalendarEvent
-{
-	SCalendarEventTime	start;
-	SCalendarEventTime	end;
-};
-
-EHoliday
-GetHolidayForDate(
-	int	inYear,
-	int	inMonth,
-	int	inDay);
-
-void
-GetDateForHoliday(
-	int&		outMonth,
-	int&		outDay,
-	EHoliday	inHoliday,
-	int			inYear);
-
-#endif /* _EL_CALENDAREVENT_H_ */
+#endif /* _TEMPERATURESENSOR_H_ */

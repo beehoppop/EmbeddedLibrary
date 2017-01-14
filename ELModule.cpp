@@ -57,6 +57,24 @@ struct SEEPROMEntry
 	bool		inUse;
 };
 
+// This module is instantiated by the library so that system msgs go out to the serial port
+class CModule_SysMsgSerialHandler : public CModule, public IOutputDirector
+{
+public:
+
+	MModule_Declaration(CModule_SysMsgSerialHandler);
+
+private:
+	
+	CModule_SysMsgSerialHandler(
+		);
+
+	virtual void
+	write(
+		char const*	inMsg,
+		size_t		inBytes);
+};
+
 static uint32_t		gModuleCount;
 static CModule*		gModuleList[eMaxModuleCount];
 static SEEPROMEntry	gEEPROMEntryList[eMaxEEPROMModules];
@@ -74,6 +92,62 @@ uint64_t	gCurLocalMS;
 uint64_t	gCurLocalUS;
 
 char const*	gVersionStr;
+IOutputDirector*	gSerialOut;
+
+MModuleImplementation_Start(CModule_SysMsgSerialHandler)
+MModuleImplementation_FinishGlobal(CModule_SysMsgSerialHandler, gSerialOut)
+
+#if !defined(WIN32)
+extern char _estack;	// This is a dummy variable for the top of the stack at high memory, the address of this is the highest memory value
+extern char* __brkval;	// This is a real pointer variable that points to the highest memory address used by the heap
+char*	gLowestStackAddress = &_estack;
+char*	gHighestBrkVal = NULL;
+static volatile bool	gDontEnterFuncCallbacks = true;	// Start with this true so we don't enter the func callbacks until we are ready
+
+// The project must be compiled with the -finstrument-functions in order to get runtime stack corruption detection
+extern "C"
+{
+void 
+__cyg_profile_func_enter (
+	void*	inFunction,
+    void*	inCaller)  __attribute__((no_instrument_function));
+
+void 
+__cyg_profile_func_exit(
+	void*	inFunction,
+    void*	inCaller)  __attribute__((no_instrument_function));
+}
+#endif
+
+static int32_t
+GetFreeMemory(
+	void)
+{
+#if !defined(WIN32)
+	char tos;
+
+	return &tos - __brkval;
+#else
+	return 0x100000;
+#endif
+}
+
+
+CModule_SysMsgSerialHandler::CModule_SysMsgSerialHandler(
+	)
+	:
+	CModule()
+{
+	AddSysMsgHandler(this);
+}
+
+void
+CModule_SysMsgSerialHandler::write(
+	char const*	inMsg,
+	size_t		inBytes)
+{
+	Serial.write(inMsg, (int)inBytes);
+}
 
 class CModuleManager : public CModule, public ICmdHandler
 {
@@ -99,6 +173,8 @@ private:
 		MAssert(gCommandModule != NULL);
 		MAssert(gConfigModule != NULL);
 		MCommandRegister("alive", CModuleManager::SerialCmdAlive, "Return the build date and version as proof of life");
+		MCommandRegister("dbg_dump", CModuleManager::DebugDump, "[modulename | all]: dump debug data for the given module");
+		MCommandRegister("dbg_module", CModuleManager::DebugModule, "[modulename | all] [on|off]: turn on or off module debug logging");
 		gDontBlinkLEDIndex = gConfigModule->RegisterConfigVar("dont_blink_led");
 	}
 
@@ -113,6 +189,98 @@ private:
 		return eCmd_Succeeded;
 	}
 
+	uint8_t
+	DebugDump(
+		IOutputDirector*	inOutput,
+		int					inArgC,
+		char const*			inArgV[])
+	{
+		if(inArgC != 2)
+		{
+			return eCmd_Failed;
+		}
+
+		if(strcmp(inArgV[1], "all") == 0)
+		{
+			for(uint32_t i = 0; i < gModuleCount; ++i)
+			{
+				inOutput->printf("***%s***\n", gModuleList[i]->uid);
+				gModuleList[i]->DumpDebugInfo(inOutput);
+			}
+		}
+		else
+		{
+			bool	found = false;
+			for(uint32_t i = 0; i < gModuleCount && !found; ++i)
+			{
+				if(strcmp(inArgV[1], gModuleList[i]->uid) == 0)
+				{
+					gModuleList[i]->DumpDebugInfo(inOutput);
+					found = true;
+				}
+			}
+
+			if(!found)
+			{
+				inOutput->printf("Module %s not found\n", inArgV[1]);
+				return eCmd_Failed;
+			}
+		}
+		
+		return eCmd_Succeeded;
+	}
+
+	uint8_t
+	DebugModule(
+		IOutputDirector*	inOutput,
+		int					inArgC,
+		char const*			inArgV[])
+	{
+		if(inArgC != 3)
+		{
+			return eCmd_Failed;
+		}
+
+		bool	newDebugState = strcmp(inArgV[2], "on") == 0;
+
+		if(strcmp(inArgV[1], "all") == 0)
+		{
+			for(uint32_t i = 0; i < gModuleCount; ++i)
+			{
+				gModuleList[i]->logDebugData = newDebugState;
+			}
+		}
+		else
+		{
+			bool	found = false;
+			for(uint32_t i = 0; i < gModuleCount && !found; ++i)
+			{
+				if(strcmp(inArgV[1], gModuleList[i]->uid) == 0)
+				{
+					gModuleList[i]->logDebugData = newDebugState;
+					found = true;
+				}
+			}
+
+			if(!found)
+			{
+				inOutput->printf("Module %s not found\n", inArgV[1]);
+				return eCmd_Failed;
+			}
+		}
+		
+		return eCmd_Succeeded;
+	}
+
+	void
+	DumpDebugInfo(
+		IOutputDirector* inOutput)
+	{
+		#if !defined(WIN32)
+		inOutput->printf("Smallest free memory = %d\n", gLowestStackAddress - gHighestBrkVal);
+		#endif
+	}
+
 };
 
 MModuleImplementation_Start(CModuleManager)
@@ -125,6 +293,7 @@ CModule::CModule(
 	uint32_t	inUpdateTimeUS,
 	bool		inEnabled)
 	:
+	logDebugData(false),
 	eepromSize(inEEPROMSize),
 	eepromVersion(inEEPROMVersion),
 	eepromData(inEEPROMData),
@@ -237,6 +406,13 @@ CModule::EEPROMInitialize(
 }
 
 void
+CModule::DumpDebugInfo(
+	IOutputDirector*	inOutput)
+{
+	inOutput->printf("No data\n");
+}
+
+void
 CModule::EEPROMSave(
 	void)
 {
@@ -264,6 +440,10 @@ CModule::SetupAll(
 	char const*	inVersionStr,
 	bool		inFlashLED)
 {
+	#if !defined(WIN32)
+	gDontEnterFuncCallbacks = false;	// Now start entering the function callbacks
+	#endif
+
 	gVersionStr = inVersionStr;
 	gFlashLED = inFlashLED;
 	if(inFlashLED)
@@ -272,8 +452,8 @@ CModule::SetupAll(
 		digitalWrite(13, 1);
 	}
 
-	CModule_SysMsgSerialHandler::Include();
 	CModuleManager::Include();
+	CModule_SysMsgSerialHandler::Include();
 
 	#if MDebugModules
 		SystemMsg("Module: count=%d\n", gModuleCount);
@@ -482,7 +662,7 @@ CModule::UpdateIfNeeded(
 	{
 		if(enabled)
 		{
-			//Serial.printf("Updating %s\n", uid); delay(100);
+			//Serial.printf("%s\n", uid); Serial.flush();//delay(100);
 			#if 0
 			uint32_t startMS = millis();
 			#endif
@@ -512,3 +692,80 @@ StartingModuleConstruction(
 	gCurrentModuleConstructingName = inClassName;
 	gCurrentModuleClassSize = inClassSize;
 }
+
+#if !defined(WIN32)
+extern "C"
+{
+void 
+__cyg_profile_func_enter(
+	void*	inFunction,
+    void*	inCaller)
+{
+	// This is used to ensure we don't infinitely recurse
+	if(gDontEnterFuncCallbacks)
+	{
+		return;
+	}
+
+	gDontEnterFuncCallbacks = true;
+
+	volatile char	tos;
+
+	if(&tos < __brkval)
+	{
+		// stack has grown past the end of the heap so memory has been corrupted
+		for(;;)
+		{
+			Serial.write("Heap/stack overflow\n");	// XXX someday report the function call stack
+			delay(1000);
+		}
+	}
+
+	if(&tos < gLowestStackAddress)
+	{
+		gLowestStackAddress = (char*)&tos;
+	}
+
+	if(__brkval > gHighestBrkVal)
+	{
+		gHighestBrkVal = __brkval;
+	}
+
+	gDontEnterFuncCallbacks = false;
+}
+
+void 
+__cyg_profile_func_exit(
+	void*	inFunction,
+    void*	inCaller)
+{
+	// This is used to ensure we don't infinitely recurse
+	if(gDontEnterFuncCallbacks)
+	{
+		return;
+	}
+
+	gDontEnterFuncCallbacks = true;
+
+	volatile char	tos;
+
+	if(&tos < __brkval)
+	{
+		// stack has grown past the end of the heap so memory has been corrupted
+		for(;;)
+		{
+			Serial.write("Heap/stack overflow\n");	// XXX someday report the function call stack
+			delay(1000);
+		}
+	}
+
+	if(__brkval > gHighestBrkVal)
+	{
+		gHighestBrkVal = __brkval;
+	}
+
+	gDontEnterFuncCallbacks = false;
+
+}
+}
+#endif

@@ -37,7 +37,7 @@
 	#include "arduino.h"
 	#include <EEPROM.h>
 	#include <SPI.h>
-	#include <Wire.h>
+	#include <i2c_t3.h>
 
 	#define MUNUSED __attribute__((unused))
 
@@ -45,6 +45,10 @@
 	#define MAXUINT8	255
 	#define MAXINT8		127
 	#define MININT8		-128
+
+	#define _stricmp	stricmp
+	#define _strnicmp	strnicmp
+	#define _itoa		itoa
 
 #elif defined(WIN32)
 	#include "ArduinoSimulator.h"

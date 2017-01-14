@@ -56,13 +56,17 @@
 
 #include <ELModule.h>
 #include <ELCommand.h>
+#include <ELInternet.h>
+
+class IInternetHandler;
+class CHTTPConnection;
 
 enum
 {
 	eAlarm_Any = -1,
 
 	eAlarm_MaxActive = 8,
-	eEvent_MaxActive = 8,
+	eEvent_MaxActive = 16,
 	eTimeChangeHandler_MaxCount = 8,
 
 	eRealTime_MaxNameLength = 15,
@@ -140,7 +144,7 @@ typedef void
 	char const*	inName,
 	bool		inTimeZone);
 
-class CModule_RealTime : public CModule, public ICmdHandler
+class CModule_RealTime : public CModule, public ICmdHandler, public IRealTimeHandler
 {
 public:
 
@@ -149,7 +153,8 @@ public:
 	// Set the provider and the frequency that time should be retrieved from it
 	void
 	Configure(
-		IRealTimeDataProvider*	inProvider,				// If provider is NULL the user is responsible for calling SetDateAndTime and setting an alarm to periodically sync as needed
+		IRealTimeDataProvider*	inLocalProvider,		// If provider is NULL the user is responsible for calling SetDateAndTime and setting an alarm to periodically sync as needed
+		IRealTimeDataProvider*	inNetworkProvider,		// Using the network provider is preferred over the local provider, if network is unavailable the local one will be used
 		uint32_t				inProviderSyncPeriod);	// In seconds, the period between refreshing the time with the given provider
 
 	// Set the current timezone and optionally write it to eeprom
@@ -167,13 +172,15 @@ public:
 		int		inHour,			// 00 to 23
 		int		inMinute,		// 00 to 59
 		int		inSecond,		// 00 to 59
-		bool	inUTC = false);
+		bool	inUTC = false,
+		IRealTimeDataProvider*	inSourceProvider = NULL);
 	
 	// Set the current date and time as a TEpochTime
 	void
 	SetEpochTime(
 		TEpochTime	inEpochTime,
-		bool		inUTC = false);
+		bool		inUTC = false,
+		IRealTimeDataProvider*	inSourceProvider = NULL);
 	
 	// Get the current date and time components
 	void
@@ -480,7 +487,8 @@ private:
 	SEvent	eventArray[eEvent_MaxActive];
 	STimeChangeHandler	timeChangeHandlerArray[eTimeChangeHandler_MaxCount];
 
-	IRealTimeDataProvider*	provider;
+	IRealTimeDataProvider*	localProvider;
+	IRealTimeDataProvider*	networkProvider;
 	uint32_t				providerSyncPeriod;
 
 	TEpochTime	epocUTCTimeAtLastSet;
@@ -496,6 +504,7 @@ private:
 	TEpochTime	stdStartLocal;
 
 	int	timeMultiplier;
+	bool	gotNetworkSync;
 
 	STimeChangeHandler*
 	FindTimeChangeHandlerByName(
@@ -517,9 +526,19 @@ private:
 	void
 	ScheduleAlarm(
 		SAlarm*	inAlarm);
+	
+	void
+	SyncTimeWithProviders(
+		void);
 
 	uint8_t
 	SerialSetTime(
+		IOutputDirector*	inOutput,
+		int					inArgC,
+		char const*			inArgV[]);
+
+	uint8_t
+	SerialSyncTime(
 		IOutputDirector*	inOutput,
 		int					inArgC,
 		char const*			inArgV[]);
@@ -561,6 +580,11 @@ IRealTimeDataProvider*
 CreateDS3234Provider(
 	uint8_t	inChipSelectPin,
 	bool	inUseAltSPI = false);
+
+// Create a provider for the DS3234 dead-on RTC clock on main SPI bus with the given chipselect pin
+IRealTimeDataProvider*
+CreateTimeAPIDotOrgProvider(
+	void);
 
 extern int			gDaysInMonth[12];	// This is 0 based not 1 based
 extern CModule_RealTime*	gRealTime;

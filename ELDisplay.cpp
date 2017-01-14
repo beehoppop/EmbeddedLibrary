@@ -762,7 +762,7 @@ CDisplayRegion_Text::CDisplayRegion_Text(
 	buffer[sizeof(buffer) - 1] = 0;	// Ensure valid string
 	va_end(varArgs);
 
-	int	newStrLen = strlen(buffer);
+	size_t	newStrLen = strlen(buffer);
 	text = gDisplayModule->ReallocString(text, newStrLen + 1);
 	MReturnOnError(text == NULL);
 	strcpy(text, buffer);
@@ -793,7 +793,7 @@ CDisplayRegion_Text::printf(
 	buffer[sizeof(buffer) - 1] = 0;	// Ensure valid string
 	va_end(varArgs);
 
-	int	newStrLen = strlen(buffer);
+	size_t	newStrLen = strlen(buffer);
 	text = gDisplayModule->ReallocString(text, newStrLen + 1);
 
 	MReturnOnError(text == NULL);
@@ -1241,9 +1241,9 @@ CModule_Display::FillRectDiff(
 char*
 CModule_Display::ReallocString(
 	char*	inStr,
-	int		inNewSize)
+	size_t	inNewSize)
 {
-	int	strLen;
+	size_t	strLen;
 	
 	if(inStr != NULL)
 	{
@@ -1259,7 +1259,7 @@ CModule_Display::ReallocString(
 	{
 		uint8_t*	cp = (uint8_t*)inStr + inNewSize;
 
-		for(int i = 0; i < strLen - inNewSize; ++i)
+		for(size_t i = 0; i < strLen - inNewSize; ++i)
 		{
 			*cp++ = 0xFF;
 		}
@@ -1268,7 +1268,7 @@ CModule_Display::ReallocString(
 	}
 
 	// See if there is room after the current string
-	int	delta = inNewSize - strLen;
+	size_t	delta = inNewSize - strLen;
 	uint8_t*	cp = (uint8_t*)inStr + strLen;
 	uint8_t*	ep = gDisplayModule->stringTable + sizeof(gDisplayModule->stringTable);
 
@@ -1311,7 +1311,7 @@ CModule_Display::ReallocString(
 		}
 
 		uint8_t*	sp = cp - 1;
-		int			count = inNewSize;
+		size_t		count = inNewSize;
 
 		while(count > 0 && cp < ep)
 		{

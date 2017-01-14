@@ -82,6 +82,7 @@ public:
 	MModule_Declaration(
 		CModule_OutdoorLightingControl,
 		IOutdoorLightingInterface*	inInterface,
+		bool						inManualOnOff,
 		uint8_t						inMotionSensorPin,
 		uint8_t						inTransformerPin,
 		uint8_t						inTogglePin,
@@ -104,6 +105,7 @@ private:
 
 	CModule_OutdoorLightingControl(
 		IOutdoorLightingInterface*	inInterface,
+		bool						inManualOnOff,
 		uint8_t						inMotionSensorPin,
 		uint8_t						inTransformerPin,
 		uint8_t						inTogglePin,
@@ -311,6 +313,8 @@ private:
 
 	bool	overrideActive;
 	bool	overrideState;
+
+	bool	manualOnOff;
 };
 
 extern CModule_OutdoorLightingControl*	gOutdoorLighting;

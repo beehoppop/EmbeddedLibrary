@@ -56,14 +56,16 @@ CModule_OutdoorLightingControl*	gOutdoorLighting;
 MModuleImplementation_Start(
 	CModule_OutdoorLightingControl, 
 	IOutdoorLightingInterface*	inInterface,
+	bool						inManualOnOff,
 	uint8_t						inMotionSensorPin,
 	uint8_t						inTransformerPin,
 	uint8_t						inTogglePin,
 	ILuminosity*				inLuminosityInterface)
-MModuleImplementation_Finish(CModule_OutdoorLightingControl, inInterface, inMotionSensorPin, inTransformerPin, inTogglePin, inLuminosityInterface)
+MModuleImplementation_Finish(CModule_OutdoorLightingControl, inInterface, inManualOnOff, inMotionSensorPin, inTransformerPin, inTogglePin, inLuminosityInterface)
 
 CModule_OutdoorLightingControl::CModule_OutdoorLightingControl(
 	IOutdoorLightingInterface*	inInterface,
+	bool						inManualOnOff,
 	uint8_t						inMotionSensorPin,
 	uint8_t						inTransformerPin,
 	uint8_t						inTogglePin,
@@ -74,7 +76,8 @@ CModule_OutdoorLightingControl::CModule_OutdoorLightingControl(
 	transformerPin(inTransformerPin),
 	togglePin(inTogglePin),
 	luminosityInterface(inLuminosityInterface),
-	olInterface(inInterface)
+	olInterface(inInterface),
+	manualOnOff(inManualOnOff)
 {
 	gOutdoorLighting = this;
 	timeOfDay = eTimeOfDay_Day;
@@ -152,7 +155,6 @@ CModule_OutdoorLightingControl::Setup(
 	MCommandRegister("override_set", CModule_OutdoorLightingControl::SetOverride, "[active 0|1] [state 0|1] : Set override and overrided state on or off");
 	MCommandRegister("override_get", CModule_OutdoorLightingControl::GetOverride, "");
 
-
 	UpdateTimes();
 
 	MInternetRegisterPage("/", CModule_OutdoorLightingControl::CommandHomePageHandler);
@@ -162,6 +164,11 @@ void
 CModule_OutdoorLightingControl::UpdateTimes(
 	void)
 {
+	if(manualOnOff)
+	{
+		return;
+	}
+
 	gSunRiseAndSet->ScheduleEvent(SunriseEvent, eAlarm_Any, eAlarm_Any, eAlarm_Any, eAlarm_Any);
 	gSunRiseAndSet->ScheduleEvent(SunsetEvent, eAlarm_Any, eAlarm_Any, eAlarm_Any, eAlarm_Any);
 	gRealTime->ScheduleAlarm(lateNightAlarm, eAlarm_Any, eAlarm_Any, eAlarm_Any, eAlarm_Any, settings.lateNightStartHour, settings.lateNightStartMin, 0);

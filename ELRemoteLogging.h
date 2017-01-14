@@ -63,6 +63,14 @@ private:
 	virtual void
 	Setup(
 		void);
+	
+	virtual void
+	Update(
+		uint32_t	inDeltaUS);
+
+	virtual void
+	DumpDebugInfo(
+		IOutputDirector*	inOutput);
 
 	uint16_t
 	GetQueueLength(
@@ -71,10 +79,6 @@ private:
 	uint16_t
 	GetQueueLengthFromGivenTail(
 		uint16_t	inTail);
-	
-	virtual void
-	Update(
-		uint32_t	inDeltaUS);
 
 	void
 	HTTPResponseHandlerMethod(
@@ -100,8 +104,8 @@ private:
 
 	struct SSettings
 	{
-		char	uuid[48];
-		char	serverAddress[64];
+		TString<64>	uuid;
+		TString<64>	serverAddress;
 	};
 
 	SSettings			settings;
