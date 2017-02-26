@@ -56,7 +56,6 @@
 
 #include <ELModule.h>
 #include <ELCommand.h>
-#include <ELInternet.h>
 
 class IInternetHandler;
 class CHTTPConnection;
@@ -583,8 +582,9 @@ CreateDS3234Provider(
 
 // Create a provider for the DS3234 dead-on RTC clock on main SPI bus with the given chipselect pin
 IRealTimeDataProvider*
-CreateTimeAPIDotOrgProvider(
-	void);
+CreateNTPProvider(
+	char const*	inAddress,
+	uint16_t	inPort);
 
 extern int			gDaysInMonth[12];	// This is 0 based not 1 based
 extern CModule_RealTime*	gRealTime;

@@ -56,7 +56,7 @@
 
 		void
 		begin(
-			void)
+			int	inBaudRate)
 		{
 		}
 

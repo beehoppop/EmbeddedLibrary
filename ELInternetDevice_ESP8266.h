@@ -117,20 +117,36 @@ private:
 	virtual void
 	TCPCloseConnection(
 		uint16_t	inPort);
+
+	virtual int
+	UDPOpenChannel(
+		uint16_t	inLocalPort,
+		uint16_t	inRemoteServerPort,
+		char const*	inRemoteServerAddress);
+	
+	virtual bool
+	UDPChannelReady(
+		int			inChannel);
 	
 	virtual bool
 	UDPGetData(
+		int			inChannel,
+		uint32_t&	outRemoteAddress,
 		uint16_t&	outRemotePort,
-		uint16_t&	outLocalPort,
-		size_t&		ioBufferSize,		// The size of the provided buffer in bytes on input and the bytes received on output
-		uint8_t*	outBuffer);			// The buffer to store data
+		size_t&		ioBufferSize,
+		char*	outBuffer);
 
 	virtual bool
 	UDPSendData(
-		uint16_t&	outLocalPort,		// The local port used for this send
-		uint16_t	inRemotePort,
+		int			inChannel,
 		size_t		inBufferSize,
-		uint8_t*	inBuffer);
+		void*		inBuffer,
+		char const*	inRemoteAddress,
+		uint16_t	inRemotePort);
+	
+	virtual void
+	UDPCloseChannel(
+		int			inChannel);
 
 	virtual bool
 	ConnectedToInternet(
@@ -199,6 +215,8 @@ private:
 		Reset(
 			void)
 		{
+			remoteAddress = 0;
+			remotePort = 0;
 			incomingTotalBytes = 0;
 			outgoingTotalBytes = 0;
 			linkIndex = -1;
@@ -218,10 +236,11 @@ private:
 
 		void
 		ClientStart(
-			void)
+			bool	inIsTCPConnection)
 		{
 			Reset();
 			state = eChannelState_ClientStart;
+			tcpConnection = inIsTCPConnection;
 		}
 
 		void
@@ -235,6 +254,8 @@ private:
 
 		char		incomingBuffer[eMaxIncomingPacketSize];
 		char		outgoingBuffer[eMaxOutgoingPacketSize];
+		uint32_t	remoteAddress;
+		uint16_t	remotePort;
 		uint16_t	outgoingTotalBytes;
 		uint16_t	incomingTotalBytes;
 		uint32_t	lastUseTimeMS;			// For server connections, the last time this channel was used, for client the time the start command was issued
@@ -242,6 +263,7 @@ private:
 		uint8_t		channelIndex;			// Our index in the the channelArray list
 		uint8_t		state;					// The state of the channel
 		bool		sendPending;			// True if a send is pending
+		bool		tcpConnection;			// True if tcp connection, false if UDP
 	};
 
 	struct SPendingCommand
@@ -272,8 +294,14 @@ private:
 		void);
 
 	void
-	TransmitPendingData(
+	TCPTransmitPendingData(
 		SChannel*	inChannel);
+
+	void
+	UDPTransmitPendingData(
+		SChannel*	inChannel,
+		char const*	inRemoteAddress,
+		uint16_t	inRemotePort);
 
 	bool
 	WaitPendingTransmitComplete(

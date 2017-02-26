@@ -63,10 +63,10 @@ CModule_CANBus::CModule_CANBus(
 	)
 	:
 	CModule(0, 0, NULL, 100),
-	canBus(500000)
+	canBus(0)
 {
 	gCANBusModule = this;
-	canBus.begin();
+	canBus.begin(500000);
 
 	memset(handlerList, 0, sizeof(handlerList));
 	memset(sendFIFO, 0, sizeof(sendFIFO));

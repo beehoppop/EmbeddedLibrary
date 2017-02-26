@@ -29,13 +29,14 @@
 /*
 	ABOUT
 
-	This is a common header file for the library which every file includes. This allows me to include the appropriate
-	header files based on the platform and if I am running the API simulator on Windows (and someday OSX)
+	Everything internet related
 */
+
 #include <ELModule.h>
 #include <ELOutput.h>
 #include <ELCommand.h>
 #include <ELString.h>
+#include <ELRealTime.h>
 
 enum
 {
@@ -45,10 +46,15 @@ enum
 
 	eWebServerPageHandlerMax = 16,
 
+	eUDPTimeoutSecs = 10,
+
 	eInvalidPort = 0xFFFF,
 
 	eMaxIncomingPacketSize = 1500,
 	eMaxOutgoingPacketSize = 1400,
+
+	eLocalPortBase = 40000,
+	eLocalPortCount = 16,
 
 	ePortState_IsOpen			= 1 << 0,
 	ePortState_CanSendData		= 1 << 1,
@@ -108,9 +114,11 @@ typedef void
 // This will be called when a udp packet is received, if this is called with inDataSize of 0 and inDat is NULL that means an error occurred
 typedef void
 (IInternetHandler::*TUDPPacketHandlerMethod)(
+	EConnectionResponse	inResponse,
 	uint16_t			inLocalPort,
 	uint16_t			inRemotePort,
-	int					inDataSize,
+	uint32_t			inRemoteIPAddress,
+	size_t				inDataSize,
 	char const*			inData);
 
 // This will be called when a HTTP connection receives response data from a server
@@ -186,21 +194,39 @@ public:
 	virtual void
 	TCPCloseConnection(
 		uint16_t	inPort) = 0;	// The open port
+
+	// Open a udp connection, return -1 on error
+	virtual int
+	UDPOpenChannel(
+		uint16_t	inLocalPort,
+		uint16_t	inRemoteServerPort,			// The port on the remote server expecting a connection attempt, 0 if listening for packets
+		char const*	inRemoteServerAddress) = 0;	// The remote server address, NULL if listening for packets
 	
+	// Check if a UDP channel is ready for processing
+	virtual bool
+	UDPChannelReady(
+		int			inChannel) = 0;			// The channel from UDPOpenChannel
+
 	// Check for a udp packet
 	virtual bool
 	UDPGetData(
+		int			inChannel,			// The channel from UDPOpenChannel
+		uint32_t&	outRemoteAddress,
 		uint16_t&	outRemotePort,
-		uint16_t&	outLocalPort,
 		size_t&		ioBufferSize,		// The size of the provided buffer in bytes on input and the bytes received on output
-		uint8_t*	outBuffer) = 0;		// The buffer to store data
+		char*		outBuffer) = 0;		// The buffer to store data
 
 	virtual bool
 	UDPSendData(
-		uint16_t&	outLocalPort,		// The local port used for this send
-		uint16_t	inRemotePort,
+		int			inChannel,			// The channel from UDPOpenChannel
 		size_t		inBufferSize,
-		uint8_t*	inBuffer) = 0;
+		void*		inBuffer,
+		char const*	inRemoteAddress,
+		uint16_t	inRemotePort) = 0;
+	
+	virtual void
+	UDPCloseChannel(
+		int			inChannel) = 0;	// The channel from UDPOpenChannel
 
 	// Return true if a valid connection exists
 	virtual bool
@@ -242,9 +268,9 @@ public:
 
 	void
 	TCPOpenConnection(
-		uint16_t						inServerPort,
-		char const*						inServerAddress,
-		IInternetHandler*				inHandlerObject,			// The object of the handlers
+		uint16_t					inServerPort,
+		char const*					inServerAddress,
+		IInternetHandler*			inHandlerObject,			// The object of the handlers
 		TTCPResponseHandlerMethod	inHandlerMethod);			// The response handler
 	
 	// The OpenConnection completion method must have been called before calling SendData
@@ -258,6 +284,27 @@ public:
 	void
 	TCPCloseConnection(
 		uint16_t	inLocalPort);
+	
+	// UDP api is connection based to handle client server mode where the server changes the remote port for further communication after the initial packet is received
+	int
+	UDPOpenPort(
+		char const*				inRemoteIPAddress,	// NULL if listening for packets
+		uint16_t				inRemotePort,		// 0 if listening for packets
+		IInternetHandler*		inHandlerObject,
+		TUDPPacketHandlerMethod	inHandlerMethod,
+		uint16_t				inLocalPort = 0,	// If 0 system will choose a local port to use
+		uint32_t				inTimeoutSecs = eUDPTimeoutSecs);
+
+	void
+	UDPClosePort(
+		int	inPortRef);
+
+	bool
+	UDPSend(
+		int			inPortRef,
+		size_t		inBufferSize,
+		void*		inBuffer,
+		uint32_t	inTimeoutSecs = 0);
 
 	// Configure the internet connection to serve web pages on the given port
 	void
@@ -358,14 +405,27 @@ private:
 		TInternetServerHandlerMethod	handlerMethod;
 	};
 
-	struct SConnection
+	struct STCPConnection
 	{
 		int			openRef;
 		uint16_t	localPort;
 		uint16_t	serverPort;
 		TString<eServerMaxAddressLength>	serverAddress;
 		IInternetHandler*					handlerObject;
-		TTCPResponseHandlerMethod		handlerResponseMethod;
+		TTCPResponseHandlerMethod			handlerResponseMethod;
+	};
+
+	struct SUDPConnection
+	{
+		int			deviceConnection;
+		uint16_t	localPort;
+		uint16_t	remotePort;
+		bool		readyForUse;
+		TEpochTime	sendStartTime;
+		uint32_t	timeoutSecs;
+		TString<eServerMaxAddressLength>	remoteAddress;
+		IInternetHandler*					handlerObject;
+		TUDPPacketHandlerMethod				handlerMethod;
 	};
 
 	struct SWebServerPageHandler
@@ -386,13 +446,16 @@ private:
 	};
 
 	IInternetDevice*	internetDevice;
-	SServer		serverList[eMaxServersCount];
-	SConnection	connectionList[eMaxConnectionsCount];
+	SServer				serverList[eMaxServersCount];
+	STCPConnection		tcpConnectionList[eMaxConnectionsCount];
+	SUDPConnection		udpConnectionList[eMaxConnectionsCount];
 
 	SSettings	settings;
 
-	uint16_t						webServerPort;
+	uint16_t	webServerPort;
 	
+	uint16_t	usedUDPPorts;
+
 	SWebServerPageHandler	webServerPageHandlerList[eWebServerPageHandlerMax];
 
 	bool		respondingServer;

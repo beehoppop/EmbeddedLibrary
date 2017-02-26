@@ -89,7 +89,7 @@ CModule_ESP8266::CModule_ESP8266(
 	deviceIsHorked(false),
 	attemptingConnection(false)
 {
-	//logDebugData = true;
+	logDebugData = true;
 	memset(commandQueue, 0, sizeof(commandQueue));
 	for(int i = 0; i < eChannelCount; ++i)
 	{
@@ -140,6 +140,7 @@ CModule_ESP8266::Setup(
 	IssueCommand("ATE0", NULL, eSimpleCommandTimeoutMS);
 	IssueCommand("AT+CWMODE_CUR=1", NULL, eSimpleCommandTimeoutMS);
 	IssueCommand("AT+CIPMUX=1", NULL, eSimpleCommandTimeoutMS);
+	IssueCommand("AT+CIPDINFO=1", NULL, eSimpleCommandTimeoutMS);
 
 	InitiateConnectionAttempt();
 
@@ -352,12 +353,16 @@ CModule_ESP8266::ProcessSerialChar(
 			// we are done processing the IPD command
 
 			int	ipdCurLinkIndex;
-			sscanf((char*)serialInputBuffer, "%d,%d", &ipdCurLinkIndex, &ipdTotalBytes);
+			int	ip0, ip1, ip2, ip3;
+			int	remotePort;
+			sscanf((char*)serialInputBuffer, "%d,%d,%d.%d.%d.%d,%d", &ipdCurLinkIndex, &ipdTotalBytes, &ip0, &ip1, &ip2, &ip3, &remotePort);
 
 			ipdCurChannel = FindChannel(ipdCurLinkIndex);
 			if(ipdCurChannel != NULL)
 			{
-				MESPDebugMsg("Collecting ipd chn=%d lnk=%d totalbytes=%d\n", ipdCurChannel->channelIndex, ipdCurLinkIndex, ipdTotalBytes);
+				MESPDebugMsg("Collecting ipd chn=%d lnk=%d totalbytes=%d ip=%d.%d.%d.%d port=%d\n", ipdCurChannel->channelIndex, ipdCurLinkIndex, ipdTotalBytes, ip0, ip1, ip2, ip3, remotePort);
+				ipdCurChannel->remoteAddress = ((ip0 & 0xFF) << 24) | ((ip1 & 0xFF) << 16) | ((ip2 & 0xFF) << 8) | ((ip3 & 0xFF) << 0);
+				ipdCurChannel->remotePort = remotePort;
 			}
 			else
 			{
@@ -567,9 +572,19 @@ CModule_ESP8266::ProcessInputResponse(
 		if(targetChannel == NULL)
 		{
 			targetChannel = FindAvailableChannel();
-			MReturnOnError(targetChannel == NULL);
-			targetChannel->ServerConnection(linkIndex);
-			DumpChannelState(targetChannel, "Incoming Server Connect", false);
+			if(targetChannel != NULL)
+			{
+				targetChannel->ServerConnection(linkIndex);
+				DumpChannelState(targetChannel, "Incoming Server Connect", false);
+			}
+			else
+			{
+				// we need to close the connection immediately since there are no available channels to accept the connection request
+				// This will generated an unexpected close event but it will get ignored
+				 MESPDebugMsg("Refusing connect attempt on link %d\n", linkIndex);
+				serialPort->printf("AT+CIPCLOSE=%d", linkIndex);
+				serialPort->flush();
+			}
 		}
 		else
 		{
@@ -849,7 +864,7 @@ CModule_ESP8266::TCPRequestOpen(
 
 	MESPDebugMsg("TCPRequestOpen chn=%d\n", targetChannel->channelIndex);
 
-	targetChannel->ClientStart();
+	targetChannel->ClientStart(true);
 
 	IssueCommand("AT+CIPSTART=0,\"TCP\",\"%s\",%d", targetChannel, eCommandTimeoutMS, inRemoteServerAddress, inRemoteServerPort);
 
@@ -974,14 +989,14 @@ CModule_ESP8266::TCPSendData(
 		// If the buffer is full then transmit the pending data
 		if(targetChannel->outgoingTotalBytes >= (int)sizeof(targetChannel->outgoingBuffer))
 		{
-			TransmitPendingData(targetChannel);
+			TCPTransmitPendingData(targetChannel);
 		}
 	}
 
 	if(inFlush)
 	{
 		// No need to wait here since we are not adding any new data to the outgoing buffer, just flushing what is there
-		TransmitPendingData(targetChannel);
+		TCPTransmitPendingData(targetChannel);
 	}
 
 	return true;
@@ -1044,7 +1059,7 @@ CModule_ESP8266::TCPCloseConnection(
 	{
 		if(!targetChannel->sendPending)
 		{
-			TransmitPendingData(targetChannel);
+			TCPTransmitPendingData(targetChannel);
 		}
 
 		targetChannel->state = eChannelState_ClosePending;
@@ -1062,26 +1077,155 @@ CModule_ESP8266::TCPCloseConnection(
 	#endif
 }
 
+// Open a udp connection to a remote server, return -1 on error
+int
+CModule_ESP8266::UDPOpenChannel(
+	uint16_t	inLocalPort,
+	uint16_t	inRemoteServerPort,
+	char const*	inRemoteServerAddress)
+{
+	if(deviceIsHorked)
+	{
+		return -1;
+	}
+
+	SChannel*	targetChannel = FindAvailableChannel();
+
+	MReturnOnError(targetChannel == NULL, -1);
+
+	MESPDebugMsg("UDPOpenChannel chn=%d\n", targetChannel->channelIndex);
+
+	targetChannel->ClientStart(false);
+
+	if(inRemoteServerPort > 0 && inRemoteServerAddress != NULL && inRemoteServerAddress[0] != 0)
+	{
+		IssueCommand("AT+CIPSTART=0,\"UDP\",\"%s\",%d,%d", targetChannel, eCommandTimeoutMS, inRemoteServerAddress, inRemoteServerPort, inLocalPort);
+	}
+	else
+	{
+		IssueCommand("AT+CIPSTART=0,\"UDP\",%d", targetChannel, eCommandTimeoutMS, inLocalPort);
+	}
+
+	return targetChannel->channelIndex;
+}
+	
+bool
+CModule_ESP8266::UDPChannelReady(
+	int			inChannel)
+{
+	MReturnOnError(inChannel >= eChannelCount, false);
+	SChannel*	targetChannel = channelArray + inChannel;
+	return targetChannel->linkIndex >= 0 && targetChannel->state == eChannelState_ClientConnected;
+}
+
 bool
 CModule_ESP8266::UDPGetData(
+	int			inChannel,
+	uint32_t&	outRemoteAddress,
 	uint16_t&	outRemotePort,
-	uint16_t&	outLocalPort,
 	size_t&		ioBufferSize,
-	uint8_t*	outBuffer)
+	char*		outBuffer)
 {
+	MReturnOnError(inChannel >= eChannelCount, false);
 
-	return false;
+	if(deviceIsHorked)
+	{
+		return false;
+	}
+
+	SChannel*	targetChannel = channelArray + inChannel;
+
+	if(targetChannel->incomingTotalBytes == 0)
+	{
+		return false;
+	}
+	
+	outRemoteAddress = targetChannel->remoteAddress;
+	outRemotePort = targetChannel->remotePort;
+	ioBufferSize = MMin(ioBufferSize, targetChannel->incomingTotalBytes);
+	memcpy(outBuffer, targetChannel->incomingBuffer, ioBufferSize);
+	targetChannel->incomingTotalBytes = 0;
+	targetChannel->remoteAddress = 0;
+	targetChannel->remotePort = 0;
+
+	return true;
 }
 
 bool
 CModule_ESP8266::UDPSendData(
-	uint16_t&	outLocalPort,
-	uint16_t	inRemotePort,
+	int			inChannel,			// The channel from UDPOpenChannel
 	size_t		inBufferSize,
-	uint8_t*	inBuffer)
+	void*		inBuffer,
+	char const*	inRemoteAddress,
+	uint16_t	inRemotePort)
 {
+	MReturnOnError(inChannel >= eChannelCount, false);
+
+	if(deviceIsHorked)
+	{
+		return false;
+	}
+
+	SChannel*	targetChannel = channelArray + inChannel;
+
+	MReturnOnError(targetChannel->linkIndex < 0, false);
+
+	char*	cp = (char*)inBuffer;
+
+	while(inBufferSize > 0)
+	{
+		// We need to wait for the last transmit to complete before putting new data in the outgoing buffer
+		MReturnOnError(WaitPendingTransmitComplete(targetChannel) == false, false);
+
+		// Now it is safe to copy new data into the outgoing buffer
+		size_t	bytesToCopy = MMin(inBufferSize, sizeof(targetChannel->outgoingBuffer) - targetChannel->outgoingTotalBytes);
+		memcpy(targetChannel->outgoingBuffer + targetChannel->outgoingTotalBytes, cp, bytesToCopy);
+		targetChannel->outgoingTotalBytes += (uint16_t)bytesToCopy;
+		inBufferSize -= bytesToCopy;
+		cp += bytesToCopy;
+
+		// If the buffer is full then transmit the pending data
+		if(targetChannel->outgoingTotalBytes >= (int)sizeof(targetChannel->outgoingBuffer))
+		{
+			UDPTransmitPendingData(targetChannel, inRemoteAddress, inRemotePort);
+		}
+	}
+
+	UDPTransmitPendingData(targetChannel, inRemoteAddress, inRemotePort);
+
+	return true;
+}
 	
-	return false;
+void
+CModule_ESP8266::UDPCloseChannel(
+	int			inChannel)
+{
+	MESPDebugMsg("CloseConnection chn=%d\n", inChannel);
+	MReturnOnError(inChannel >= eChannelCount);
+
+	if(deviceIsHorked)
+	{
+		return;
+	}
+
+	SChannel*	targetChannel = channelArray + inChannel;
+
+	// Sometimes the channel can be closed before the client closes it so handle that case
+	if(targetChannel->linkIndex >= 0)
+	{
+		targetChannel->state = eChannelState_ClosePending;
+
+		// inUse will be marked false when this command is processed
+		IssueCommand("AT+CIPCLOSE=%d", targetChannel, eCommandTimeoutMS, targetChannel->linkIndex);
+	}
+	else
+	{
+		targetChannel->Reset();
+	}
+
+	#if MESPDebug
+	if(logDebugData) DumpState("CloseConnection");
+	#endif
 }
 
 bool
@@ -1125,7 +1269,7 @@ CModule_ESP8266::ResetDevice(
 }
 
 void
-CModule_ESP8266::TransmitPendingData(
+CModule_ESP8266::TCPTransmitPendingData(
 	SChannel*	inChannel)
 {
 	if(inChannel->outgoingTotalBytes == 0)
@@ -1133,14 +1277,33 @@ CModule_ESP8266::TransmitPendingData(
 		return;
 	}
 
-	DumpChannelState(inChannel, "Initiating Transmit", false);
+	DumpChannelState(inChannel, "Initiating TCP Transmit", false);
 
 	MReturnOnError((inChannel->state != eChannelState_Server && inChannel->state != eChannelState_ClientConnected) || inChannel->linkIndex < 0);
 
 	inChannel->sendPending = true;
 	IssueCommand("AT+CIPSENDEX=%d,%d", inChannel, eCommandTimeoutMS, inChannel->linkIndex, inChannel->outgoingTotalBytes);
 }
-	
+
+void
+CModule_ESP8266::UDPTransmitPendingData(
+	SChannel*	inChannel,
+	char const*	inRemoteAddress,
+	uint16_t	inRemotePort)
+{
+	if(inChannel->outgoingTotalBytes == 0)
+	{
+		return;
+	}
+
+	DumpChannelState(inChannel, "Initiating UDP Transmit", false);
+
+	MReturnOnError(inChannel->linkIndex < 0);
+
+	inChannel->sendPending = true;
+	IssueCommand("AT+CIPSENDEX=%d,%d,\"%s\",%d", inChannel, eCommandTimeoutMS, inChannel->linkIndex, inChannel->outgoingTotalBytes, inRemoteAddress, inRemotePort);
+}
+
 // return true on success, false if there was a channel failure or a timeout
 bool
 CModule_ESP8266::WaitPendingTransmitComplete(
@@ -1399,13 +1562,14 @@ CModule_ESP8266::ProcessError(
 							targetChannel->state = eChannelState_Failed;
 						}
 					}
-					else if(targetChannel->state == eChannelState_ClosePending)
+					else if(targetChannel->state != eChannelState_Server && targetChannel->state != eChannelState_ClientConnected)
 					{
 						targetChannel->Reset();
 					}
 				}
 
 				++commandTail;
+				simpleCommandInProcess = false;
 			}
 			else
 			{

@@ -228,6 +228,13 @@ public:
 	Set(
 		char const*	inString)
 	{
+		if(inString == NULL)
+		{
+			buffer[0] = 0;
+			length = 0;
+			return true;
+		}
+
 		size_t	strLen = strlen(inString);
 		bool	overflow = strLen > inBufferSize - 1;
 

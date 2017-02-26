@@ -291,15 +291,17 @@ public:
 };
 #endif
 
-class CRealTimeDataProvider_TimeAPIDotOrg : public IRealTimeDataProvider, public IInternetHandler
+class CRealTimeDataProvider_NTP : public IRealTimeDataProvider, public IInternetHandler
 {
 public:
 
-	CRealTimeDataProvider_TimeAPIDotOrg(
-		void)
+	CRealTimeDataProvider_NTP(
+		char const*	inAddress,
+		uint16_t	inPort)
 	{
 		requestInProgress = false;
-		internetTimeHTTP = NULL;
+		ntpAddress = inAddress;
+		ntpPort = inPort;
 	}
 
 	virtual bool
@@ -320,49 +322,66 @@ public:
 	RequestSync(
 		void)
 	{
-		if(internetTimeHTTP == NULL && gInternetModule != NULL && gInternetModule->ConnectedToInternet())
+		if(requestInProgress == false && gInternetModule != NULL && gInternetModule->ConnectedToInternet())
 		{
-			internetTimeHTTP = MInternetCreateHTTPConnection("www.timeapi.org", 80, CRealTimeDataProvider_TimeAPIDotOrg::InternetTimeHTTPHandler);
-		}
-
-		if(internetTimeHTTP != NULL && requestInProgress == false && gInternetModule->ConnectedToInternet())
-		{
-			internetTimeHTTP->StartRequest("GET", "/utc/now", 1, "format", "%25Y%20%25m%20%25d%20%25H%20%25M%20%25S");
-			internetTimeHTTP->CompleteRequest();
-			requestInProgress = true;
-			return true;
+			portRef = gInternetModule->UDPOpenPort(ntpAddress, ntpPort, this, static_cast<TUDPPacketHandlerMethod>(&CRealTimeDataProvider_NTP::InternetTimeHandler));
+			
+			if(portRef >= 0)
+			{
+				requestInProgress = true;
+				return true;
+			}
 		}
 
 		return false;
 	}
 
 	void
-	InternetTimeHTTPHandler(
-		uint16_t			inHTTPReturnCode,
-		int					inDataSize,
+	InternetTimeHandler(
+		EConnectionResponse	inResponse,
+		uint16_t			inLocalPort,
+		uint16_t			inRemotePort,
+		uint32_t			inRemoteIPAddress,
+		size_t				inDataSize,
 		char const*			inData)
 	{
-		if(inHTTPReturnCode == 200 && inDataSize > 0 && inData != NULL)
+		if(inResponse == eConnectionResponse_Opened)
 		{
-			int	year, month, day, hour, min, sec;
+			uint8_t	packetBuffer[48];
+			memset(packetBuffer, 0, sizeof(packetBuffer));
+			packetBuffer[0] = 0xE3;
+			packetBuffer[1] = 0;
+			packetBuffer[2] = 6;
+			packetBuffer[3] = 0xEC;
+			packetBuffer[12]  = 49;
+			packetBuffer[13]  = 0x4E;
+			packetBuffer[14]  = 49;
+			packetBuffer[15]  = 52;                 
 
-			sscanf(inData, "%d %d %d %d %d %d", &year, &month, &day, &hour, &min, &sec);
-
-			if(year >= 2016 && year <= 2069 && month >= 1 && month <= 12 && day >= 1 && day <= 31 && hour >= 0 && hour < 24 && min >= 0 && min < 60 && sec >= 0 && sec < 60)
-			{
-				gRealTime->SetDateAndTime(year, month, day, hour, min, sec, true, this);
-			}
-			else
-			{
-				SystemMsg("ERROR: Invalid internet time received %s", inData);
-			}
+			gInternetModule->UDPSend(portRef, sizeof(packetBuffer), packetBuffer, 5);
 		}
+		else if(inResponse == eConnectionResponse_Data)
+		{
+			uint8_t*	timeData = (uint8_t*)inData;
 
-		requestInProgress = false;
+			unsigned long epoch;
+			epoch = (timeData[40] << 24) | (timeData[41] << 16) | (timeData[42] << 8) | timeData[43];
+			epoch = epoch - 2208988800;
+			gRealTime->SetEpochTime(epoch, true, this);
+			gInternetModule->UDPClosePort(portRef);
+			requestInProgress = false;
+		}
+		else
+		{
+			gInternetModule->UDPClosePort(portRef);
+			requestInProgress = false;
+		}
 	}
 
-	CHTTPConnection*	internetTimeHTTP;
-	bool				requestInProgress;
+	char const*	ntpAddress;
+	int			portRef;
+	uint16_t	ntpPort;
+	bool		requestInProgress;
 };
 
 MModuleImplementation_Start(CModule_RealTime)
@@ -1900,16 +1919,17 @@ CreateDS3234Provider(
 }
 
 IRealTimeDataProvider*
-CreateTimeAPIDotOrgProvider(
-	void)
+CreateNTPProvider(
+	char const*	inAddress,
+	uint16_t	inPort)
 {
-	static CRealTimeDataProvider_TimeAPIDotOrg*	timeOrdProvider = NULL;
+	static CRealTimeDataProvider_NTP*	ntpProvider = NULL;
 
-	if(timeOrdProvider == NULL)
+	if(ntpProvider == NULL)
 	{
-		timeOrdProvider = new CRealTimeDataProvider_TimeAPIDotOrg();
+		ntpProvider = new CRealTimeDataProvider_NTP(inAddress, inPort);
 	}
 
-	return timeOrdProvider;
+	return ntpProvider;
 }
 

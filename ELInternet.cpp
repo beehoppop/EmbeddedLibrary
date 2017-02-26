@@ -449,18 +449,27 @@ CModule_Internet::CModule_Internet(
 {
 	internetDevice = NULL;
 	memset(serverList, 0, sizeof(serverList));
-	memset(connectionList, 0, sizeof(connectionList));
+	memset(tcpConnectionList, 0, sizeof(tcpConnectionList));
+	memset(udpConnectionList, 0, sizeof(udpConnectionList));
 	memset(webServerPageHandlerList, 0, sizeof(webServerPageHandlerList));
 	webServerPort = 0;
 	respondingServer = false;
 	respondingServerPort = 0;
 	respondingReplyPort = 0;
+	usedUDPPorts = 0;
 
-	SConnection*	cur = connectionList;
-	for(int i = 0; i < eMaxConnectionsCount; ++i, ++cur)
+	STCPConnection*	curTCP = tcpConnectionList;
+	for(int i = 0; i < eMaxConnectionsCount; ++i, ++curTCP)
 	{
-		cur->openRef = -1;
-		cur->localPort = eInvalidPort;
+		curTCP->openRef = -1;
+		curTCP->localPort = eInvalidPort;
+	}
+
+	SUDPConnection*	curUDP = udpConnectionList;
+	for(int i = 0; i < eMaxConnectionsCount; ++i, ++curUDP)
+	{
+		curUDP->deviceConnection = -1;
+		curUDP->localPort = eInvalidPort;
 	}
 
 	CModule_RealTime::Include();
@@ -527,16 +536,16 @@ CModule_Internet::RemoveServer(
 
 void
 CModule_Internet::TCPOpenConnection(
-	uint16_t								inServerPort,
-	char const*								inServerAddress,
-	IInternetHandler*						inInternetHandler,
-	TTCPResponseHandlerMethod			inResponseMethod)
+	uint16_t					inServerPort,
+	char const*					inServerAddress,
+	IInternetHandler*			inInternetHandler,
+	TTCPResponseHandlerMethod	inResponseMethod)
 {
 	MReturnOnError(internetDevice == NULL);
 	MReturnOnError(strlen(inServerAddress) > eServerMaxAddressLength - 1);
 
-	SConnection*	target = NULL;
-	SConnection*	cur = connectionList;
+	STCPConnection*	target = NULL;
+	STCPConnection*	cur = tcpConnectionList;
 	for(int i = 0; i < eMaxConnectionsCount; ++i, ++cur)
 	{
 		if(cur->serverPort == inServerPort && cur->serverAddress == inServerAddress)
@@ -566,29 +575,6 @@ CModule_Internet::TCPOpenConnection(
 	target->localPort = eInvalidPort;
 }
 
-void
-CModule_Internet::TCPCloseConnection(
-	uint16_t	inLocalPort)
-{
-	MReturnOnError(inLocalPort == eInvalidPort);
-
-	SConnection*	cur = connectionList;
-	for(int i = 0; i < eMaxConnectionsCount; ++i, ++cur)
-	{
-		if(cur->localPort == inLocalPort)
-		{
-			cur->localPort = eInvalidPort;
-			cur->serverPort = 0;
-			cur->serverAddress.Clear();
-			cur->handlerResponseMethod = NULL;
-			cur->handlerObject = NULL;
-			cur->openRef = -1;
-			internetDevice->TCPCloseConnection(inLocalPort);
-			return;
-		}
-	}
-}
-
 bool
 CModule_Internet::TCPSendData(
 	uint16_t						inLocalPort,
@@ -596,8 +582,8 @@ CModule_Internet::TCPSendData(
 	char const*						inData,
 	bool							inFlush)
 {
-	SConnection*	target = NULL;
-	SConnection*	curConnection = connectionList;
+	STCPConnection*	target = NULL;
+	STCPConnection*	curConnection = tcpConnectionList;
 	for(int i = 0; i < eMaxConnectionsCount; ++i, ++curConnection)
 	{
 		if(curConnection->localPort == inLocalPort)
@@ -616,6 +602,123 @@ CModule_Internet::TCPSendData(
 	}
 
 	return true;
+}
+
+void
+CModule_Internet::TCPCloseConnection(
+	uint16_t	inLocalPort)
+{
+	MReturnOnError(inLocalPort == eInvalidPort);
+
+	STCPConnection*	cur = tcpConnectionList;
+	for(int i = 0; i < eMaxConnectionsCount; ++i, ++cur)
+	{
+		if(cur->localPort == inLocalPort)
+		{
+			cur->localPort = eInvalidPort;
+			cur->serverPort = 0;
+			cur->serverAddress.Clear();
+			cur->handlerResponseMethod = NULL;
+			cur->handlerObject = NULL;
+			cur->openRef = -1;
+			internetDevice->TCPCloseConnection(inLocalPort);
+			return;
+		}
+	}
+}
+	
+int
+CModule_Internet::UDPOpenPort(
+	char const*				inRemoteAddress,
+	uint16_t				inRemotePort,
+	IInternetHandler*		inHandlerObject,
+	TUDPPacketHandlerMethod	inHandlerMethod,
+	uint16_t				inLocalPort,
+	uint32_t				inTimeoutSecs)
+{
+	MReturnOnError(internetDevice == NULL, -1);
+
+	SUDPConnection*	target = NULL;
+	SUDPConnection*	cur = udpConnectionList;
+	for(int i = 0; i < eMaxConnectionsCount; ++i, ++cur)
+	{
+		if(cur->deviceConnection < 0)
+		{
+			target = cur;
+			break;
+		}
+	}
+
+	MReturnOnError(target == NULL, -1);
+
+	if(inLocalPort == 0)
+	{
+		// find an open port
+		for(int i = 0; i < eLocalPortBase; ++i)
+		{
+			if(!(usedUDPPorts & (1 << i)))
+			{
+				inLocalPort = eLocalPortBase + i;
+				usedUDPPorts |= 1 << i;
+				break;
+			}
+		}
+
+		MReturnOnError(inLocalPort == 0, -1);
+	}
+
+	target->deviceConnection = internetDevice->UDPOpenChannel(inLocalPort, inRemotePort, inRemoteAddress);
+	MReturnOnError(target->deviceConnection < 0, -1);
+
+	target->handlerObject = inHandlerObject;
+	target->handlerMethod = inHandlerMethod;
+	target->localPort = inLocalPort;
+	target->remoteAddress = inRemoteAddress;
+	target->remotePort = inRemotePort;
+	target->readyForUse = false;
+
+	return int(target - udpConnectionList);
+}
+
+void
+CModule_Internet::UDPClosePort(
+	int	inConnectionRef)
+{
+	MReturnOnError(internetDevice == NULL);
+	MReturnOnError(inConnectionRef < 0 || inConnectionRef >= eMaxConnectionsCount);
+
+	SUDPConnection*	target = udpConnectionList + inConnectionRef;
+
+	internetDevice->UDPCloseChannel(target->deviceConnection);
+
+	if(target->localPort >= eLocalPortBase && target->localPort < eLocalPortBase + eLocalPortCount)
+	{
+		usedUDPPorts &= ~(1 << (target->localPort - eLocalPortBase));
+	}
+
+	target->deviceConnection = -1;
+	target->localPort = eInvalidPort;
+	target->handlerMethod = NULL;
+	target->handlerObject = NULL;
+}
+
+bool
+CModule_Internet::UDPSend(
+	int			inConnectionRef,
+	size_t		inBufferSize,
+	void*		inBuffer,
+	uint32_t	inTimeoutSecs)
+{
+	MReturnOnError(internetDevice == NULL, false);
+	MReturnOnError(inConnectionRef < 0 || inConnectionRef >= eMaxConnectionsCount, false);
+
+	SUDPConnection*	target = udpConnectionList + inConnectionRef;
+	
+	target->sendStartTime = gRealTime->GetEpochTime(true);
+	target->timeoutSecs = inTimeoutSecs;
+	bool	result = internetDevice->UDPSendData(target->deviceConnection, inBufferSize, inBuffer, (char*)target->remoteAddress, target->remotePort);
+
+	return result;
 }
 
 void
@@ -703,25 +806,28 @@ CModule_Internet::Update(
 		return;
 	}
 
-	SConnection*	curConnection;
+	STCPConnection*	curTCPConnection;
 
 	if(internetDevice->IsDeviceTotallyFd())
 	{
 		// Close all connections
-		curConnection = connectionList;
-		for(int i = 0; i < eMaxConnectionsCount; ++i, ++curConnection)
+		curTCPConnection = tcpConnectionList;
+		for(int i = 0; i < eMaxConnectionsCount; ++i, ++curTCPConnection)
 		{
-			if(curConnection->handlerObject != NULL)
+			if(curTCPConnection->handlerObject != NULL)
 			{
-				(curConnection->handlerObject->*curConnection->handlerResponseMethod)(eConnectionResponse_Error, 0, 0, NULL);
+				(curTCPConnection->handlerObject->*curTCPConnection->handlerResponseMethod)(eConnectionResponse_Error, 0, 0, NULL);
 			}
-			curConnection->localPort = eInvalidPort;
-			curConnection->serverPort = 0;
-			curConnection->serverAddress.Clear();
-			curConnection->handlerResponseMethod = NULL;
-			curConnection->handlerObject = NULL;
-			curConnection->openRef = -1;
+			curTCPConnection->localPort = eInvalidPort;
+			curTCPConnection->serverPort = 0;
+			curTCPConnection->serverAddress.Clear();
+			curTCPConnection->handlerResponseMethod = NULL;
+			curTCPConnection->handlerObject = NULL;
+			curTCPConnection->openRef = -1;
 		}
+
+		// close udp connections
+		// xxx
 
 		internetDevice->ResetDevice();
 
@@ -742,61 +848,101 @@ CModule_Internet::Update(
 		}
 	}
 
-	// Update the current connections
-	curConnection = connectionList;
-	for(int i = 0; i < eMaxConnectionsCount; ++i, ++curConnection)
+	// Update the current TCP connections
+	curTCPConnection = tcpConnectionList;
+	for(int i = 0; i < eMaxConnectionsCount; ++i, ++curTCPConnection)
 	{
-		if(curConnection->handlerObject == NULL)
+		if(curTCPConnection->handlerObject == NULL)
 		{
 			continue;
 		}
 
 		// If we have a open in process check it's status
-		if(curConnection->openRef >= 0)
+		if(curTCPConnection->openRef >= 0)
 		{
 			bool	successfulyOpened;
-			if(internetDevice->TCPCheckOpenCompleted(curConnection->openRef, successfulyOpened, curConnection->localPort))
+			if(internetDevice->TCPCheckOpenCompleted(curTCPConnection->openRef, successfulyOpened, curTCPConnection->localPort))
 			{
 				// call completion
-				curConnection->openRef = -1;
+				curTCPConnection->openRef = -1;
 				if(successfulyOpened)
 				{
-					(curConnection->handlerObject->*curConnection->handlerResponseMethod)(eConnectionResponse_Opened, curConnection->localPort, 0, NULL);
+					(curTCPConnection->handlerObject->*curTCPConnection->handlerResponseMethod)(eConnectionResponse_Opened, curTCPConnection->localPort, 0, NULL);
 				}
 				else
 				{
-					(curConnection->handlerObject->*curConnection->handlerResponseMethod)(eConnectionResponse_Error, 0, 0, NULL);
+					(curTCPConnection->handlerObject->*curTCPConnection->handlerResponseMethod)(eConnectionResponse_Error, 0, 0, NULL);
 
 					// Empty out the connection since another OpenConnection will be required to use this slot
-					curConnection->serverAddress.Clear();
-					curConnection->handlerObject = NULL;
+					curTCPConnection->serverAddress.Clear();
+					curTCPConnection->handlerObject = NULL;
 				}
 			}
 			continue;
 		}
 
-		MAssert(curConnection->localPort != eInvalidPort);
+		MAssert(curTCPConnection->localPort != eInvalidPort);
 
-		uint32_t	portState = internetDevice->TCPGetPortState(curConnection->localPort);
+		uint32_t	portState = internetDevice->TCPGetPortState(curTCPConnection->localPort);
 
 		// If the port has failed or closed report that
 		if(portState & ePortState_Failure)
 		{
-			(curConnection->handlerObject->*curConnection->handlerResponseMethod)(eConnectionResponse_Error, curConnection->localPort, 0, NULL);
+			(curTCPConnection->handlerObject->*curTCPConnection->handlerResponseMethod)(eConnectionResponse_Error, curTCPConnection->localPort, 0, NULL);
 			// Since the method above may have already closed the port we need to check for that
-			if(curConnection->localPort != eInvalidPort)
+			if(curTCPConnection->localPort != eInvalidPort)
 			{
-				TCPCloseConnection(curConnection->localPort);
+				TCPCloseConnection(curTCPConnection->localPort);
 			}
 		}
 		else if(!(portState & ePortState_IsOpen))
 		{
-			(curConnection->handlerObject->*curConnection->handlerResponseMethod)(eConnectionResponse_Closed, curConnection->localPort, 0, NULL);
+			(curTCPConnection->handlerObject->*curTCPConnection->handlerResponseMethod)(eConnectionResponse_Closed, curTCPConnection->localPort, 0, NULL);
 			// Since the method above may have already closed the port we need to check for that
-			if(curConnection->localPort != eInvalidPort)
+			if(curTCPConnection->localPort != eInvalidPort)
 			{
-				TCPCloseConnection(curConnection->localPort);
+				TCPCloseConnection(curTCPConnection->localPort);
 			}
+		}
+	}
+
+	// Get any incoming UDP packets
+
+	// Update current UDP listeners
+	SUDPConnection*	curUDPConnection = udpConnectionList;
+	for(int i = 0; i < eMaxConnectionsCount; ++i, ++curUDPConnection)
+	{
+		if(curUDPConnection->handlerObject == NULL)
+		{
+			continue;
+		}
+
+		if(!curUDPConnection->readyForUse)
+		{
+			if(internetDevice->UDPChannelReady(curUDPConnection->deviceConnection))
+			{
+				curUDPConnection->readyForUse = true;
+				(curUDPConnection->handlerObject->*curUDPConnection->handlerMethod)(eConnectionResponse_Opened, 0, 0, 0, 0, NULL);
+			}
+			continue;
+		}
+
+		uint32_t	remoteAddress;
+		uint16_t	remotePort;
+
+		if(internetDevice->UDPGetData(curUDPConnection->deviceConnection, remoteAddress, remotePort, bufferSize, buffer))
+		{
+			curUDPConnection->timeoutSecs = 0;
+			curUDPConnection->remotePort = remotePort;
+			curUDPConnection->remoteAddress.SetF("%d.%d.%d.%d", (remoteAddress >> 24) & 0xFF, (remoteAddress >> 16) & 0xFF, (remoteAddress >> 8) & 0xFF, (remoteAddress >> 0) & 0xFF);
+			(curUDPConnection->handlerObject->*curUDPConnection->handlerMethod)(eConnectionResponse_Data, curUDPConnection->localPort, remotePort, remoteAddress, bufferSize, buffer);
+		}
+
+		if(curUDPConnection->timeoutSecs > 0 && (gRealTime->GetEpochTime(true) - curUDPConnection->sendStartTime) > curUDPConnection->timeoutSecs)
+		{
+			SystemMsg("ERROR: UDP timeout");
+			(curUDPConnection->handlerObject->*curUDPConnection->handlerMethod)(eConnectionResponse_Error, 0, 0, 0, 0, 0);
+			curUDPConnection->timeoutSecs = 0;
 		}
 	}
 
@@ -889,13 +1035,13 @@ CModule_Internet::Update(
 		if(!dataProcessed)
 		{
 			// Look for a client connection
-			curConnection = connectionList;
-			for(int i = 0; i < eMaxConnectionsCount; ++i, ++curConnection)
+			curTCPConnection = tcpConnectionList;
+			for(int i = 0; i < eMaxConnectionsCount; ++i, ++curTCPConnection)
 			{
-				if(curConnection->handlerObject != NULL && curConnection->localPort == localPort)
+				if(curTCPConnection->handlerObject != NULL && curTCPConnection->localPort == localPort)
 				{
 					// Call the response handler with the data
-					(curConnection->handlerObject->*curConnection->handlerResponseMethod)(eConnectionResponse_Data, curConnection->localPort, (int)bufferSize, buffer);
+					(curTCPConnection->handlerObject->*curTCPConnection->handlerResponseMethod)(eConnectionResponse_Data, curTCPConnection->localPort, (int)bufferSize, buffer);
 				}
 			}
 		}
