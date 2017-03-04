@@ -50,7 +50,7 @@ enum
 
 	eInvalidPort = 0xFFFF,
 
-	eMaxIncomingPacketSize = 1500,
+	eMaxIncomingPacketSize = 1460,
 	eMaxOutgoingPacketSize = 1400,
 
 	eLocalPortBase = 40000,
@@ -175,7 +175,7 @@ public:
 		uint16_t&	outPort,			// The previously open port that data was found on
 		uint16_t&	outReplyPort,		// The port to send response data with
 		size_t&		ioBufferSize,		// The size of the provided buffer in bytes on input and the bytes received on output
-		char*		outBuffer) = 0;		// The buffer to store data
+		char*&		outBuffer) = 0;		// A pointer to the buffer
 
 	// Send data on the previously opened port
 	virtual bool
@@ -214,7 +214,7 @@ public:
 		uint32_t&	outRemoteAddress,
 		uint16_t&	outRemotePort,
 		size_t&		ioBufferSize,		// The size of the provided buffer in bytes on input and the bytes received on output
-		char*		outBuffer) = 0;		// The buffer to store data
+		char*&		outBuffer) = 0;		// A pointer to the buffer
 
 	virtual bool
 	UDPSendData(
@@ -335,7 +335,8 @@ public:
 		int&			ioParameterCount,	// in -> max parameters, out -> actual parameter count
 		char const**	outParameterList,	// An array of char* to parameter pairs, key then value
 		char*&			outPageName,
-		char*			inURL);
+		char*			inURL,
+		size_t			inURLLength);
 
 private:
 	

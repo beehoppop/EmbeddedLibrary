@@ -562,7 +562,7 @@ CModule::SetupAll(
 
 	int32_t	freeMemory = GetFreeMemory();
 	SystemMsg("Free memory after setup = %d\n", freeMemory);
-	MAssert(freeMemory >= 1024);
+	MAssert(freeMemory >= 2046);
 
 	#if MDebugModules
 		SystemMsg("Module: Setup Complete\n"); delay(100);

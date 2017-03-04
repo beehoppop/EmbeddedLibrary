@@ -65,7 +65,8 @@ enum EDayOfWeek
 	eDay_Wednesday,
 	eDay_Thursday,
 	eDay_Friday,
-	eDay_Saturday
+	eDay_Saturday,
+	eDay_Count,
 };
 
 enum EScheduler
@@ -78,25 +79,63 @@ typedef void*	TSchedulerPeriodRef;
 
 struct CSchedulerThreshold
 {
-	int8_t	dateType;	// Is the date a Holiday (whose exact date can vary year to year) or a specific date
-	int8_t	holiday;	// If this is a holiday the specific EScheduler_Holiday
-	int8_t	year;		// For eDate_SpecificDate this can be -1 for any year or it's the exact year. This is ignored for eDate_Holiday
-	int8_t	month;		// For eDate_SpecificDate this can be -1 for any month or it's the exact month. For eDate_Holiday -1 means either the start or end of the month
-	int8_t	dayOfMonth;	// For eDate_SpecificDate this can be -1 for any day or it's the exact day. For eDate_Holiday -1 means wither the start or end of the month
-	int8_t	daysOfWeek;	// This is a bitmap of the days of the week
+	int8_t	dateType;		// Is the date a Holiday (whose exact date can vary year to year) or a specific date
+	int8_t	holiday;		// EHoliday
+	int8_t	year;			// For eDateType_Date this can be -1 for any year or it's the exact year. This is ignored for eDate_Holiday
+	int8_t	month;			// For eDateType_Date this can be -1 for any month or it's the exact month. For eDate_Holiday -1 means entire month of the holiday
+	int8_t	dayOfMonth;		// For eDateType_Date this can be -1 for any day or it's the exact day. For eDate_Holiday this is ignored
+	int8_t	weekOfMonth;	// For eDateType_Date this can be -1 for any week of the month or the given week, 0 is first partial week, 1 is first whole week. For eDate_Holiday -1 means the entire week of the holiday
+	int8_t	daysOfWeek;		// For eDateType_Date this is a bitmap of the days of the week. For eDate_Holiday this is ignored
 
 	int8_t	timeType;
 	int8_t	hour;		// For eTimeOfDay_Sunrise and eTimeOfDay_Sunset these are relative to either sunrise or sunset for the date specified above
 	int8_t	minute;
 	int8_t	second;
 
-	bool	localTime;	// true if time is local, false if utc
+	bool
+	operator ==(
+		TEpochTime	inRHS);
+
+	bool
+	operator >(
+		TEpochTime	inRHS);
+
+	bool
+	operator >=(
+		TEpochTime	inRHS);
+
+	bool
+	operator <(
+		TEpochTime	inRHS);
+
+	bool
+	operator <=(
+		TEpochTime	inRHS);
+
+	TEpochTime
+	GetEpochTime(
+		TEpochTime	inReferenceTime,
+		bool		inStarting);	// True of this threshold is starting a period, false if ending
+
 };
 
 struct CSchedulerPeriod
 {
 	CSchedulerThreshold	start;
 	CSchedulerThreshold	end;
+
+	bool
+	operator <(
+		TEpochTime	inRHS);
+
+	bool
+	operator >(
+		TEpochTime	inRHS);
+
+	bool
+	operator ==(
+		TEpochTime	inRHS);
+
 };
 
 // This is a dummy class for defining a alarm or event handler object
@@ -110,6 +149,7 @@ public:
 typedef bool
 (ISchedulerHandler::*TSchedulerMethod)(
 	TSchedulerPeriodRef	inPeriodRef,
+	EEventType			inType,
 	void*				inRefCon);
 
 class CModule_Scheduler : public CModule
@@ -133,12 +173,6 @@ public:
 	SchedulePeriod(
 		TSchedulerPeriodRef*	inPeriodRef,
 		CSchedulerPeriod const&	inEventData);
-
-	bool
-	InPeriod(
-		TSchedulerPeriodRef*	inPeriodRef,
-		TEpochTime				inEpochTime,
-		bool					inLocalTime);
 
 	/*
 		Format: [date|holiday]:year/month/[day|week|dayofweek] [sunrise|sunset|time]:hour:minute:second

@@ -101,7 +101,7 @@ private:
 		uint16_t&	outPort,
 		uint16_t&	outReplyPort,	
 		size_t&		ioBufferSize,		
-		char*		outBuffer);
+		char*&		outBuffer);
 
 	virtual bool
 	TCPSendData(
@@ -134,7 +134,7 @@ private:
 		uint32_t&	outRemoteAddress,
 		uint16_t&	outRemotePort,
 		size_t&		ioBufferSize,
-		char*	outBuffer);
+		char*&		outBuffer);
 
 	virtual bool
 	UDPSendData(
@@ -252,7 +252,7 @@ private:
 			state = eChannelState_ClientConnected;
 		}
 
-		char		incomingBuffer[eMaxIncomingPacketSize];
+		char		incomingBuffer[eMaxIncomingPacketSize + 1];	// Add space for a zero term byte for string processing when chechking for a corrupted buffer
 		char		outgoingBuffer[eMaxOutgoingPacketSize];
 		uint32_t	remoteAddress;
 		uint16_t	remotePort;
@@ -392,7 +392,6 @@ private:
 	int			ipdTotalBytes;
 	int			ipdCurByte;
 	SChannel*	ipdCurChannel;
-	char		ipdBuffer[eMaxIncomingPacketSize + 1];	// This needs to be null terminated for string processing
 
 	uint8_t		sendState;
 

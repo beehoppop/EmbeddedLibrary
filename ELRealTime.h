@@ -66,7 +66,7 @@ enum
 
 	eAlarm_MaxActive = 8,
 	eEvent_MaxActive = 16,
-	eTimeChangeHandler_MaxCount = 8,
+	eTimeChangeHandler_MaxCount = 2,
 
 	eRealTime_MaxNameLength = 15,
 };

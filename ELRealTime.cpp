@@ -364,8 +364,8 @@ public:
 		{
 			uint8_t*	timeData = (uint8_t*)inData;
 
-			unsigned long epoch;
-			epoch = (timeData[40] << 24) | (timeData[41] << 16) | (timeData[42] << 8) | timeData[43];
+			TEpochTime epoch;
+			epoch = (timeData[40] << 24UL) | (timeData[41] << 16UL) | (timeData[42] << 8UL) | timeData[43];
 			epoch = epoch - 2208988800;
 			gRealTime->SetEpochTime(epoch, true, this);
 			gInternetModule->UDPClosePort(portRef);
@@ -781,9 +781,9 @@ CModule_RealTime::GetMonthFromEpoch(
 	TEpochTime	inEpochTime)
 {
 	TEpochTime	daysEpochTime = inEpochTime / (60 * 60 * 24);
-	int				year = 1970;
+	int			year = 1970;
 	TEpochTime	days = 0;
-	int				month;
+	int			month;
 	TEpochTime	monthLength;
 
 	for(;;)
@@ -827,9 +827,9 @@ CModule_RealTime::GetDayOfMonthFromEpoch(
 	TEpochTime	inEpochTime)
 {
 	TEpochTime	daysEpochTime = inEpochTime / (60 * 60 * 24);
-	int				year = 1970;
+	int			year = 1970;
 	TEpochTime	days = 0;
-	int				month;
+	int			month;
 	TEpochTime	monthLength;
 
 	for(;;)

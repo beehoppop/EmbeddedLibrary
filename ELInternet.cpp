@@ -798,9 +798,6 @@ void
 CModule_Internet::Update(
 	uint32_t	inDeltaTimeUS)
 {
-	size_t	bufferSize;
-	char	buffer[eMaxIncomingPacketSize + 1];
-
 	if(internetDevice == NULL)
 	{
 		return;
@@ -847,6 +844,9 @@ CModule_Internet::Update(
 			internetDevice->Server_Open(webServerPort);
 		}
 	}
+
+	size_t	bufferSize;
+	char*	buffer;
 
 	// Update the current TCP connections
 	curTCPConnection = tcpConnectionList;
@@ -947,7 +947,6 @@ CModule_Internet::Update(
 	}
 
 	// Check for incoming data
-	bufferSize = sizeof(buffer) - 1;
 	uint16_t	localPort;
 	uint16_t	replyPort;
 	internetDevice->TCPGetData(localPort, replyPort, bufferSize, buffer);
@@ -956,8 +955,6 @@ CModule_Internet::Update(
 	{
 		return;
 	}
-
-	buffer[bufferSize] = 0;
 	
 	if(webServerPort > 0 && localPort == webServerPort)
 	{
@@ -968,13 +965,13 @@ CModule_Internet::Update(
 		char*	nextSpace;
 
 		verb = buffer;
-		nextSpace = strchr(verb, ' ');
+		nextSpace = (char*)memchr(verb, ' ', bufferSize);
 		if(nextSpace != NULL)
 		{
 			*nextSpace = 0;
 			url = nextSpace + 1;
 
-			nextSpace = strchr(url, ' ');
+			nextSpace = (char*)memchr(url, ' ', bufferSize - (url - buffer));
 			if(nextSpace != NULL)
 			{
 				*nextSpace = 0;
@@ -987,7 +984,7 @@ CModule_Internet::Update(
 			int		paramCount = 32;
 			char*	pageName;
 
-			TransformURLIntoParameters(paramCount, paramList, pageName, url);
+			TransformURLIntoParameters(paramCount, paramList, pageName, url, strlen(url));
 
 			internetDevice->TCPSendData(replyPort, strlen(gReplyStringPreOutput), gReplyStringPreOutput);
 
@@ -1270,11 +1267,13 @@ CModule_Internet::TransformURLIntoParameters(
 	int&			ioParameterCount,
 	char const**	outParameterList,
 	char*&			outPageName,
-	char*			inURL)
+	char*			inURL,
+	size_t			inURLLength)
 {
 	int		maxCount = ioParameterCount;
 
-	char*	dp = strchr(inURL, '?');
+	char*	dp = (char*)memchr(inURL, '?', inURLLength);
+	char*	ep = inURL + inURLLength;
 
 	outPageName = inURL;
 	ioParameterCount = 0;
@@ -1287,13 +1286,9 @@ CModule_Internet::TransformURLIntoParameters(
 	inURL = dp;
 	outParameterList[ioParameterCount++] = dp;
 
-	for(;;)
+	while(inURL < ep)
 	{
 		char c = *inURL++;
-		if(c == 0)
-		{
-			break;
-		}
 
 		if(c == '=' || c == '&')
 		{

@@ -89,7 +89,7 @@ CModule_ESP8266::CModule_ESP8266(
 	deviceIsHorked(false),
 	attemptingConnection(false)
 {
-	logDebugData = true;
+	//logDebugData = true;
 	memset(commandQueue, 0, sizeof(commandQueue));
 	for(int i = 0; i < eChannelCount; ++i)
 	{
@@ -306,7 +306,7 @@ CModule_ESP8266::ProcessSerialChar(
 			// We are collecting incoming data from the IPD command
 			if(ipdCurChannel != NULL && ipdCurByte < (int)sizeof(ipdCurChannel->incomingBuffer))
 			{
-				ipdBuffer[ipdCurByte] = inChar;
+				ipdCurChannel->incomingBuffer[ipdCurByte] = inChar;
 			}
 			++ipdCurByte;	// increment this here because we still need to terminate the ipd even if we did not meet the above conditions for storing the char
 
@@ -318,7 +318,7 @@ CModule_ESP8266::ProcessSerialChar(
 				Serial.printf("+++start+++\n");
 				for(size_t i = 0; i < (size_t)ipdTotalBytes; ++i)
 				{
-					uint8_t c = (uint8_t)ipdBuffer[i];
+					uint8_t c = (uint8_t)ipdCurChannel->incomingBuffer[i];
 					if(c >= 32 && c < 0x7F && isprint(c))
 					{
 						Serial.write(c);
@@ -333,7 +333,6 @@ CModule_ESP8266::ProcessSerialChar(
 
 				if(ipdCurChannel != NULL)
 				{
-					memcpy(ipdCurChannel->incomingBuffer, ipdBuffer, ipdTotalBytes);
 					ipdCurChannel->incomingTotalBytes = ipdTotalBytes;
 					DumpChannelState(ipdCurChannel, "Finished ipd", false);
 					ipdCurChannel = NULL;
@@ -928,8 +927,11 @@ CModule_ESP8266::TCPGetData(
 	uint16_t&	outPort,
 	uint16_t&	outReplyPort,	
 	size_t&		ioBufferSize,		
-	char*		outBuffer)
+	char*&		outBuffer)
 {
+	ioBufferSize = 0;
+	outBuffer = NULL;
+
 	if(deviceIsHorked)
 	{
 		return;
@@ -943,16 +945,14 @@ CModule_ESP8266::TCPGetData(
 		{
 			DumpChannelState(curChannel, "Got Data", false);
 
-			ioBufferSize = MMin(ioBufferSize, curChannel->incomingTotalBytes);
-			memcpy(outBuffer, curChannel->incomingBuffer, ioBufferSize);
+			ioBufferSize = curChannel->incomingTotalBytes;
+			outBuffer = curChannel->incomingBuffer;
 			outReplyPort = i;
-			curChannel->incomingTotalBytes = 0;
 			outPort = curChannel->state == eChannelState_Server ? serverPort : i;
+			curChannel->incomingTotalBytes = 0;
 			return;
 		}
 	}
-
-	ioBufferSize = 0;
 }
 
 bool
@@ -1124,8 +1124,11 @@ CModule_ESP8266::UDPGetData(
 	uint32_t&	outRemoteAddress,
 	uint16_t&	outRemotePort,
 	size_t&		ioBufferSize,
-	char*		outBuffer)
+	char*&		outBuffer)
 {
+	ioBufferSize = 0;
+	outBuffer = NULL;
+
 	MReturnOnError(inChannel >= eChannelCount, false);
 
 	if(deviceIsHorked)
@@ -1142,8 +1145,8 @@ CModule_ESP8266::UDPGetData(
 	
 	outRemoteAddress = targetChannel->remoteAddress;
 	outRemotePort = targetChannel->remotePort;
-	ioBufferSize = MMin(ioBufferSize, targetChannel->incomingTotalBytes);
-	memcpy(outBuffer, targetChannel->incomingBuffer, ioBufferSize);
+	ioBufferSize = targetChannel->incomingTotalBytes;
+	outBuffer = targetChannel->incomingBuffer;
 	targetChannel->incomingTotalBytes = 0;
 	targetChannel->remoteAddress = 0;
 	targetChannel->remotePort = 0;
@@ -1435,62 +1438,67 @@ CModule_ESP8266::CheckIPDBufferForCommands(
 	char const*	lowestPtr = NULL;
 	char const*	checkPtr;
 
-	ipdBuffer[ipdCurByte] = 0;
-	checkPtr = strstr(ipdBuffer, "\r\nRecv ");
-	if(checkPtr != NULL && ipdCurByte - (checkPtr - ipdBuffer + 7) > 0 && isdigit(checkPtr[7]) && lowestPtr < checkPtr)
+	if(ipdCurChannel == NULL)
+	{
+		return;
+	}
+
+	ipdCurChannel->incomingBuffer[ipdCurByte] = 0;
+	checkPtr = strstr(ipdCurChannel->incomingBuffer, "\r\nRecv ");
+	if(checkPtr != NULL && ipdCurByte - (checkPtr - ipdCurChannel->incomingBuffer + 7) > 0 && isdigit(checkPtr[7]) && lowestPtr < checkPtr)
 	{
 		lowestPtr = checkPtr;
 	}
 
-	checkPtr = strstr(ipdBuffer, "\r\nSEND OK\r\n");
+	checkPtr = strstr(ipdCurChannel->incomingBuffer, "\r\nSEND OK\r\n");
 	if(checkPtr != NULL && lowestPtr < checkPtr)
 	{
 		lowestPtr = checkPtr;
 	}
 
-	checkPtr = strstr(ipdBuffer, ",CONNECT\r\n");
-	if(checkPtr != NULL && checkPtr > ipdBuffer && isdigit(checkPtr[-1]) && lowestPtr < checkPtr)
+	checkPtr = strstr(ipdCurChannel->incomingBuffer, ",CONNECT\r\n");
+	if(checkPtr != NULL && checkPtr > ipdCurChannel->incomingBuffer && isdigit(checkPtr[-1]) && lowestPtr < checkPtr)
 	{
 		lowestPtr = checkPtr - 1;
 	}
 
-	checkPtr = strstr(ipdBuffer, ",CLOSED\r\n");
-	if(checkPtr != NULL && checkPtr > ipdBuffer && isdigit(checkPtr[-1]) && lowestPtr < checkPtr)
+	checkPtr = strstr(ipdCurChannel->incomingBuffer, ",CLOSED\r\n");
+	if(checkPtr != NULL && checkPtr > ipdCurChannel->incomingBuffer && isdigit(checkPtr[-1]) && lowestPtr < checkPtr)
 	{
 		lowestPtr = checkPtr - 1;
 	}
 
-	checkPtr = strstr(ipdBuffer, "\r\nWIFI CONNECTED\r\n");
+	checkPtr = strstr(ipdCurChannel->incomingBuffer, "\r\nWIFI CONNECTED\r\n");
 	if(checkPtr != NULL && lowestPtr < checkPtr)
 	{
 		lowestPtr = checkPtr;
 	}
 
-	checkPtr = strstr(ipdBuffer, "\r\nWIFI DISCONNECT\r\n");
+	checkPtr = strstr(ipdCurChannel->incomingBuffer, "\r\nWIFI DISCONNECT\r\n");
 	if(checkPtr != NULL && lowestPtr < checkPtr)
 	{
 		lowestPtr = checkPtr;
 	}
 
-	checkPtr = strstr(ipdBuffer, "\r\nWIFI GOT IP\r\n");
+	checkPtr = strstr(ipdCurChannel->incomingBuffer, "\r\nWIFI GOT IP\r\n");
 	if(checkPtr != NULL && lowestPtr < checkPtr)
 	{
 		lowestPtr = checkPtr;
 	}
 
-	checkPtr = strstr(ipdBuffer, ",CONNECT FAIL\r\n");
-	if(checkPtr != NULL && checkPtr > ipdBuffer && isdigit(checkPtr[-1]) && lowestPtr < checkPtr)
+	checkPtr = strstr(ipdCurChannel->incomingBuffer, ",CONNECT FAIL\r\n");
+	if(checkPtr != NULL && checkPtr > ipdCurChannel->incomingBuffer && isdigit(checkPtr[-1]) && lowestPtr < checkPtr)
 	{
 		lowestPtr = checkPtr;
 	}
 
-	checkPtr = strstr(ipdBuffer, "\r\nSEND FAIL\r\n");
+	checkPtr = strstr(ipdCurChannel->incomingBuffer, "\r\nSEND FAIL\r\n");
 	if(checkPtr != NULL && lowestPtr < checkPtr)
 	{
 		lowestPtr = checkPtr;
 	}
 
-	checkPtr = strstr(ipdBuffer, "\r\nUNLINK\r\n");
+	checkPtr = strstr(ipdCurChannel->incomingBuffer, "\r\nUNLINK\r\n");
 	if(checkPtr != NULL && lowestPtr < checkPtr)
 	{
 		lowestPtr = checkPtr;
@@ -1500,7 +1508,7 @@ CModule_ESP8266::CheckIPDBufferForCommands(
 	{
 		// We found a command in the ipd input data this means the P.O.S. ESP8266 firmware did not send us all the ipd data it said it would
 		// cancel the ipd and feed the chars after back into the serial input processing loop
-		size_t	startIndex = lowestPtr - ipdBuffer;
+		size_t	startIndex = lowestPtr - ipdCurChannel->incomingBuffer;
 		size_t	endIndex = ipdCurByte;
 
 		ipdInProcess = false;
@@ -1510,7 +1518,7 @@ CModule_ESP8266::CheckIPDBufferForCommands(
 
 		for(size_t	i = startIndex; i < endIndex; ++i)
 		{
-			ProcessSerialChar(ipdBuffer[i]);
+			ProcessSerialChar(ipdCurChannel->incomingBuffer[i]);
 		}
 	}
 

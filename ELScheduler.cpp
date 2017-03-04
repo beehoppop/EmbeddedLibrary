@@ -33,6 +33,7 @@
 #include "EL.h"
 #include "ELScheduler.h"
 #include "ELAssert.h"
+#include "ELSunRiseAndSet.h"
 
 MModuleImplementation_Start(CModule_Scheduler)
 MModuleImplementation_FinishGlobal(CModule_Scheduler, gSchedulerModule)
@@ -111,6 +112,189 @@ static char const* gDayOfWeekAbrv[] =
 	"Sat"
 };
 
+bool
+CSchedulerThreshold::operator ==(
+	TEpochTime	inRHS)
+{
+	return false;
+}
+
+bool
+CSchedulerThreshold::operator >(
+	TEpochTime	inRHS)
+{
+
+	return false;
+}
+
+bool
+CSchedulerThreshold::operator >=(
+	TEpochTime	inRHS)
+{
+	return false;
+}
+
+bool
+CSchedulerThreshold::operator <(
+	TEpochTime	inRHS)
+{
+	return false;
+}
+
+bool
+CSchedulerThreshold::operator <=(
+	TEpochTime	inRHS)
+{
+	return false;
+}
+
+TEpochTime
+CSchedulerThreshold::GetEpochTime(
+	TEpochTime	inReferenceTime,
+	bool		inStarting)
+{
+	int refYear, refMonth, refDOM, refDOW, refHour, refMin, refSec;
+
+	gRealTime->GetComponentsFromEpochTime(inReferenceTime, refYear, refMonth, refDOM, refDOW, refHour, refMin, refSec);
+
+	switch(dateType)
+	{
+		case eDateType_Date:
+			if(year != eScheduler_Any)
+			{
+				refYear = year;
+			}
+
+			if(month != eScheduler_Any)
+			{
+				refMonth = month;
+			}
+
+			if(dayOfMonth != eScheduler_Any)
+			{
+				refDOM = dayOfMonth;
+			}
+			else
+			{
+				for(int i = 0; i < eDay_Count; ++i)
+				{
+					if(daysOfWeek & (1 << refDOW))
+					{
+						break;
+					}
+					if(inStarting)
+					{
+						refDOW = (refDOW - 1) % eDay_Count;
+						refDOM -= 1;
+						if(refDOM == 0)
+						{
+							refMonth -= 1;
+							if(refMonth == 0)
+							{
+								--refYear;
+								refMonth = 12;
+							}
+							refDOM = gDaysInMonth[refMonth - 1];
+							if(refMonth == 2 && MIsLeapYear(refYear))
+							{
+								++refDOM;
+							}
+						}
+					}
+					else
+					{
+						refDOW = (refDOW + 1) % eDay_Count;
+						refDOM += 1;
+
+						int	daysInMonth = gDaysInMonth[refMonth - 1];
+						if(refMonth == 2 && MIsLeapYear(refYear))
+						{
+							++daysInMonth;
+						}
+
+						if(refDOM > daysInMonth)
+						{
+							refDOM = 1;
+							refMonth += 1;
+							if(refMonth > 12)
+							{
+								refMonth = 1;
+								refYear += 1;
+							}
+						}
+					}
+				}
+			}
+			break;
+
+		case eDateType_Holiday:
+			if(year != eScheduler_Any)
+			{
+				refYear = year;
+			}
+			GetDateForHoliday(refMonth, refDOM, EHoliday(holiday), year);
+
+			if(month == eScheduler_Any)
+			{
+				if(inStarting)
+				{
+					refDOM = 1;
+				}
+				else
+				{
+					refDOM = gDaysInMonth[refMonth - 1];
+					if(refDOM == 2 && MIsLeapYear(refYear))
+					{
+						++refDOM;
+					}
+				}
+			}
+			break;
+	}
+
+	TEpochTime	result = gRealTime->GetEpochTimeFromComponents(refYear, refMonth, refDOM, 0, 0, 0);
+
+	switch(timeType)
+	{
+		case eTimeType_Sunrise:
+		{
+			result += gSunRiseAndSet->GetSunriseEpochTime(refYear, refMonth, refDOM, false);
+			break;
+		}
+
+		case eTimeType_Sunset:
+			result += gSunRiseAndSet->GetSunsetEpochTime(refYear, refMonth, refDOM, false);
+			break;
+
+		case eTimeType_Time:
+			result += hour * 60 * 60 + minute * 60 + second;
+			break;
+	}
+	
+	return result;
+}
+
+bool
+CSchedulerPeriod::operator <(
+	TEpochTime	inRHS)
+{
+	return start > inRHS;
+}
+
+bool
+CSchedulerPeriod::operator >(
+	TEpochTime	inRHS)
+{
+	return end > inRHS;
+}
+
+bool
+CSchedulerPeriod::operator ==(
+	TEpochTime	inRHS)
+{
+	return start <= inRHS && end > inRHS;
+}
+
 TSchedulerPeriodRef*
 CModule_Scheduler::CreatePeriod(
 	char const*			inPeriodName,
@@ -132,15 +316,6 @@ bool
 CModule_Scheduler::SchedulePeriod(
 	TSchedulerPeriodRef*	inPeriodRef,
 	CSchedulerPeriod const&	inEventData)
-{
-	return false;
-}
-
-bool
-CModule_Scheduler::InPeriod(
-	TSchedulerPeriodRef*	inPeriodRef,
-	TEpochTime				inEpochTime,
-	bool					inLocalTime)
 {
 	return false;
 }
@@ -496,30 +671,11 @@ CModule_Scheduler::ParseStringToThreshold(
 						SystemMsg("ERROR: Could not find second");
 						return false;
 					}
-					state = eLocalOrUTC;
-					break;
-					
-				case eLocalOrUTC:
-					if(token == "local")
-					{
-						outThreshold.localTime = true;
-					}
-					else if(token == "utc")
-					{
-						outThreshold.localTime = false;
-					}
-					else
-					{
-						SystemMsg("ERROR: missing local or utc specification");
-						return false;
-					}
-
 					return true;
 			}
 
 			token.Clear();
 		}
-
 
 		if(c == 0)
 		{

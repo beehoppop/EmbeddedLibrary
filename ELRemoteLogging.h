@@ -112,7 +112,7 @@ private:
 	TString<64>			url;
 	uint16_t			head;
 	uint16_t			tail;
-	char				buffer[2048];
+	char				buffer[1024];
 	char const*			globalTags;
 	bool				requestInProgress;
 	CHTTPConnection*	connection;
